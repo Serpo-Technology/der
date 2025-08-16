@@ -315,7 +315,7 @@ export class Contract implements IContractInterface {
           if (resolved) {
             resolvedComponents.set(element.id, resolved);
           }
-        } catch (error) {
+        } catch {
           // Component resolution failed, will be handled during validation
         }
       }
@@ -345,7 +345,7 @@ export class Contract implements IContractInterface {
           if (resolved) {
             resolvedComponents.set(operation.id, resolved);
           }
-        } catch (error) {
+        } catch {
           // Component resolution failed, will be handled during validation
         }
       }

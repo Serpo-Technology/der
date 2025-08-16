@@ -12,8 +12,7 @@ import {
   validateOperationBinding,
   validateInputSpec,
   validateOutputSpec,
-  CONTRACT_SCHEMA,
-  BLUEPRINT_SCHEMA
+  CONTRACT_SCHEMA
 } from '../validation';
 import type {
   Blueprint,
