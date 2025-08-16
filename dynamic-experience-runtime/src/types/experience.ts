@@ -65,14 +65,4 @@ export interface ExperienceUpdate {
   preserveUserEdits: boolean;
 }
 
-export interface ResolvedContract {
-  contract: Contract;
-  resolvedComponents: Map<string, any>;
-  dependencyGraph: DependencyNode[];
-}
-
-export interface DependencyNode {
-  id: string;
-  dependencies: string[];
-  resolved: boolean;
-}
+// ResolvedContract and DependencyNode are exported from contract.ts

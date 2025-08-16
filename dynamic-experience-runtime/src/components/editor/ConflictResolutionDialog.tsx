@@ -5,7 +5,8 @@
 
 import React, { useState, useCallback } from 'react';
 import './ConflictResolutionDialog.css';
-import { EditingConflict, Resolution, ResolutionOption } from '../../interfaces/experience-editor';
+import { EditingConflict, Resolution } from '../../interfaces/experience-editor';
+import type { ResolutionOption } from '../../interfaces/experience-editor';
 
 interface ConflictResolutionDialogProps {
   conflicts: EditingConflict[];

@@ -4,7 +4,7 @@
  */
 
 import { Contract, ValidationResult } from '../types/contract';
-import { ResolvedContract } from '../types/experience';
+import { ResolvedContract } from '../types/contract';
 
 export interface ContractBuilder {
   validateContract(contract: Contract): Promise<ValidationResult>;

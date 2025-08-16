@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::Path;
 use std::collections::HashMap;
 use tauri::Manager;
 use serde::{Deserialize, Serialize};
@@ -170,9 +169,10 @@ async fn execute_remote_operation(request: &OperationRequest) -> Result<Value, S
         .as_ref()
         .ok_or("Remote operation missing endpoint")?;
     
+    let default_method = "POST".to_string();
     let method = request.implementation.method
         .as_ref()
-        .unwrap_or(&"POST".to_string());
+        .unwrap_or(&default_method);
     
     // For now, return a mock response
     // In a real implementation, this would use reqwest or similar HTTP client
@@ -377,7 +377,7 @@ async fn load_contract(
 // Query repository for components
 #[tauri::command]
 async fn query_repository(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     criteria: Value
 ) -> Result<Vec<Value>, String> {
     // Mock repository query

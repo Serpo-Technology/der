@@ -3,25 +3,16 @@
  * Requirements: 3.1, 3.2, 9.1
  */
 
-import React from 'react';
+// React import removed - not needed in test files with modern React
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ComponentRenderer } from '../ComponentRenderer';
-import { ExperienceStateManager } from '../ExperienceStateManager';
-import { OperationExecutor } from '../OperationExecutor';
+// Unused imports removed
 import { UIElement } from '../../../types/contract';
 import { ExperienceState } from '../../../types/experience';
 
 // Mock dependencies
-const mockStateManager = {
-  getData: vi.fn(),
-  setData: vi.fn(),
-  subscribeToStateChanges: vi.fn()
-} as any;
-
-const mockOperationExecutor = {
-  executeOperation: vi.fn()
-} as any;
+// Mock objects removed as they're not used anymore
 
 describe('ComponentRenderer', () => {
   let componentRenderer: ComponentRenderer;
@@ -38,7 +29,7 @@ describe('ComponentRenderer', () => {
   };
 
   beforeEach(() => {
-    componentRenderer = new ComponentRenderer(mockStateManager, mockOperationExecutor);
+    componentRenderer = new ComponentRenderer();
     vi.clearAllMocks();
   });
 

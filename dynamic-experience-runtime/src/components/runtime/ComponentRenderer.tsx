@@ -3,11 +3,10 @@
  * Requirements: 3.1, 3.2, 9.1
  */
 
-import React, { useMemo, useCallback } from 'react';
+import React from 'react';
 import { UIElement, DataBinding, EventBinding } from '../../types/contract';
 import { ExperienceState } from '../../types/experience';
-import { ExperienceStateManager } from './ExperienceStateManager';
-import { OperationExecutor } from './OperationExecutor';
+// ExperienceStateManager and OperationExecutor imports removed as they're not used
 
 // Standard UI component registry
 const UI_COMPONENTS = {
@@ -21,17 +20,10 @@ const UI_COMPONENTS = {
   'link': LinkComponent
 };
 
-interface ComponentRendererProps {
-  element: UIElement;
-  experienceState: ExperienceState;
-  onOperationExecute: (operationId: string, inputs: any[]) => Promise<void>;
-}
+// ComponentRendererProps interface removed as it's not used
 
 export class ComponentRenderer {
-  constructor(
-    private stateManager: ExperienceStateManager,
-    private operationExecutor: OperationExecutor
-  ) {}
+  // No constructor parameters needed as this class is stateless
 
   renderUIElement(
     element: UIElement,

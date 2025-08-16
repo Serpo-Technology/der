@@ -3,11 +3,11 @@
  * Requirements: 5.6, 10.4, 10.5, 10.6
  */
 
-import React from 'react';
+// React import removed - not needed in test files with modern React
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ConflictResolutionDialog } from '../ConflictResolutionDialog';
-import { EditingConflict, Resolution } from '../../../interfaces/experience-editor';
+import { EditingConflict } from '../../../interfaces/experience-editor';
 
 // Mock CSS import
 vi.mock('../ConflictResolutionDialog.css', () => ({}));

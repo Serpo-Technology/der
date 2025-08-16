@@ -382,7 +382,7 @@ describe('RealTimeUpdater', () => {
     it('processes updates in order', async () => {
       const updates: string[] = [];
       
-      mockCallbacks.onUpdateStart.mockImplementation((strategy: UpdateStrategy) => {
+      mockCallbacks.onUpdateStart.mockImplementation((_strategy: UpdateStrategy) => {
         // Extract contract name from the update (this is a simplified test)
         updates.push('started');
       });

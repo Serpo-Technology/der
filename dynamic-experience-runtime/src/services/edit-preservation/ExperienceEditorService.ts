@@ -11,7 +11,8 @@ import {
   PreviewResult 
 } from '../../interfaces/experience-editor';
 import { Blueprint } from '../../types/blueprint';
-import { Contract, ValidationResult } from '../../types/contract';
+import { ValidationResult } from '../../types/contract';
+import { Contract } from '../../models/contract';
 import { EditTracker } from './EditTracker';
 import { ConflictResolver } from './ConflictResolver';
 
@@ -329,7 +330,7 @@ export class ExperienceEditorService implements ExperienceEditor {
   /**
    * Preserves specific edits
    */
-  preserveEdits(experienceId: string, editLocations: string[]): void {
+  preserveEdits(_experienceId: string, editLocations: string[]): void {
     const editsToPreserve = this.editTracker.getEdits().filter(
       edit => editLocations.includes(edit.location)
     );
@@ -363,7 +364,7 @@ export class ExperienceEditorService implements ExperienceEditor {
   private async simulateAIRegeneration(
     currentContract: Contract,
     sections: string[],
-    blueprint?: Blueprint
+    _blueprint?: Blueprint
   ): Promise<Contract> {
     // This is a placeholder - in real implementation, this would call the AI service
     const regeneratedContract = currentContract.clone();

@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ContractChangeDetector } from '../ContractChangeDetector';
-import { Contract, UIElement, OperationBinding } from '../../../types/contract';
+import { Contract } from '../../../types/contract';
 
 describe('ContractChangeDetector', () => {
   let detector: ContractChangeDetector;

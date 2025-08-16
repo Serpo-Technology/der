@@ -25,6 +25,10 @@ describe('TauriCommandService', () => {
 
   beforeEach(() => {
     service = TauriCommandService.getInstance();
+    // Reset the singleton state for each test
+    (service as any).isInitialized = false;
+    (service as any).tauriAvailable = false;
+    
     originalWindow = global.window;
     global.window = mockWindow as any;
     vi.clearAllMocks();
@@ -78,7 +82,7 @@ describe('TauriCommandService', () => {
 
       const result = await service.executeOperation(mockOperationRequest);
 
-      expect(mockInvoke).toHaveBeenCalledWith('execute_operation', mockOperationRequest);
+      expect(mockInvoke).toHaveBeenCalledWith('execute_operation', { request: mockOperationRequest });
       expect(result).toEqual(mockResult);
     });
 
@@ -156,9 +160,13 @@ describe('TauriCommandService', () => {
       const mockLocalStorage = { setItem: vi.fn(), getItem: vi.fn() };
       // Ensure window exists but __TAURI__ is undefined to simulate non-Tauri environment
       global.window = { localStorage: mockLocalStorage, __TAURI__: undefined } as any;
+      // Mock global localStorage as well
+      global.localStorage = mockLocalStorage as any;
       
-      // Create a new service instance that will detect non-Tauri environment
-      const newService = new (TauriCommandService as any)();
+      // Reset the service state to force re-initialization
+      const newService = TauriCommandService.getInstance();
+      (newService as any).isInitialized = false;
+      (newService as any).tauriAvailable = false;
       
       await newService.saveExperienceState('exp1', mockState);
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith(
@@ -168,7 +176,12 @@ describe('TauriCommandService', () => {
 
       mockLocalStorage.getItem.mockReturnValue(JSON.stringify(mockState));
       const result = await newService.loadExperienceState('exp1');
-      expect(result).toEqual(mockState);
+      // After JSON serialization/deserialization, Date objects become strings
+      const expectedState = {
+        ...mockState,
+        lastUpdated: mockState.lastUpdated.toISOString()
+      };
+      expect(result).toEqual(expectedState);
     });
 
     it('handles missing state gracefully', async () => {
@@ -220,9 +233,13 @@ describe('TauriCommandService', () => {
       const mockLocalStorage = { setItem: vi.fn(), getItem: vi.fn() };
       // Ensure window exists but __TAURI__ is undefined to simulate non-Tauri environment
       global.window = { localStorage: mockLocalStorage, __TAURI__: undefined } as any;
+      // Mock global localStorage as well
+      global.localStorage = mockLocalStorage as any;
       
-      // Create a new service instance that will detect non-Tauri environment
-      const newService = new (TauriCommandService as any)();
+      // Reset the service state to force re-initialization
+      const newService = TauriCommandService.getInstance();
+      (newService as any).isInitialized = false;
+      (newService as any).tauriAvailable = false;
 
       const contractId = await newService.saveContract(mockContract);
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith(
@@ -233,7 +250,16 @@ describe('TauriCommandService', () => {
 
       mockLocalStorage.getItem.mockReturnValue(JSON.stringify(mockContract));
       const result = await newService.loadContract('TestContract');
-      expect(result).toEqual(mockContract);
+      // After JSON serialization/deserialization, Date objects become strings
+      const expectedContract = {
+        ...mockContract,
+        metadata: {
+          ...mockContract.metadata,
+          createdAt: mockContract.metadata.createdAt.toISOString(),
+          updatedAt: mockContract.metadata.updatedAt.toISOString()
+        }
+      };
+      expect(result).toEqual(expectedContract);
     });
   });
 

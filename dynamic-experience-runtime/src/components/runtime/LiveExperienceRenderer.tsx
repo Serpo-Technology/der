@@ -66,7 +66,7 @@ export const LiveExperienceRenderer: React.FC<LiveExperienceRendererProps> = ({
     }
   };
 
-  const { updateContract, clearQueue, getStatus } = useRealTimeUpdater(
+  const { updateContract, clearQueue } = useRealTimeUpdater(
     dynamicExperienceRuntimeService,
     realTimeOptions
   );
@@ -155,7 +155,7 @@ export const LiveExperienceRenderer: React.FC<LiveExperienceRendererProps> = ({
 };
 
 // Hook for external contract updates
-export function useLiveExperienceUpdater(experienceId: string) {
+export function useLiveExperienceUpdater(_experienceId: string) {
   const rendererRef = useRef<{ updateContract: (contract: Contract, priority?: 'low' | 'medium' | 'high') => Promise<void> } | null>(null);
 
   const updateContract = useCallback(async (

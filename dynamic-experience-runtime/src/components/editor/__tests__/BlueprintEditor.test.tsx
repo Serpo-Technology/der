@@ -3,7 +3,7 @@
  * Requirements: 5.1, 10.2, 10.3
  */
 
-import React from 'react';
+// React import removed - not needed in test files with modern React
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { BlueprintEditor } from '../BlueprintEditor';
@@ -204,8 +204,8 @@ describe('BlueprintEditor', () => {
       expect(mockOnValidation).toHaveBeenCalled();
       const validation = mockOnValidation.mock.calls[0][0];
       expect(validation.isValid).toBe(false);
-      expect(validation.errors.some(e => e.message === 'Description is required')).toBe(true);
-      expect(validation.errors.some(e => e.message === 'Goal is required')).toBe(true);
+      expect(validation.errors.some((e: any) => e.message === 'Description is required')).toBe(true);
+      expect(validation.errors.some((e: any) => e.message === 'Goal is required')).toBe(true);
     });
   });
 

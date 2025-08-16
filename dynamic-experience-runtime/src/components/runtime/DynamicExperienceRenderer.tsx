@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Contract, UIElement, DataBinding, EventBinding } from '../../types/contract';
-import { Experience, ExperienceState } from '../../types/experience';
+import { Contract, UIElement } from '../../types/contract';
+import { ExperienceState } from '../../types/experience';
 import { ComponentRenderer } from './ComponentRenderer';
 import { ExperienceStateManager } from './ExperienceStateManager';
 import { OperationExecutor } from './OperationExecutor';
@@ -32,7 +32,7 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
 
   const stateManager = useMemo(() => new ExperienceStateManager(experienceId), [experienceId]);
   const operationExecutor = useMemo(() => new OperationExecutor(), []);
-  const componentRenderer = useMemo(() => new ComponentRenderer(stateManager, operationExecutor), [stateManager, operationExecutor]);
+  const componentRenderer = useMemo(() => new ComponentRenderer(), []);
 
   // Initialize experience state
   useEffect(() => {

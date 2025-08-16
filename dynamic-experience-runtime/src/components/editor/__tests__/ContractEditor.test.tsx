@@ -3,12 +3,12 @@
  * Requirements: 5.2, 5.5, 10.3, 10.7
  */
 
-import React from 'react';
+// React import removed - not needed in test files with modern React
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ContractEditor } from '../ContractEditor';
 import { Contract } from '../../../models/contract';
-import { UIElement, OperationBinding } from '../../../types/contract';
+// Unused imports removed
 
 // Mock CSS import
 vi.mock('../ContractEditor.css', () => ({}));

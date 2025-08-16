@@ -3,7 +3,7 @@
  * Requirements: 5.1, 10.2, 10.3
  */
 
-import React from 'react';
+// React import removed - not needed in test files with modern React
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { BlueprintValidatorComponent, BlueprintValidator } from '../BlueprintValidator';

@@ -246,7 +246,7 @@ export const ContractEditor: React.FC<ContractEditorProps> = ({
 
           <div className="section-list">
             <h4>Sections</h4>
-            {editingSections.map((section, index) => (
+            {editingSections.map((section, _index) => (
               <div
                 key={`${section.type}-${section.id || 'root'}`}
                 className={`section-item ${selectedSection === section ? 'selected' : ''}`}
@@ -415,8 +415,9 @@ const ElementEditor: React.FC<ElementEditorProps> = ({
         </div>
 
         <div className="field-group">
-          <label>Properties:</label>
+          <label htmlFor="element-properties">Properties:</label>
           <textarea
+            id="element-properties"
             value={JSON.stringify(element.properties, null, 2)}
             onChange={(e) => {
               try {
@@ -580,8 +581,9 @@ const MetadataEditor: React.FC<{ contract: Contract; readOnly: boolean }> = ({
       <h4>Contract Metadata</h4>
       <div className="metadata-fields">
         <div className="field-group">
-          <label>Name:</label>
+          <label htmlFor="contract-name">Name:</label>
           <input
+            id="contract-name"
             type="text"
             value={contract.name}
             onChange={(e) => {
@@ -593,8 +595,9 @@ const MetadataEditor: React.FC<{ contract: Contract; readOnly: boolean }> = ({
         </div>
 
         <div className="field-group">
-          <label>Version:</label>
+          <label htmlFor="contract-version">Version:</label>
           <input
+            id="contract-version"
             type="text"
             value={contract.version}
             onChange={(e) => {
@@ -606,8 +609,9 @@ const MetadataEditor: React.FC<{ contract: Contract; readOnly: boolean }> = ({
         </div>
 
         <div className="field-group">
-          <label>Description:</label>
+          <label htmlFor="contract-description">Description:</label>
           <textarea
+            id="contract-description"
             value={contract.metadata.description || ''}
             onChange={(e) => {
               contract.updateMetadata({ description: e.target.value });
@@ -618,8 +622,9 @@ const MetadataEditor: React.FC<{ contract: Contract; readOnly: boolean }> = ({
         </div>
 
         <div className="field-group">
-          <label>Author:</label>
+          <label htmlFor="contract-author">Author:</label>
           <input
+            id="contract-author"
             type="text"
             value={contract.metadata.author || ''}
             onChange={(e) => {
@@ -630,8 +635,9 @@ const MetadataEditor: React.FC<{ contract: Contract; readOnly: boolean }> = ({
         </div>
 
         <div className="field-group">
-          <label>Tags:</label>
+          <label htmlFor="contract-tags">Tags:</label>
           <input
+            id="contract-tags"
             type="text"
             value={contract.metadata.tags?.join(', ') || ''}
             onChange={(e) => {
@@ -644,8 +650,9 @@ const MetadataEditor: React.FC<{ contract: Contract; readOnly: boolean }> = ({
         </div>
 
         <div className="field-group">
-          <label>Created:</label>
+          <label htmlFor="contract-created">Created:</label>
           <input
+            id="contract-created"
             type="text"
             value={contract.metadata.createdAt.toISOString()}
             readOnly
@@ -653,8 +660,9 @@ const MetadataEditor: React.FC<{ contract: Contract; readOnly: boolean }> = ({
         </div>
 
         <div className="field-group">
-          <label>Updated:</label>
+          <label htmlFor="contract-updated">Updated:</label>
           <input
+            id="contract-updated"
             type="text"
             value={contract.metadata.updatedAt.toISOString()}
             readOnly
@@ -675,8 +683,9 @@ const LayoutEditor: React.FC<{ contract: Contract; readOnly: boolean }> = ({
       <h4>Layout Configuration</h4>
       <div className="layout-fields">
         <div className="field-group">
-          <label>Layout Type:</label>
+          <label htmlFor="layout-type">Layout Type:</label>
           <select
+            id="layout-type"
             value={contract.layout.type}
             onChange={(e) => {
               contract.updateLayout({
@@ -693,8 +702,9 @@ const LayoutEditor: React.FC<{ contract: Contract; readOnly: boolean }> = ({
         </div>
 
         <div className="field-group">
-          <label>Properties:</label>
+          <label htmlFor="layout-properties">Properties:</label>
           <textarea
+            id="layout-properties"
             value={JSON.stringify(contract.layout.properties, null, 2)}
             onChange={(e) => {
               try {
@@ -726,8 +736,9 @@ const StylingEditor: React.FC<{ contract: Contract; readOnly: boolean }> = ({
       <h4>Styling Configuration</h4>
       <div className="styling-fields">
         <div className="field-group">
-          <label>Theme:</label>
+          <label htmlFor="theme-select">Theme:</label>
           <select
+            id="theme-select"
             value={contract.styling.theme}
             onChange={(e) => {
               contract.updateStyling({
@@ -745,8 +756,9 @@ const StylingEditor: React.FC<{ contract: Contract; readOnly: boolean }> = ({
         </div>
 
         <div className="field-group">
-          <label>Custom Styles:</label>
+          <label htmlFor="custom-styles">Custom Styles:</label>
           <textarea
+            id="custom-styles"
             value={JSON.stringify(contract.styling.customStyles || {}, null, 2)}
             onChange={(e) => {
               try {

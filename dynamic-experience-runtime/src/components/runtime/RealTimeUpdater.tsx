@@ -3,9 +3,9 @@
  * Requirements: 3.5, 9.2, 9.3, 9.4
  */
 
-import React, { useCallback, useRef, useEffect } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 import { Contract } from '../../types/contract';
-import { Experience } from '../../types/experience';
+// Experience import removed as it's not used
 import { ContractChangeDetector, ContractChangeAnalysis } from './ContractChangeDetector';
 import { DynamicExperienceRuntimeService } from './DynamicExperienceRuntimeService';
 
@@ -59,7 +59,7 @@ export class RealTimeUpdater {
   }
 
   async updateContract(
-    experienceId: string, 
+    _experienceId: string, 
     newContract: Contract, 
     priority: 'low' | 'medium' | 'high' = 'medium'
   ): Promise<void> {
@@ -297,7 +297,7 @@ export class RealTimeUpdater {
 
   private async performPartialUpdate(
     analysis: ContractChangeAnalysis, 
-    strategy: UpdateStrategy
+    _strategy: UpdateStrategy
   ): Promise<boolean> {
     try {
       // Get all experiences and update affected ones
@@ -316,7 +316,7 @@ export class RealTimeUpdater {
 
   private async performFullRerender(
     contract: Contract, 
-    strategy: UpdateStrategy
+    _strategy: UpdateStrategy
   ): Promise<boolean> {
     try {
       // Clear all experiences and recreate them

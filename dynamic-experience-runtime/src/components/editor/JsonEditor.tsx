@@ -42,7 +42,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       if (validationResult.isValid) {
         onChange(parsed);
       } else {
-        setParseError(validationResult.error);
+        setParseError(validationResult.error || 'Validation failed');
         setIsValid(false);
       }
     } catch (error) {

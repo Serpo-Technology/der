@@ -13,7 +13,7 @@ interface BlueprintValidatorProps {
 }
 
 export const BlueprintValidatorComponent: React.FC<BlueprintValidatorProps> = ({
-  blueprint,
+  blueprint: _blueprint,
   validation
 }) => {
   if (validation.isValid && validation.warnings.length === 0) {
