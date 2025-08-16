@@ -1,0 +1,498 @@
+/**
+ * Blueprint Editor Styles
+ */
+
+.blueprint-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #ffffff;
+  border: 1px solid #e1e5e9;
+  border-radius: 8px;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e1e5e9;
+  background: #f8f9fa;
+}
+
+.editor-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.editor-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.mode-toggle,
+.preview-toggle {
+  padding: 6px 12px;
+  border: 1px solid #cbd5e0;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #4a5568;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.mode-toggle:hover,
+.preview-toggle:hover {
+  background: #edf2f7;
+  border-color: #a0aec0;
+}
+
+.editor-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.preview-panel {
+  width: 40%;
+  border-left: 1px solid #e1e5e9;
+  background: #f8f9fa;
+  overflow-y: auto;
+}
+
+/* Blueprint Form Editor */
+.blueprint-form-editor {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.form-section {
+  margin-bottom: 24px;
+}
+
+.form-section label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #2d3748;
+  font-size: 14px;
+}
+
+.form-section input,
+.form-section textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e0;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.form-section input:focus,
+.form-section textarea:focus {
+  outline: none;
+  border-color: #3182ce;
+  box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+}
+
+.form-section textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.capabilities-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.capability-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #e2e8f0;
+  border-radius: 16px;
+  font-size: 12px;
+  color: #2d3748;
+}
+
+.capability-item button {
+  background: none;
+  border: none;
+  color: #718096;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.capability-item button:hover {
+  color: #e53e3e;
+}
+
+.add-capability {
+  display: flex;
+  gap: 8px;
+}
+
+.add-capability input {
+  flex: 1;
+}
+
+.add-capability button {
+  padding: 6px 12px;
+  background: #3182ce;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.add-capability button:hover {
+  background: #2c5aa0;
+}
+
+/* Validation Panel */
+.validation-panel {
+  border-top: 1px solid #e1e5e9;
+  background: #ffffff;
+}
+
+.validation-panel.success {
+  background: #f0fff4;
+  border-top-color: #9ae6b4;
+}
+
+.validation-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.validation-icon {
+  font-size: 16px;
+}
+
+.validation-panel.success .validation-icon {
+  color: #38a169;
+}
+
+.validation-section.errors .validation-icon {
+  color: #e53e3e;
+}
+
+.validation-section.warnings .validation-icon {
+  color: #d69e2e;
+}
+
+.validation-list {
+  margin: 0;
+  padding: 0 20px 12px 20px;
+  list-style: none;
+}
+
+.validation-item {
+  padding: 4px 0;
+  font-size: 14px;
+}
+
+.validation-item.error {
+  color: #e53e3e;
+}
+
+.validation-item.warning {
+  color: #d69e2e;
+}
+
+/* Blueprint Preview */
+.blueprint-preview {
+  padding: 20px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.blueprint-preview h3 {
+  margin: 0 0 20px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.preview-section {
+  margin-bottom: 24px;
+}
+
+.preview-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4a5568;
+  border-bottom: 1px solid #e1e5e9;
+  padding-bottom: 4px;
+}
+
+.preview-content {
+  font-size: 13px;
+  color: #2d3748;
+}
+
+.empty-state {
+  color: #718096;
+  font-style: italic;
+  margin: 0;
+}
+
+.capabilities-preview {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.capability-preview-item {
+  padding: 2px 0;
+  color: #4a5568;
+}
+
+.ui-element-preview,
+.operation-preview,
+.ambiguity-preview,
+.modification-preview {
+  background: #ffffff;
+  border: 1px solid #e1e5e9;
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.element-header,
+.operation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.element-type,
+.operation-name {
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.element-purpose,
+.operation-type {
+  font-size: 12px;
+  color: #718096;
+}
+
+.element-capabilities,
+.element-properties,
+.operation-purpose,
+.operation-io {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.element-properties pre {
+  background: #f7fafc;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  margin: 4px 0 0 0;
+  overflow-x: auto;
+}
+
+.operation-io {
+  display: flex;
+  gap: 16px;
+}
+
+.ambiguity-question {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.ambiguity-options ul {
+  margin: 4px 0 0 16px;
+  padding: 0;
+}
+
+.preview-summary {
+  border-top: 1px solid #e1e5e9;
+  padding-top: 16px;
+  margin-top: 24px;
+}
+
+.summary-stats {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.stat {
+  text-align: center;
+}
+
+.stat-value {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+  color: #3182ce;
+}
+
+.stat-label {
+  display: block;
+  font-size: 12px;
+  color: #718096;
+  margin-top: 2px;
+}
+
+/* JSON Editor */
+.json-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.json-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid #e1e5e9;
+  background: #f8f9fa;
+}
+
+.json-editor-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.json-editor-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.json-editor-controls button {
+  padding: 4px 8px;
+  border: 1px solid #cbd5e0;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #4a5568;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.json-editor-controls button:hover:not(:disabled) {
+  background: #edf2f7;
+}
+
+.json-editor-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.json-status {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.json-status.valid {
+  color: #38a169;
+  background: #f0fff4;
+}
+
+.json-status.invalid {
+  color: #e53e3e;
+  background: #fed7d7;
+}
+
+.json-editor-content {
+  flex: 1;
+  padding: 20px;
+}
+
+.json-textarea {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #cbd5e0;
+  border-radius: 4px;
+  padding: 12px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  resize: none;
+  outline: none;
+}
+
+.json-textarea:focus {
+  border-color: #3182ce;
+  box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+}
+
+.json-textarea.error {
+  border-color: #e53e3e;
+}
+
+.json-error {
+  padding: 12px 20px;
+  background: #fed7d7;
+  color: #e53e3e;
+  font-size: 14px;
+  border-top: 1px solid #feb2b2;
+}
+
+.json-editor-help {
+  border-top: 1px solid #e1e5e9;
+}
+
+.json-editor-help details {
+  padding: 12px 20px;
+}
+
+.json-editor-help summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #4a5568;
+  font-size: 14px;
+}
+
+.schema-help {
+  margin-top: 12px;
+}
+
+.schema-help h5 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #2d3748;
+}
+
+.schema-help pre {
+  background: #f7fafc;
+  border: 1px solid #e1e5e9;
+  border-radius: 4px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-x: auto;
+  margin: 0;
+}
