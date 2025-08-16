@@ -6,28 +6,28 @@
   - Set up development environment with proper tooling and dependencies
   - _Requirements: 1.1, 2.1, 3.1_
 
-- [ ] 2. Implement data models and validation
-- [ ] 2.1 Create core data model interfaces and types
+- [x] 2. Implement data models and validation
+- [x] 2.1 Create core data model interfaces and types
   - Write TypeScript interfaces for Blueprint, Contract, UIElement, and OperationBinding
   - Implement JSON schema validation for contract structure
   - Create validation functions for data integrity across all models
   - _Requirements: 1.2, 2.3, 2.7_
 
-- [ ] 2.2 Implement Blueprint model with JSON serialization
+- [x] 2.2 Implement Blueprint model with JSON serialization
   - Create Blueprint class with consistent JSON format generation
   - Write serialization/deserialization methods for blueprint persistence
   - Implement validation for blueprint structure and required fields
   - _Requirements: 1.2, 1.3_
 
-- [ ] 2.3 Implement Contract model with component resolution
+- [x] 2.3 Implement Contract model with component resolution
   - Create Contract class with UI element and operation binding support
   - Write contract validation logic to ensure proper structure
   - Implement contract serialization for sharing and storage
   - _Requirements: 2.1, 2.3, 2.6_
 
 - [ ] 3. Create AI Interpreter for blueprint generation
-- [ ] 3.1 Implement natural language parsing
-  - Write natural language parser that extracts intent and capabilities
+- [ ] 3.1 Implement LLM parsing
+  - Write LLM parser logic that extracts intent and capabilities by communicationg with the LLM via remote or local API
   - Create blueprint generator that produces consistent JSON format
   - Implement ambiguity detection and question generation logic
   - _Requirements: 1.1, 1.2, 1.4_

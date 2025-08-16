@@ -56,6 +56,7 @@ export interface JSONSchemaProperty {
   default?: any;
   properties?: Record<string, JSONSchemaProperty>;
   items?: JSONSchemaProperty;
+  required?: string[];
 }
 
 export interface ComponentCriteria {
