@@ -1,6 +1,6 @@
 use std::fs;
 use std::collections::HashMap;
-use tauri::Manager;
+use tauri::{Manager, AppHandle, Emitter, menu::{Menu, MenuItem, PredefinedMenuItem}, tray::{TrayIconBuilder, TrayIconEvent}, image::Image};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -421,10 +421,194 @@ async fn query_repository(
     Ok(filtered_components)
 }
 
+// System tray commands
+#[tauri::command]
+async fn show_main_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn hide_main_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn list_bookmarked_experiences(app: AppHandle) -> Result<Vec<Value>, String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    
+    let contracts_dir = app_data_dir.join("contracts");
+    let mut experiences = Vec::new();
+    
+    if contracts_dir.exists() {
+        if let Ok(entries) = fs::read_dir(contracts_dir) {
+            for entry in entries.flatten() {
+                if let Some(extension) = entry.path().extension() {
+                    if extension == "json" {
+                        if let Ok(content) = fs::read_to_string(entry.path()) {
+                            if let Ok(contract) = serde_json::from_str::<Value>(&content) {
+                                experiences.push(serde_json::json!({
+                                    "id": entry.file_name().to_string_lossy().trim_end_matches(".json"),
+                                    "name": contract.get("name").unwrap_or(&serde_json::Value::String("Unnamed".to_string())),
+                                    "description": contract.get("metadata").and_then(|m| m.get("description")).unwrap_or(&serde_json::Value::String("No description".to_string())),
+                                    "lastModified": contract.get("metadata").and_then(|m| m.get("updatedAt")).unwrap_or(&serde_json::Value::String("Unknown".to_string()))
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(experiences)
+}
+
+fn create_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
+    println!("Creating tray menu items...");
+    let show_window = MenuItem::with_id(app, "show_window", "Open DER", true, None::<&str>)?;
+    println!("Created show_window menu item");
+    let new_experience = MenuItem::with_id(app, "new_experience", "New Experience", true, None::<&str>)?;
+    println!("Created new_experience menu item");
+    let bookmarks = MenuItem::with_id(app, "bookmarks", "Bookmarked Experiences", true, None::<&str>)?;
+    println!("Created bookmarks menu item");
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    println!("Created quit menu item");
+    
+    let menu = Menu::with_items(app, &[
+        &show_window,
+        &PredefinedMenuItem::separator(app)?,
+        &new_experience,
+        &bookmarks,
+        &PredefinedMenuItem::separator(app)?,
+        &quit,
+    ])?;
+    println!("Menu created with 6 items (4 menu items + 2 separators)");
+    
+    Ok(menu)
+}
+
+fn handle_tray_event(app: &AppHandle, event: TrayIconEvent) {
+    println!("Handling tray event: {:?}", event);
+    match event {
+        TrayIconEvent::Click { button, .. } => {
+            println!("Tray click detected: {:?}", button);
+            match button {
+                tauri::tray::MouseButton::Left => {
+                    println!("Left click - showing main window");
+                    // Left click - show main window
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                        println!("Window shown and focused");
+                    } else {
+                        println!("No main window found!");
+                    }
+                }
+                tauri::tray::MouseButton::Right => {
+                    println!("Right click detected - context menu should appear");
+                    // Context menu should appear automatically with global menu handler
+                }
+                _ => {
+                    println!("Other button click: {:?}", button);
+                }
+            }
+        }
+        TrayIconEvent::Enter { .. } => {
+            println!("Mouse entered tray icon area");
+        }
+        TrayIconEvent::Leave { .. } => {
+            println!("Mouse left tray icon area");
+        }
+        TrayIconEvent::Move { .. } => {
+            // Ignore move events to reduce noise
+        }
+        _ => {
+            println!("Other tray event: {:?}", event);
+        }
+    }
+}
+
+fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
+    println!("Menu event received: {:?}", event.id);
+    match event.id.as_ref() {
+        "show_window" => {
+            println!("Show window menu item clicked");
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+                println!("Window shown via menu");
+            }
+        }
+        "new_experience" => {
+            println!("New experience menu item clicked");
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+                // Emit event to switch to create mode
+                let _ = window.emit("navigate-to-create", ());
+                println!("Window shown and navigate-to-create event emitted");
+            }
+        }
+        "bookmarks" => {
+            println!("Bookmarks menu item clicked");
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+                // Emit event to show bookmarks
+                let _ = window.emit("show-bookmarks", ());
+                println!("Window shown and show-bookmarks event emitted");
+            }
+        }
+        "quit" => {
+            println!("Quit menu item clicked");
+            app.exit(0);
+        }
+        _ => {
+            println!("Unknown menu item: {:?}", event.id);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            println!("Setting up application...");
+            
+            // Create tray menu
+            let menu = create_tray_menu(app.handle())?;
+            println!("Tray menu created successfully");
+            
+            // Create tray icon with menu - simple approach
+            let _tray = TrayIconBuilder::with_id("main-tray")
+                .menu(&menu)
+                .tooltip("Dynamic Experience Runtime")
+                .build(app)?;
+            
+            println!("Tray icon created successfully");
+            
+            // Hide the window on startup - it will be shown via system tray
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.hide();
+                println!("Main window hidden");
+            } else {
+                println!("Warning: No main window found to hide");
+            }
+            
+            Ok(())
+        })
+        .on_tray_icon_event(handle_tray_event)
+        .on_menu_event(handle_menu_event)
         .invoke_handler(tauri::generate_handler![
             greet,
             read_repository_index,
@@ -437,8 +621,12 @@ pub fn run() {
             load_experience_state,
             save_contract,
             load_contract,
-            query_repository
+            query_repository,
+            show_main_window,
+            hide_main_window,
+            list_bookmarked_experiences
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+

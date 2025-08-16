@@ -2,3 +2,4 @@
 export * from './ui';
 export * from './runtime';
 export * from './editor';
+export * from './MainInterface';
