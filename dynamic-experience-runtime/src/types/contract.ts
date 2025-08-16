@@ -119,3 +119,15 @@ export interface ContractEdits {
   layoutEdits?: LayoutSpec;
   styleEdits?: StyleSpec;
 }
+
+export interface ResolvedContract {
+  contract: Contract;
+  resolvedComponents: Map<string, any>;
+  dependencyGraph: DependencyNode[];
+}
+
+export interface DependencyNode {
+  id: string;
+  dependencies: string[];
+  resolved: boolean;
+}

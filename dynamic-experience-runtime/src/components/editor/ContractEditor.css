@@ -1,0 +1,364 @@
+/**
+ * Contract Editor Styles
+ */
+
+.contract-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #f8f9fa;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.contract-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.contract-editor-header h3 {
+  margin: 0;
+  color: #212529;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.editor-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.mode-button {
+  padding: 8px 16px;
+  border: 1px solid #dee2e6;
+  background: #fff;
+  color: #495057;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.mode-button:hover {
+  background: #f8f9fa;
+  border-color: #adb5bd;
+}
+
+.mode-button.active {
+  background: #007bff;
+  color: #fff;
+  border-color: #007bff;
+}
+
+.contract-editor-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.contract-sidebar {
+  width: 300px;
+  background: #fff;
+  border-right: 1px solid #e9ecef;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.contract-summary {
+  padding: 16px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.contract-summary h4 {
+  margin: 0 0 12px 0;
+  color: #212529;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.summary-item {
+  margin-bottom: 8px;
+  font-size: 0.875rem;
+  color: #495057;
+}
+
+.summary-item strong {
+  color: #212529;
+}
+
+.section-list {
+  flex: 1;
+  padding: 16px 0;
+}
+
+.section-list h4 {
+  margin: 0 0 12px 0;
+  padding: 0 16px;
+  color: #212529;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.section-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border-left: 3px solid transparent;
+}
+
+.section-item:hover {
+  background: #f8f9fa;
+}
+
+.section-item.selected {
+  background: #e3f2fd;
+  border-left-color: #2196f3;
+}
+
+.section-title {
+  font-size: 0.875rem;
+  color: #495057;
+  flex: 1;
+}
+
+.regenerate-button {
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  opacity: 0.7;
+  transition: all 0.2s ease;
+}
+
+.regenerate-button:hover {
+  background: #dee2e6;
+  opacity: 1;
+}
+
+.add-controls {
+  padding: 16px;
+  border-top: 1px solid #e9ecef;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.add-button {
+  padding: 8px 12px;
+  border: 1px solid #28a745;
+  background: #fff;
+  color: #28a745;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.add-button:hover {
+  background: #28a745;
+  color: #fff;
+}
+
+.contract-main {
+  flex: 1;
+  background: #fff;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.no-selection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #6c757d;
+  font-style: italic;
+}
+
+/* Section Editors */
+.element-editor,
+.operation-editor,
+.metadata-editor,
+.layout-editor,
+.styling-editor {
+  max-width: 800px;
+}
+
+.element-header,
+.operation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #e9ecef;
+}
+
+.element-header h4,
+.operation-header h4 {
+  margin: 0;
+  color: #212529;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.remove-button {
+  padding: 6px 12px;
+  border: 1px solid #dc3545;
+  background: #fff;
+  color: #dc3545;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.remove-button:hover {
+  background: #dc3545;
+  color: #fff;
+}
+
+.element-fields,
+.operation-fields,
+.metadata-fields,
+.layout-fields,
+.styling-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-group label {
+  font-weight: 600;
+  color: #212529;
+  font-size: 0.875rem;
+}
+
+.field-group input,
+.field-group select,
+.field-group textarea {
+  padding: 8px 12px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  transition: border-color 0.2s ease;
+}
+
+.field-group input:focus,
+.field-group select:focus,
+.field-group textarea:focus {
+  outline: none;
+  border-color: #80bdff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.field-group input[readonly],
+.field-group select[disabled],
+.field-group textarea[readonly] {
+  background-color: #e9ecef;
+  opacity: 1;
+}
+
+.field-group textarea {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  resize: vertical;
+  min-height: 100px;
+}
+
+/* Validation Display */
+.validation-display {
+  background: #fff;
+  border-top: 1px solid #e9ecef;
+  padding: 16px 20px;
+}
+
+.validation-status {
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.validation-status.valid {
+  color: #28a745;
+}
+
+.validation-status.invalid {
+  color: #dc3545;
+}
+
+.validation-errors,
+.validation-warnings {
+  margin-top: 12px;
+}
+
+.validation-errors h5,
+.validation-warnings h5 {
+  margin: 0 0 8px 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.validation-errors h5 {
+  color: #dc3545;
+}
+
+.validation-warnings h5 {
+  color: #ffc107;
+}
+
+.validation-error,
+.validation-warning {
+  padding: 8px 12px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.validation-error {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.validation-warning {
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeaa7;
+}
+
+.validation-error strong,
+.validation-warning strong {
+  font-weight: 600;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .contract-editor-content {
+    flex-direction: column;
+  }
+  
+  .contract-sidebar {
+    width: 100%;
+    max-height: 300px;
+  }
+  
+  .contract-main {
+    padding: 16px;
+  }
+}

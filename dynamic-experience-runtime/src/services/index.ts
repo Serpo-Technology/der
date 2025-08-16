@@ -3,6 +3,7 @@ export * from './ai-interpreter';
 export * from './contract-builder';
 export * from './repository';
 export * from './persistence';
+export * from './edit-preservation';
 
 // Tauri command service
 export { TauriCommandService, tauriCommandService } from './tauri/TauriCommandService';
