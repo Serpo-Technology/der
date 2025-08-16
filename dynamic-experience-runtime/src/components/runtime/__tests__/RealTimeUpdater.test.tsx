@@ -37,7 +37,15 @@ describe('RealTimeUpdater', () => {
         eventBindings: []
       }
     ],
-    operations: [],
+    operations: [
+      {
+        id: 'base-operation',
+        operationName: 'baseOperation',
+        inputs: [],
+        outputs: [],
+        triggers: []
+      }
+    ],
     layout: { type: 'flex', properties: {} },
     styling: { theme: 'default' },
     metadata: {
@@ -53,6 +61,12 @@ describe('RealTimeUpdater', () => {
       onUpdateComplete: vi.fn(),
       onUpdateError: vi.fn()
     };
+
+    // Set up default mock implementations
+    mockRuntimeService.getAllExperiences.mockReturnValue([]);
+    mockRuntimeService.updateExperience.mockResolvedValue(undefined);
+    mockRuntimeService.clearAllExperiences.mockReturnValue(undefined);
+    mockRuntimeService.renderExperience.mockResolvedValue(undefined);
 
     updater = new RealTimeUpdater(mockRuntimeService, {
       updateThrottleMs: 10, // Fast for testing
@@ -288,17 +302,23 @@ describe('RealTimeUpdater', () => {
 
   describe('error handling', () => {
     it('handles update errors gracefully', async () => {
-      mockRuntimeService.getAllExperiences.mockImplementation(() => {
-        throw new Error('Runtime service error');
-      });
+      // Mock renderExperience to throw an error (this is called by full-rerender strategy)
+      mockRuntimeService.renderExperience.mockRejectedValue(new Error('Runtime service error'));
 
-      // Use a modified contract to ensure changes are detected
+      // Use a modified contract that will trigger partial-update (not hot-swap)
+      // Add an operation to prevent hot-swap strategy
       const modifiedContract = { 
         ...baseContract, 
         elements: [
           {
             ...baseContract.elements[0],
             properties: { text: 'Updated text' }
+          }
+        ],
+        operations: [
+          {
+            ...baseContract.operations[0],
+            operationName: 'modifiedOperation' // Modify the existing operation
           }
         ]
       };
@@ -352,7 +372,7 @@ describe('RealTimeUpdater', () => {
       await new Promise(resolve => setTimeout(resolve, 50));
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        'Fallback rerender also failed:',
+        'Full rerender failed:',
         expect.any(Error)
       );
 

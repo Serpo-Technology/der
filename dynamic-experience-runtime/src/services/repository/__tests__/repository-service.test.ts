@@ -156,13 +156,15 @@ describe('RepositoryService', () => {
         dependencies: {},
         lastUpdated: new Date().toISOString()
       };
-      mockInvoke.mockClear();
-      // Mock successful index loading from the start
-      mockInvoke.mockResolvedValue(JSON.stringify(mockIndexData));
+      
+      // Clear all previous mocks and set up fresh ones
+      mockInvoke.mockReset();
+      // Mock successful index loading - loadIndex should return the mock data
+      mockInvoke.mockResolvedValueOnce(JSON.stringify(mockIndexData));
       
       const testService = new RepositoryService();
-      // Wait a bit for async initialization to complete
-      await new Promise(resolve => setTimeout(resolve, 10));
+      // Wait for async initialization to complete
+      await new Promise(resolve => setTimeout(resolve, 50));
       const component = await testService.getComponent('button-1');
       expect(component).toEqual(mockUIElementManifest);
     });

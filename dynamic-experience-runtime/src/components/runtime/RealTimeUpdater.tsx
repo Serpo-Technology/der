@@ -161,8 +161,13 @@ export class RealTimeUpdater {
           break;
       }
 
-      // Notify completion
-      this.options.onUpdateComplete(strategy, success);
+      // Notify completion or error
+      if (success) {
+        this.options.onUpdateComplete(strategy, success);
+      } else {
+        // If update failed, call onUpdateError
+        this.options.onUpdateError(new Error(`Update strategy '${strategy.type}' failed`), strategy);
+      }
 
     } catch (error) {
       const strategy: UpdateStrategy = {
@@ -178,7 +183,7 @@ export class RealTimeUpdater {
       try {
         const fallbackSuccess = await this.performFullRerender(update.contract, strategy);
         if (!fallbackSuccess) {
-          throw new Error('Fallback rerender failed');
+          console.error('Fallback rerender also failed:', new Error('Fallback rerender failed'));
         }
       } catch (fallbackError) {
         console.error('Fallback rerender also failed:', fallbackError);
