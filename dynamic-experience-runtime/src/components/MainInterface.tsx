@@ -11,11 +11,15 @@ import { BlueprintEditor } from './editor/BlueprintEditor';
 import { ContractEditor } from './editor/ContractEditor';
 import { DynamicExperienceRenderer } from './runtime/DynamicExperienceRenderer';
 
+// Import persistence components
+import { BookmarkManager } from './bookmarks';
+import { SharingDialog, ImportDialog } from './sharing';
+
 // Import types
 import { Blueprint } from '../types/blueprint';
-import { Contract } from '../models/contract';
+import { Contract as ContractClass } from '../models/contract';
 import { ValidationResult } from '../types/contract';
-import { ExperienceState } from '../types/experience';
+import { ExperienceState, Experience } from '../types/experience';
 
 // Import services
 import { NaturalLanguageParser } from '../services/ai-interpreter/natural-language-parser';
@@ -23,17 +27,18 @@ import { BlueprintGenerator } from '../services/ai-interpreter/blueprint-generat
 import { ContractBuilder } from '../services/ai-interpreter/contract-builder';
 import { LLMClient } from '../services/ai-interpreter/llm-client';
 import { RepositoryService } from '../services/repository/repository-service';
+import { persistenceService } from '../services/persistence';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
 // Navigation modes
-type ViewMode = 'create' | 'blueprint' | 'contract' | 'preview' | 'bookmarks';
+type ViewMode = 'create' | 'blueprint' | 'contract' | 'preview' | 'bookmarks' | 'import';
 
 interface MainInterfaceState {
   currentMode: ViewMode;
   naturalLanguageInput: string;
   blueprint: Blueprint | null;
-  contract: Contract | null;
+  contract: ContractClass | null;
   experienceState: ExperienceState | null;
   isProcessing: boolean;
   error: string | null;
@@ -42,6 +47,9 @@ interface MainInterfaceState {
     contract?: ValidationResult;
   };
   bookmarkedExperiences: any[];
+  showSharingDialog: boolean;
+  showImportDialog: boolean;
+  currentExperienceBookmarked: boolean;
 }
 
 export const MainInterface: React.FC = () => {
@@ -54,7 +62,10 @@ export const MainInterface: React.FC = () => {
     isProcessing: false,
     error: null,
     validationResults: {},
-    bookmarkedExperiences: []
+    bookmarkedExperiences: [],
+    showSharingDialog: false,
+    showImportDialog: false,
+    currentExperienceBookmarked: false
   });
 
   // Initialize services
@@ -150,7 +161,7 @@ export const MainInterface: React.FC = () => {
     try {
       // Generate contract from blueprint
       const contractData = await services.contractBuilder.generateFromBlueprint(state.blueprint);
-      const contract = new Contract(contractData);
+      const contract = new ContractClass(contractData);
       
       // Validate contract
       const validation = services.contractBuilder.validateContract(contractData);
@@ -177,7 +188,7 @@ export const MainInterface: React.FC = () => {
   }, []);
 
   // Handle contract changes
-  const handleContractChange = useCallback((contract: Contract) => {
+  const handleContractChange = useCallback((contract: ContractClass) => {
     setState(prev => ({ ...prev, contract }));
   }, []);
 
@@ -227,38 +238,96 @@ export const MainInterface: React.FC = () => {
       isProcessing: false,
       error: null,
       validationResults: {},
-      bookmarkedExperiences: []
+      bookmarkedExperiences: [],
+      showSharingDialog: false,
+      showImportDialog: false,
+      currentExperienceBookmarked: false
     });
   }, []);
 
   // Load experience from bookmark
-  const handleLoadExperience = useCallback(async (experienceId: string) => {
+  const handleLoadExperience = useCallback(async (experience: Experience) => {
+    setState(prev => ({ 
+      ...prev, 
+      contract: ContractClass.fromObject(experience.contract),
+      currentMode: 'preview',
+      currentExperienceBookmarked: true
+    }));
+  }, []);
+
+  // Handle bookmark creation
+  const handleBookmarkExperience = useCallback(async () => {
+    if (!state.contract) return;
+
     setState(prev => ({ ...prev, isProcessing: true, error: null }));
-    
     try {
-      const contractData = await invoke<any>('load_contract', { contractId: experienceId });
-      if (contractData) {
-        const contract = new Contract(contractData);
-        setState(prev => ({
-          ...prev,
-          contract,
-          currentMode: 'preview',
-          isProcessing: false
-        }));
-      } else {
-        setState(prev => ({
-          ...prev,
-          error: 'Experience not found',
-          isProcessing: false
-        }));
-      }
+      const experience: Experience = {
+        id: `exp-${Date.now()}`,
+        contract: state.contract.toObject(),
+        reactComponent: () => null,
+        state: {
+          data: {},
+          loading: {},
+          errors: {},
+          lastUpdated: new Date()
+        },
+        operations: new Map()
+      };
+
+      await persistenceService.bookmarkExperience(experience);
+      setState(prev => ({ 
+        ...prev, 
+        currentExperienceBookmarked: true,
+        isProcessing: false 
+      }));
+      await loadBookmarkedExperiences();
     } catch (error) {
       setState(prev => ({
         ...prev,
-        error: error instanceof Error ? error.message : 'Failed to load experience',
+        error: error instanceof Error ? error.message : 'Failed to bookmark experience',
         isProcessing: false
       }));
     }
+  }, [state.contract, loadBookmarkedExperiences]);
+
+  // Handle sharing dialog
+  const handleShowSharingDialog = useCallback(() => {
+    setState(prev => ({ ...prev, showSharingDialog: true }));
+  }, []);
+
+  const handleCloseSharingDialog = useCallback(() => {
+    setState(prev => ({ ...prev, showSharingDialog: false }));
+  }, []);
+
+  // Handle import dialog
+  const handleShowImportDialog = useCallback(() => {
+    setState(prev => ({ ...prev, showImportDialog: true }));
+  }, []);
+
+  const handleCloseImportDialog = useCallback(() => {
+    setState(prev => ({ ...prev, showImportDialog: false }));
+  }, []);
+
+  // Handle import success
+  const handleImportSuccess = useCallback(async (experience: Experience) => {
+    setState(prev => ({
+      ...prev,
+      contract: ContractClass.fromObject(experience.contract),
+      currentMode: 'preview',
+      currentExperienceBookmarked: true,
+      showImportDialog: false
+    }));
+    await loadBookmarkedExperiences();
+  }, [loadBookmarkedExperiences]);
+
+  // Handle success/error messages
+  const handleSuccess = useCallback((message: string) => {
+    // You could implement a toast notification system here
+    console.log('Success:', message);
+  }, []);
+
+  const handleError = useCallback((error: string) => {
+    setState(prev => ({ ...prev, error }));
   }, []);
 
   return (
@@ -306,6 +375,13 @@ export const MainInterface: React.FC = () => {
           }}
         >
           Bookmarks ({state.bookmarkedExperiences.length})
+        </button>
+        <button
+          className="nav-button"
+          onClick={handleShowImportDialog}
+          title="Import shared experience"
+        >
+          Import
         </button>
         <button
           className="nav-button reset"
@@ -368,15 +444,17 @@ export const MainInterface: React.FC = () => {
             contract={state.contract}
             onStateChange={handleExperienceStateChange}
             onError={handleExperienceError}
+            onBookmark={handleBookmarkExperience}
+            onShare={handleShowSharingDialog}
+            isBookmarked={state.currentExperienceBookmarked}
+            isProcessing={state.isProcessing}
           />
         )}
 
         {state.currentMode === 'bookmarks' && (
-          <BookmarksView
-            experiences={state.bookmarkedExperiences}
+          <BookmarkManager
             onLoadExperience={handleLoadExperience}
-            onRefresh={loadBookmarkedExperiences}
-            isLoading={state.isProcessing}
+            onError={handleError}
           />
         )}
       </main>
@@ -395,6 +473,27 @@ export const MainInterface: React.FC = () => {
           )}
         </div>
       </footer>
+
+      {/* Sharing Dialog */}
+      {state.contract && (
+        <SharingDialog
+          experienceId={`exp-${Date.now()}`}
+          experienceName={state.contract.name || 'Unnamed Experience'}
+          isOpen={state.showSharingDialog}
+          onClose={handleCloseSharingDialog}
+          onError={handleError}
+          onSuccess={handleSuccess}
+        />
+      )}
+
+      {/* Import Dialog */}
+      <ImportDialog
+        isOpen={state.showImportDialog}
+        onClose={handleCloseImportDialog}
+        onImportSuccess={handleImportSuccess}
+        onError={handleError}
+        onSuccess={handleSuccess}
+      />
     </div>
   );
 };
@@ -468,66 +567,7 @@ const CreateView: React.FC<CreateViewProps> = ({
   );
 };
 
-// Bookmarks View Component
-interface BookmarksViewProps {
-  experiences: any[];
-  onLoadExperience: (experienceId: string) => void;
-  onRefresh: () => void;
-  isLoading: boolean;
-}
 
-const BookmarksView: React.FC<BookmarksViewProps> = ({
-  experiences,
-  onLoadExperience,
-  onRefresh,
-  isLoading
-}) => {
-  return (
-    <div className="bookmarks-view">
-      <div className="bookmarks-header">
-        <h2>Bookmarked Experiences</h2>
-        <button 
-          className="refresh-button"
-          onClick={onRefresh}
-          disabled={isLoading}
-        >
-          {isLoading ? 'Loading...' : 'Refresh'}
-        </button>
-      </div>
-
-      {experiences.length === 0 ? (
-        <div className="empty-bookmarks">
-          <div className="empty-icon">📚</div>
-          <h3>No Bookmarked Experiences</h3>
-          <p>Create and save your first experience to see it here.</p>
-        </div>
-      ) : (
-        <div className="experiences-grid">
-          {experiences.map((experience) => (
-            <div key={experience.id} className="experience-card">
-              <div className="experience-header">
-                <h3>{experience.name}</h3>
-                <span className="experience-date">
-                  {new Date(experience.lastModified).toLocaleDateString()}
-                </span>
-              </div>
-              <p className="experience-description">{experience.description}</p>
-              <div className="experience-actions">
-                <button
-                  className="load-button primary"
-                  onClick={() => onLoadExperience(experience.id)}
-                  disabled={isLoading}
-                >
-                  Open Experience
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 // Blueprint View Component
 interface BlueprintViewProps {
@@ -573,9 +613,9 @@ const BlueprintView: React.FC<BlueprintViewProps> = ({
 
 // Contract View Component
 interface ContractViewProps {
-  contract: Contract;
+  contract: ContractClass;
   validation?: ValidationResult;
-  onContractChange: (contract: Contract) => void;
+  onContractChange: (contract: ContractClass) => void;
   onValidationChange: (validation: ValidationResult) => void;
 }
 
@@ -601,21 +641,53 @@ const ContractView: React.FC<ContractViewProps> = ({
 
 // Preview View Component
 interface PreviewViewProps {
-  contract: Contract;
+  contract: ContractClass;
   onStateChange: (state: ExperienceState) => void;
   onError: (error: Error) => void;
+  onBookmark?: () => void;
+  onShare?: () => void;
+  isBookmarked?: boolean;
+  isProcessing?: boolean;
 }
 
 const PreviewView: React.FC<PreviewViewProps> = ({
   contract,
   onStateChange,
-  onError
+  onError,
+  onBookmark,
+  onShare,
+  isBookmarked = false,
+  isProcessing = false
 }) => {
   return (
     <div className="preview-view">
       <div className="preview-header">
-        <h2>Experience Preview</h2>
-        <p>This is how your experience will look and behave:</p>
+        <div className="preview-title">
+          <h2>Experience Preview</h2>
+          <p>This is how your experience will look and behave:</p>
+        </div>
+        <div className="preview-actions">
+          {onBookmark && (
+            <button
+              className={`bookmark-button ${isBookmarked ? 'bookmarked' : ''}`}
+              onClick={onBookmark}
+              disabled={isProcessing}
+              title={isBookmarked ? 'Remove bookmark' : 'Bookmark this experience'}
+            >
+              {isBookmarked ? '🔖 Bookmarked' : '📑 Bookmark'}
+            </button>
+          )}
+          {onShare && (
+            <button
+              className="share-button"
+              onClick={onShare}
+              disabled={isProcessing}
+              title="Share this experience"
+            >
+              📤 Share
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="preview-container">

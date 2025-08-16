@@ -1,0 +1,193 @@
+/* Bookmark Button Styles */
+
+.bookmark-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  background: white;
+  color: var(--text-secondary, #666666);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.bookmark-button:hover:not(:disabled) {
+  background: var(--background-hover, #f8f9fa);
+  border-color: var(--border-hover, #ced4da);
+  transform: translateY(-1px);
+}
+
+.bookmark-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.bookmark-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Size Variants */
+.bookmark-button.small {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  min-height: 28px;
+}
+
+.bookmark-button.small .bookmark-icon {
+  font-size: 0.875rem;
+}
+
+.bookmark-button.medium {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  min-height: 36px;
+}
+
+.bookmark-button.medium .bookmark-icon {
+  font-size: 1rem;
+}
+
+.bookmark-button.large {
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  min-height: 44px;
+}
+
+.bookmark-button.large .bookmark-icon {
+  font-size: 1.25rem;
+}
+
+/* Variant Styles */
+.bookmark-button.icon {
+  min-width: auto;
+  aspect-ratio: 1;
+  padding: 0.5rem;
+}
+
+.bookmark-button.icon.small {
+  padding: 0.25rem;
+}
+
+.bookmark-button.icon.large {
+  padding: 0.75rem;
+}
+
+.bookmark-button.text .bookmark-icon {
+  display: none;
+}
+
+.bookmark-button.full {
+  min-width: auto;
+}
+
+/* State Styles */
+.bookmark-button.not-bookmarked {
+  background: white;
+  color: var(--text-secondary, #666666);
+  border-color: var(--border-color, #e0e0e0);
+}
+
+.bookmark-button.not-bookmarked:hover:not(:disabled) {
+  background: var(--primary-color, #007bff);
+  color: white;
+  border-color: var(--primary-color, #007bff);
+}
+
+.bookmark-button.bookmarked {
+  background: var(--primary-color, #007bff);
+  color: white;
+  border-color: var(--primary-color, #007bff);
+}
+
+.bookmark-button.bookmarked:hover:not(:disabled) {
+  background: var(--danger-color, #dc3545);
+  border-color: var(--danger-color, #dc3545);
+}
+
+.bookmark-button.processing {
+  pointer-events: none;
+}
+
+/* Icon and Text */
+.bookmark-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.bookmark-text {
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.bookmark-spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Focus Styles */
+.bookmark-button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.bookmark-button.bookmarked:focus {
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .bookmark-button.full .bookmark-text {
+    display: none;
+  }
+  
+  .bookmark-button.full {
+    min-width: auto;
+    aspect-ratio: 1;
+  }
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+  .bookmark-button {
+    border-width: 2px;
+  }
+  
+  .bookmark-button:focus {
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.5);
+  }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .bookmark-button {
+    transition: none;
+  }
+  
+  .bookmark-button:hover:not(:disabled) {
+    transform: none;
+  }
+  
+  .bookmark-spinner {
+    animation: none;
+  }
+}

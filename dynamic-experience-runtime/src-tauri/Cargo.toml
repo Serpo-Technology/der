@@ -25,4 +25,5 @@ serde_json = "1"
 regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["time"] }
+uuid = { version = "1.0", features = ["v4"] }
 

@@ -1,8 +1,9 @@
 use std::fs;
 use std::collections::HashMap;
-use tauri::{Manager, AppHandle, Emitter, menu::{Menu, MenuItem, PredefinedMenuItem}, tray::{TrayIconBuilder, TrayIconEvent}, image::Image};
+use tauri::{Manager, AppHandle, Emitter, menu::{Menu, MenuItem, PredefinedMenuItem}, tray::{TrayIconBuilder, TrayIconEvent}};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -323,6 +324,490 @@ async fn load_experience_state(
     Ok(Some(state))
 }
 
+// Bookmark data structures
+#[derive(Debug, Serialize, Deserialize)]
+struct BookmarkedExperience {
+    id: String,
+    name: String,
+    description: Option<String>,
+    contract: Value,
+    created_at: String,
+    last_accessed_at: String,
+    tags: Option<Vec<String>>,
+    thumbnail: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ShareableContract {
+    contract: Value,
+    metadata: ShareMetadata,
+    version: String,
+    checksum: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ShareMetadata {
+    title: String,
+    description: Option<String>,
+    author: Option<String>,
+    created_at: String,
+    shared_at: String,
+    tags: Option<Vec<String>>,
+    category: Option<String>,
+}
+
+// Bookmark experience
+#[tauri::command]
+async fn bookmark_experience(
+    app: tauri::AppHandle,
+    experience_id: String,
+    name: String,
+    description: Option<String>,
+    contract: Value,
+    tags: Option<Vec<String>>
+) -> Result<String, String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    
+    let bookmarks_dir = app_data_dir.join("bookmarks");
+    fs::create_dir_all(&bookmarks_dir)
+        .map_err(|e| format!("Failed to create bookmarks directory: {}", e))?;
+    
+    let now = chrono::Utc::now().to_rfc3339();
+    let bookmark = BookmarkedExperience {
+        id: experience_id.clone(),
+        name,
+        description,
+        contract,
+        created_at: now.clone(),
+        last_accessed_at: now,
+        tags,
+        thumbnail: None,
+    };
+    
+    let bookmark_file = bookmarks_dir.join(format!("{}.json", experience_id));
+    let bookmark_json = serde_json::to_string_pretty(&bookmark)
+        .map_err(|e| format!("Failed to serialize bookmark: {}", e))?;
+    
+    fs::write(bookmark_file, bookmark_json)
+        .map_err(|e| format!("Failed to save bookmark: {}", e))?;
+    
+    Ok(experience_id)
+}
+
+// Load bookmarked experience
+#[tauri::command]
+async fn load_bookmarked_experience(
+    app: tauri::AppHandle,
+    experience_id: String
+) -> Result<Option<Value>, String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    
+    let bookmark_file = app_data_dir.join("bookmarks").join(format!("{}.json", experience_id));
+    
+    if !bookmark_file.exists() {
+        return Ok(None);
+    }
+    
+    let bookmark_json = fs::read_to_string(bookmark_file)
+        .map_err(|e| format!("Failed to read bookmark: {}", e))?;
+    
+    let mut bookmark: BookmarkedExperience = serde_json::from_str(&bookmark_json)
+        .map_err(|e| format!("Failed to parse bookmark: {}", e))?;
+    
+    // Update last accessed time
+    bookmark.last_accessed_at = chrono::Utc::now().to_rfc3339();
+    
+    // Save updated bookmark
+    let updated_json = serde_json::to_string_pretty(&bookmark)
+        .map_err(|e| format!("Failed to serialize updated bookmark: {}", e))?;
+    
+    let bookmark_file = app_data_dir.join("bookmarks").join(format!("{}.json", experience_id));
+    fs::write(bookmark_file, updated_json)
+        .map_err(|e| format!("Failed to update bookmark: {}", e))?;
+    
+    Ok(Some(serde_json::to_value(bookmark).unwrap()))
+}
+
+// List all bookmarked experiences
+#[tauri::command]
+async fn list_bookmarked_experiences_detailed(app: AppHandle) -> Result<Vec<Value>, String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    
+    let bookmarks_dir = app_data_dir.join("bookmarks");
+    let mut experiences = Vec::new();
+    
+    if bookmarks_dir.exists() {
+        if let Ok(entries) = fs::read_dir(bookmarks_dir) {
+            for entry in entries.flatten() {
+                if let Some(extension) = entry.path().extension() {
+                    if extension == "json" {
+                        if let Ok(content) = fs::read_to_string(entry.path()) {
+                            if let Ok(bookmark) = serde_json::from_str::<BookmarkedExperience>(&content) {
+                                experiences.push(serde_json::json!({
+                                    "id": bookmark.id,
+                                    "name": bookmark.name,
+                                    "description": bookmark.description,
+                                    "createdAt": bookmark.created_at,
+                                    "lastAccessedAt": bookmark.last_accessed_at,
+                                    "tags": bookmark.tags,
+                                    "thumbnail": bookmark.thumbnail
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Sort by last accessed time (most recent first)
+    experiences.sort_by(|a, b| {
+        let a_time = a.get("lastAccessedAt").and_then(|t| t.as_str()).unwrap_or("");
+        let b_time = b.get("lastAccessedAt").and_then(|t| t.as_str()).unwrap_or("");
+        b_time.cmp(a_time)
+    });
+    
+    Ok(experiences)
+}
+
+// Delete bookmarked experience
+#[tauri::command]
+async fn delete_bookmarked_experience(
+    app: tauri::AppHandle,
+    experience_id: String
+) -> Result<(), String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    
+    let bookmark_file = app_data_dir.join("bookmarks").join(format!("{}.json", experience_id));
+    
+    if bookmark_file.exists() {
+        fs::remove_file(bookmark_file)
+            .map_err(|e| format!("Failed to delete bookmark: {}", e))?;
+    }
+    
+    Ok(())
+}
+
+// Generate checksum for contract
+fn generate_checksum(data: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    
+    let mut hasher = DefaultHasher::new();
+    data.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
+}
+
+// Share experience
+#[tauri::command]
+async fn share_experience(
+    app: tauri::AppHandle,
+    experience_id: String,
+    title: String,
+    description: Option<String>,
+    author: Option<String>,
+    tags: Option<Vec<String>>,
+    category: Option<String>
+) -> Result<Value, String> {
+    // Load the bookmarked experience
+    let bookmark_result = load_bookmarked_experience(app.clone(), experience_id.clone()).await?;
+    let bookmark = bookmark_result.ok_or("Experience not found")?;
+    
+    let contract = bookmark.get("contract")
+        .ok_or("Contract not found in bookmark")?
+        .clone();
+    
+    let now = chrono::Utc::now().to_rfc3339();
+    let metadata = ShareMetadata {
+        title: title.clone(),
+        description,
+        author,
+        created_at: bookmark.get("createdAt")
+            .and_then(|t| t.as_str())
+            .unwrap_or(&now)
+            .to_string(),
+        shared_at: now,
+        tags,
+        category,
+    };
+    
+    let contract_json = serde_json::to_string(&contract)
+        .map_err(|e| format!("Failed to serialize contract: {}", e))?;
+    
+    let checksum = generate_checksum(&contract_json);
+    
+    let shareable = ShareableContract {
+        contract,
+        metadata,
+        version: "1.0.0".to_string(),
+        checksum,
+    };
+    
+    Ok(serde_json::to_value(shareable).unwrap())
+}
+
+// Import shared experience
+#[tauri::command]
+async fn import_shared_experience(
+    app: tauri::AppHandle,
+    shareable_contract: Value
+) -> Result<Value, String> {
+    let shareable: ShareableContract = serde_json::from_value(shareable_contract)
+        .map_err(|e| format!("Failed to parse shareable contract: {}", e))?;
+    
+    // Verify checksum
+    let contract_json = serde_json::to_string(&shareable.contract)
+        .map_err(|e| format!("Failed to serialize contract for verification: {}", e))?;
+    
+    let calculated_checksum = generate_checksum(&contract_json);
+    if calculated_checksum != shareable.checksum {
+        return Err("Checksum verification failed - contract may be corrupted".to_string());
+    }
+    
+    // Generate new experience ID
+    let experience_id = format!("imported-{}", uuid::Uuid::new_v4().to_string());
+    
+    // Create bookmark from imported experience
+    let bookmark_result = bookmark_experience(
+        app,
+        experience_id.clone(),
+        shareable.metadata.title,
+        shareable.metadata.description,
+        shareable.contract,
+        shareable.metadata.tags
+    ).await?;
+    
+    Ok(serde_json::json!({
+        "success": true,
+        "experienceId": bookmark_result,
+        "message": "Experience imported successfully"
+    }))
+}
+
+// Duplicate experience
+#[tauri::command]
+async fn duplicate_experience(
+    app: tauri::AppHandle,
+    experience_id: String,
+    new_name: Option<String>
+) -> Result<String, String> {
+    // Load the original experience
+    let bookmark_result = load_bookmarked_experience(app.clone(), experience_id.clone()).await?;
+    let bookmark = bookmark_result.ok_or("Experience not found")?;
+    
+    let original_name = bookmark.get("name")
+        .and_then(|n| n.as_str())
+        .unwrap_or("Unnamed");
+    
+    let duplicate_name = new_name.unwrap_or_else(|| format!("{} (Copy)", original_name));
+    let duplicate_id = format!("dup-{}", uuid::Uuid::new_v4().to_string());
+    
+    let contract = bookmark.get("contract")
+        .ok_or("Contract not found in bookmark")?
+        .clone();
+    
+    let description = bookmark.get("description")
+        .and_then(|d| d.as_str())
+        .map(|s| s.to_string());
+    
+    let tags = bookmark.get("tags")
+        .and_then(|t| t.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect());
+    
+    // Create new bookmark
+    bookmark_experience(
+        app,
+        duplicate_id.clone(),
+        duplicate_name,
+        description,
+        contract,
+        tags
+    ).await?;
+    
+    Ok(duplicate_id)
+}
+
+// Update experience with versioning
+#[derive(Debug, Serialize, Deserialize)]
+struct ExperienceVersion {
+    version: u32,
+    contract: Value,
+    blueprint: Option<Value>,
+    created_at: String,
+    changes_summary: Option<String>,
+}
+
+#[tauri::command]
+async fn update_experience(
+    app: tauri::AppHandle,
+    experience_id: String,
+    new_contract: Option<Value>,
+    new_blueprint: Option<Value>,
+    _preserve_user_edits: bool,
+    changes_summary: Option<String>
+) -> Result<(), String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    
+    // Load current bookmark
+    let bookmark_result = load_bookmarked_experience(app.clone(), experience_id.clone()).await?;
+    let mut bookmark_value = bookmark_result.ok_or("Experience not found")?;
+    
+    // Create versions directory
+    let versions_dir = app_data_dir.join("versions").join(&experience_id);
+    fs::create_dir_all(&versions_dir)
+        .map_err(|e| format!("Failed to create versions directory: {}", e))?;
+    
+    // Get current version number
+    let mut current_version = 1u32;
+    if let Ok(entries) = fs::read_dir(&versions_dir) {
+        for entry in entries.flatten() {
+            if let Some(file_name) = entry.file_name().to_str() {
+                if let Some(version_str) = file_name.strip_suffix(".json") {
+                    if let Ok(version) = version_str.parse::<u32>() {
+                        current_version = current_version.max(version + 1);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Save current state as a version
+    let current_contract = bookmark_value.get("contract").cloned().unwrap_or(serde_json::Value::Null);
+    let version = ExperienceVersion {
+        version: current_version - 1,
+        contract: current_contract,
+        blueprint: None, // Will be populated when blueprint support is added
+        created_at: chrono::Utc::now().to_rfc3339(),
+        changes_summary: Some("Previous version before update".to_string()),
+    };
+    
+    let version_file = versions_dir.join(format!("{}.json", current_version - 1));
+    let version_json = serde_json::to_string_pretty(&version)
+        .map_err(|e| format!("Failed to serialize version: {}", e))?;
+    
+    fs::write(version_file, version_json)
+        .map_err(|e| format!("Failed to save version: {}", e))?;
+    
+    // Update bookmark with new data
+    if let Some(contract) = new_contract {
+        if let Some(bookmark_obj) = bookmark_value.as_object_mut() {
+            bookmark_obj.insert("contract".to_string(), contract);
+        }
+    }
+    
+    // Update last accessed time
+    if let Some(bookmark_obj) = bookmark_value.as_object_mut() {
+        bookmark_obj.insert("last_accessed_at".to_string(), 
+            serde_json::Value::String(chrono::Utc::now().to_rfc3339()));
+    }
+    
+    // Save updated bookmark
+    let bookmark_file = app_data_dir.join("bookmarks").join(format!("{}.json", experience_id));
+    let bookmark_json = serde_json::to_string_pretty(&bookmark_value)
+        .map_err(|e| format!("Failed to serialize updated bookmark: {}", e))?;
+    
+    fs::write(bookmark_file, bookmark_json)
+        .map_err(|e| format!("Failed to save updated bookmark: {}", e))?;
+    
+    // Save new version
+    let new_version = ExperienceVersion {
+        version: current_version,
+        contract: bookmark_value.get("contract").cloned().unwrap_or(serde_json::Value::Null),
+        blueprint: new_blueprint,
+        created_at: chrono::Utc::now().to_rfc3339(),
+        changes_summary,
+    };
+    
+    let new_version_file = versions_dir.join(format!("{}.json", current_version));
+    let new_version_json = serde_json::to_string_pretty(&new_version)
+        .map_err(|e| format!("Failed to serialize new version: {}", e))?;
+    
+    fs::write(new_version_file, new_version_json)
+        .map_err(|e| format!("Failed to save new version: {}", e))?;
+    
+    Ok(())
+}
+
+// Get experience versions
+#[tauri::command]
+async fn get_experience_versions(
+    app: tauri::AppHandle,
+    experience_id: String
+) -> Result<Vec<Value>, String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    
+    let versions_dir = app_data_dir.join("versions").join(&experience_id);
+    let mut versions = Vec::new();
+    
+    if versions_dir.exists() {
+        if let Ok(entries) = fs::read_dir(versions_dir) {
+            for entry in entries.flatten() {
+                if let Some(extension) = entry.path().extension() {
+                    if extension == "json" {
+                        if let Ok(content) = fs::read_to_string(entry.path()) {
+                            if let Ok(version) = serde_json::from_str::<ExperienceVersion>(&content) {
+                                versions.push(serde_json::json!({
+                                    "version": version.version,
+                                    "createdAt": version.created_at,
+                                    "changesSummary": version.changes_summary
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Sort by version number
+    versions.sort_by(|a, b| {
+        let a_version = a.get("version").and_then(|v| v.as_u64()).unwrap_or(0);
+        let b_version = b.get("version").and_then(|v| v.as_u64()).unwrap_or(0);
+        b_version.cmp(&a_version) // Descending order (newest first)
+    });
+    
+    Ok(versions)
+}
+
+// Restore experience to specific version
+#[tauri::command]
+async fn restore_experience_version(
+    app: tauri::AppHandle,
+    experience_id: String,
+    version: u32
+) -> Result<(), String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    
+    let version_file = app_data_dir.join("versions").join(&experience_id).join(format!("{}.json", version));
+    
+    if !version_file.exists() {
+        return Err(format!("Version {} not found", version));
+    }
+    
+    let version_json = fs::read_to_string(version_file)
+        .map_err(|e| format!("Failed to read version: {}", e))?;
+    
+    let version_data: ExperienceVersion = serde_json::from_str(&version_json)
+        .map_err(|e| format!("Failed to parse version: {}", e))?;
+    
+    // Update the experience with the version data
+    update_experience(
+        app,
+        experience_id,
+        Some(version_data.contract),
+        version_data.blueprint,
+        false,
+        Some(format!("Restored to version {}", version))
+    ).await
+}
+
 // Save and load contracts
 #[tauri::command]
 async fn save_contract(
@@ -624,7 +1109,17 @@ pub fn run() {
             query_repository,
             show_main_window,
             hide_main_window,
-            list_bookmarked_experiences
+            list_bookmarked_experiences,
+            bookmark_experience,
+            load_bookmarked_experience,
+            list_bookmarked_experiences_detailed,
+            delete_bookmarked_experience,
+            share_experience,
+            import_shared_experience,
+            duplicate_experience,
+            update_experience,
+            get_experience_versions,
+            restore_experience_version
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

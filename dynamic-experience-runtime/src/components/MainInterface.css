@@ -578,3 +578,106 @@
     align-self: flex-start;
   }
 }
+/* Preview View Styles */
+.preview-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.preview-title h2 {
+  margin: 0 0 0.5rem 0;
+  color: #495057;
+  font-size: 1.75rem;
+  font-weight: 600;
+}
+
+.preview-title p {
+  margin: 0;
+  color: #6c757d;
+  font-size: 1rem;
+}
+
+.preview-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.bookmark-button,
+.share-button {
+  padding: 0.75rem 1.25rem;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  background: white;
+  color: #495057;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bookmark-button:hover:not(:disabled),
+.share-button:hover:not(:disabled) {
+  background: #f8f9fa;
+  border-color: #adb5bd;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.bookmark-button.bookmarked {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.bookmark-button.bookmarked:hover:not(:disabled) {
+  background: #0056b3;
+  border-color: #0056b3;
+}
+
+.bookmark-button:disabled,
+.share-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.preview-container {
+  flex: 1;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+/* Responsive Design for Preview */
+@media (max-width: 768px) {
+  .preview-header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch;
+  }
+  
+  .preview-actions {
+    justify-content: center;
+  }
+  
+  .bookmark-button,
+  .share-button {
+    flex: 1;
+    justify-content: center;
+  }
+}

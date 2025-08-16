@@ -101,20 +101,20 @@
   - Write validation system for user edits with feedback
   - _Requirements: 5.6, 10.4, 10.5, 10.6_
 
-- [ ] 7. Build Persistence Layer for bookmarking and sharing
-- [ ] 7.1 Implement experience bookmarking system
+- [x] 7. Build Persistence Layer for bookmarking and sharing
+- [x] 7.1 Implement experience bookmarking system
   - Create bookmark storage using Tauri's local database capabilities
   - Write experience serialization for bookmark persistence
   - Implement bookmark retrieval and experience restoration
   - _Requirements: 4.1, 4.2_
 
-- [ ] 7.2 Create experience sharing functionality
+- [x] 7.2 Create experience sharing functionality
   - Implement shareable contract generation with metadata and checksums
   - Write import system for shared experiences
   - Create experience duplication with independent editing capabilities
   - _Requirements: 4.3, 4.4, 4.5_
 
-- [ ] 7.3 Add experience update and versioning
+- [x] 7.3 Add experience update and versioning
   - Create experience update system that preserves user edits
   - Implement versioning for experience modifications
   - Write update conflict resolution for concurrent edits
