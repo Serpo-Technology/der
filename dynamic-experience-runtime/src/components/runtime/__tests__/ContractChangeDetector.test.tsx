@@ -234,7 +234,7 @@ describe('ContractChangeDetector', () => {
     it('detects layout changes', () => {
       const newContract = {
         ...baseContract,
-        layout: { type: 'grid', properties: { gridTemplateColumns: '1fr 1fr' } }
+        layout: { type: 'grid' as const, properties: { gridTemplateColumns: '1fr 1fr' } }
       };
 
       const analysis = detector.detectChanges(newContract);
@@ -281,7 +281,7 @@ describe('ContractChangeDetector', () => {
     it('requires full rerender for layout changes', () => {
       const newContract = {
         ...baseContract,
-        layout: { type: 'absolute', properties: {} }
+        layout: { type: 'absolute' as const, properties: {} }
       };
 
       const analysis = detector.detectChanges(newContract);
@@ -414,11 +414,11 @@ describe('ContractChangeDetector', () => {
     it('correctly compares nested objects', () => {
       const contract1 = {
         ...baseContract,
-        layout: { type: 'flex', properties: { flexDirection: 'row' } }
+        layout: { type: 'flex' as const, properties: { flexDirection: 'row' } }
       };
       const contract2 = {
         ...baseContract,
-        layout: { type: 'flex', properties: { flexDirection: 'column' } }
+        layout: { type: 'flex' as const, properties: { flexDirection: 'column' } }
       };
 
       detector.detectChanges(contract1);

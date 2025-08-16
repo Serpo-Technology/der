@@ -176,7 +176,10 @@ export class RealTimeUpdater {
       
       // Fallback to full rerender on error
       try {
-        await this.performFullRerender(update.contract, strategy);
+        const fallbackSuccess = await this.performFullRerender(update.contract, strategy);
+        if (!fallbackSuccess) {
+          throw new Error('Fallback rerender failed');
+        }
       } catch (fallbackError) {
         console.error('Fallback rerender also failed:', fallbackError);
       }
@@ -307,7 +310,7 @@ export class RealTimeUpdater {
       return true;
     } catch (error) {
       console.error('Partial update failed:', error);
-      return false;
+      throw error; // Re-throw to trigger main error handling
     }
   }
 

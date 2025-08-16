@@ -5,8 +5,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { RealTimeUpdater, UpdateStrategy } from '../RealTimeUpdater';
-import { DynamicExperienceRuntimeService } from '../DynamicExperienceRuntimeService';
+// import { DynamicExperienceRuntimeService } from '../DynamicExperienceRuntimeService';
 import { Contract } from '../../../types/contract';
+import React from 'react';
 
 // Mock the runtime service
 const mockRuntimeService = {
@@ -182,7 +183,7 @@ describe('RealTimeUpdater', () => {
       // Change layout (major change)
       const updatedContract = {
         ...baseContract,
-        layout: { type: 'grid', properties: { gridTemplateColumns: '1fr 1fr' } }
+        layout: { type: 'grid' as const, properties: { gridTemplateColumns: '1fr 1fr' } }
       };
 
       await updater.updateContract('exp1', updatedContract);
@@ -270,7 +271,7 @@ describe('RealTimeUpdater', () => {
       // Layout change (full rerender)
       const updatedContract = {
         ...baseContract,
-        layout: { type: 'absolute', properties: {} }
+        layout: { type: 'absolute' as const, properties: {} }
       };
 
       await updater.updateContract('exp1', updatedContract);
@@ -291,7 +292,18 @@ describe('RealTimeUpdater', () => {
         throw new Error('Runtime service error');
       });
 
-      await updater.updateContract('exp1', baseContract);
+      // Use a modified contract to ensure changes are detected
+      const modifiedContract = { 
+        ...baseContract, 
+        elements: [
+          {
+            ...baseContract.elements[0],
+            properties: { text: 'Updated text' }
+          }
+        ]
+      };
+
+      await updater.updateContract('exp1', modifiedContract);
       await new Promise(resolve => setTimeout(resolve, 50));
 
       expect(mockCallbacks.onUpdateError).toHaveBeenCalledWith(
@@ -325,7 +337,18 @@ describe('RealTimeUpdater', () => {
 
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      await updater.updateContract('exp1', baseContract);
+      // Use a modified contract to ensure changes are detected
+      const modifiedContract = { 
+        ...baseContract, 
+        elements: [
+          {
+            ...baseContract.elements[0],
+            properties: { text: 'Updated text for fallback test' }
+          }
+        ]
+      };
+
+      await updater.updateContract('exp1', modifiedContract);
       await new Promise(resolve => setTimeout(resolve, 50));
 
       expect(consoleSpy).toHaveBeenCalledWith(

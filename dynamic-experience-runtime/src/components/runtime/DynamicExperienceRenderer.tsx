@@ -133,7 +133,7 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
   return (
     <div 
       className="dynamic-experience-container"
-      style={layoutStyles}
+      style={layoutStyles as React.CSSProperties}
       data-experience-id={experienceId}
       data-contract-name={contract.name}
       data-testid="dynamic-experience-container"

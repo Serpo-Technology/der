@@ -82,8 +82,10 @@ describe('RepositoryService', () => {
 
   beforeEach(() => {
     mockInvoke.mockClear();
-    // Mock empty index by default
-    mockInvoke.mockRejectedValue(new Error('No index found'));
+    // Mock empty index by default - first call (loadIndex) fails, second call (saveIndex) succeeds
+    mockInvoke
+      .mockRejectedValueOnce(new Error('No index found')) // loadIndex fails
+      .mockResolvedValueOnce(undefined); // saveIndex succeeds
     repositoryService = new RepositoryService();
   });
 
@@ -155,9 +157,12 @@ describe('RepositoryService', () => {
         lastUpdated: new Date().toISOString()
       };
       mockInvoke.mockClear();
+      // Mock successful index loading from the start
       mockInvoke.mockResolvedValue(JSON.stringify(mockIndexData));
       
       const testService = new RepositoryService();
+      // Wait a bit for async initialization to complete
+      await new Promise(resolve => setTimeout(resolve, 10));
       const component = await testService.getComponent('button-1');
       expect(component).toEqual(mockUIElementManifest);
     });
@@ -225,13 +230,45 @@ describe('RepositoryService', () => {
     });
 
     it('should query operations', async () => {
-      const operations = await repositoryService.queryOperations({});
+      // Setup mock index with operation component
+      const mockIndexData = {
+        components: {
+          'api-call-1': mockOperationManifest
+        },
+        capabilities: {
+          'http': ['api-call-1'],
+          'async': ['api-call-1']
+        },
+        dependencies: {},
+        lastUpdated: new Date().toISOString()
+      };
+      mockInvoke.mockClear();
+      mockInvoke.mockResolvedValue(JSON.stringify(mockIndexData));
+      
+      const testService = new RepositoryService();
+      const operations = await testService.queryOperations({});
       expect(operations).toHaveLength(1);
       expect(operations[0]).toEqual(mockOperationManifest);
     });
 
     it('should filter by capabilities', async () => {
-      const clickableComponents = await repositoryService.queryUIElements({
+      // Setup mock index with UI element component
+      const mockIndexData = {
+        components: {
+          'button-1': mockUIElementManifest
+        },
+        capabilities: {
+          'clickable': ['button-1'],
+          'styled': ['button-1']
+        },
+        dependencies: {},
+        lastUpdated: new Date().toISOString()
+      };
+      mockInvoke.mockClear();
+      mockInvoke.mockResolvedValue(JSON.stringify(mockIndexData));
+      
+      const testService = new RepositoryService();
+      const clickableComponents = await testService.queryUIElements({
         capabilities: ['clickable']
       });
       expect(clickableComponents).toHaveLength(1);
@@ -239,7 +276,23 @@ describe('RepositoryService', () => {
     });
 
     it('should filter by name', async () => {
-      const buttonComponents = await repositoryService.queryUIElements({
+      // Setup mock index with UI element component
+      const mockIndexData = {
+        components: {
+          'button-1': mockUIElementManifest
+        },
+        capabilities: {
+          'clickable': ['button-1'],
+          'styled': ['button-1']
+        },
+        dependencies: {},
+        lastUpdated: new Date().toISOString()
+      };
+      mockInvoke.mockClear();
+      mockInvoke.mockResolvedValue(JSON.stringify(mockIndexData));
+      
+      const testService = new RepositoryService();
+      const buttonComponents = await testService.queryUIElements({
         name: 'Button'
       });
       expect(buttonComponents).toHaveLength(1);
@@ -293,13 +346,17 @@ describe('RepositoryService', () => {
     });
 
     it('should list all components', async () => {
-      const allComponents = await repositoryService.listComponents();
+      // Create new service instance with the mocked data
+      const testService = new RepositoryService();
+      const allComponents = await testService.listComponents();
       expect(allComponents).toHaveLength(1);
       expect(allComponents[0]).toEqual(mockUIElementManifest);
     });
 
     it('should list components by type', async () => {
-      const uiElements = await repositoryService.listComponents('ui-element');
+      // Create new service instance with the mocked data
+      const testService = new RepositoryService();
+      const uiElements = await testService.listComponents('ui-element');
       expect(uiElements).toHaveLength(1);
       expect(uiElements[0].type).toBe('ui-element');
     });

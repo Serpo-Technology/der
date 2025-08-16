@@ -68,7 +68,9 @@ export class TauriCommandService {
     if (this.tauriAvailable) {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        return await invoke('execute_operation', request);
+        // The Tauri invoke API expects the arguments as a Record<string, unknown>
+        // so we wrap the request in an object with a key, e.g. { request }
+        return await invoke('execute_operation', { request });
       } catch (error) {
         console.error('Tauri operation execution failed:', error);
         throw error;

@@ -7,7 +7,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Contract } from '../../types/contract';
 import { ExperienceState } from '../../types/experience';
 import { DynamicExperienceRenderer } from './DynamicExperienceRenderer';
-import { RealTimeUpdater, useRealTimeUpdater, UpdateStrategy, RealTimeUpdateOptions } from './RealTimeUpdater';
+import { useRealTimeUpdater, UpdateStrategy, RealTimeUpdateOptions } from './RealTimeUpdater';
 import { dynamicExperienceRuntimeService } from './DynamicExperienceRuntimeService';
 
 interface LiveExperienceRendererProps {

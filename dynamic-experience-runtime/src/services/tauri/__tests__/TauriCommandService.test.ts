@@ -154,7 +154,8 @@ describe('TauriCommandService', () => {
 
     it('uses localStorage fallback for state management', async () => {
       const mockLocalStorage = { setItem: vi.fn(), getItem: vi.fn() };
-      global.window = { localStorage: mockLocalStorage } as any;
+      // Ensure window exists but __TAURI__ is undefined to simulate non-Tauri environment
+      global.window = { localStorage: mockLocalStorage, __TAURI__: undefined } as any;
       
       // Create a new service instance that will detect non-Tauri environment
       const newService = new (TauriCommandService as any)();
@@ -217,7 +218,8 @@ describe('TauriCommandService', () => {
 
     it('uses localStorage fallback for contracts', async () => {
       const mockLocalStorage = { setItem: vi.fn(), getItem: vi.fn() };
-      global.window = { localStorage: mockLocalStorage } as any;
+      // Ensure window exists but __TAURI__ is undefined to simulate non-Tauri environment
+      global.window = { localStorage: mockLocalStorage, __TAURI__: undefined } as any;
       
       // Create a new service instance that will detect non-Tauri environment
       const newService = new (TauriCommandService as any)();
@@ -275,8 +277,8 @@ describe('TauriCommandService', () => {
       const uiElements = await newService.queryRepository({ type: 'ui-element' });
       const operations = await newService.queryRepository({ type: 'operation' });
 
-      expect(uiElements.every(comp => comp.type === 'ui-element')).toBe(true);
-      expect(operations.every(comp => comp.type === 'operation')).toBe(true);
+      expect(uiElements.every((comp: { type: string; }) => comp.type === 'ui-element')).toBe(true);
+      expect(operations.every((comp: { type: string; }) => comp.type === 'operation')).toBe(true);
     });
 
     it('handles repository query errors', async () => {
