@@ -47,7 +47,6 @@ const ErrorContext = createContext<ErrorContextValue | null>(null);
 function errorReducer(state: ErrorState, action: ErrorAction): ErrorState {
   switch (action.type) {
     case 'ADD_ERROR': {
-      const errorId = `error-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const errorReport: ErrorReport = {
         error: action.payload.error,
         context: action.payload.context || { timestamp: new Date() },
@@ -320,16 +319,18 @@ export function useErrorHandler() {
     });
   }, [addError]);
 
-  const handleAsyncError = useCallback(async <T>(
+  const handleAsyncError = useCallback(<T,>(
     operation: () => Promise<T>,
     context?: string
   ): Promise<T | null> => {
-    try {
-      return await operation();
-    } catch (error) {
-      handleError(error as Error, context);
-      return null;
-    }
+    return (async () => {
+      try {
+        return await operation();
+      } catch (error) {
+        handleError(error as Error, context);
+        return null;
+      }
+    })();
   }, [handleError]);
 
   return { handleError, handleAsyncError, resolveError };

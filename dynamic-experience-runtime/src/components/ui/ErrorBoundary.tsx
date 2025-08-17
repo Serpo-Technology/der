@@ -24,7 +24,7 @@ interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
-  recovery: ErrorRecovery | null;
+  recovery: ErrorRecovery | undefined;
   retryCount: number;
 }
 
@@ -40,7 +40,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       hasError: false,
       error: null,
       errorInfo: null,
-      recovery: null,
+      recovery: undefined,
       retryCount: 0
     };
   }
@@ -73,7 +73,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     this.setState({
       error: runtimeError,
       errorInfo,
-      recovery,
+      recovery: recovery,
       retryCount: 0
     });
 
@@ -95,7 +95,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         hasError: false,
         error: null,
         errorInfo: null,
-        recovery: null,
+        recovery: undefined,
         retryCount: prevState.retryCount + 1
       }));
     }

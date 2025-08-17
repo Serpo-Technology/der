@@ -4,7 +4,7 @@
  */
 
 import { ParsedIntent, UIElementRequirement, OperationRequirement, Ambiguity, Question } from '../../types/blueprint';
-import { ValidationResult, ValidationError, ValidationWarning } from '../../interfaces/ai-interpreter';
+import { ValidationResult, ValidationError, ValidationWarning } from '../../types/contract';
 import { LLMClient, LLMMessage } from './llm-client';
 
 export class NaturalLanguageParser {

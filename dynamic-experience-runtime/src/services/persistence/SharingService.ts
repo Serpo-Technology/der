@@ -52,7 +52,7 @@ export class SharingService {
    */
   async createShareableExperience(
     experienceId: string,
-    contract: any,
+    _contract: any,
     metadata: any = {}
   ): Promise<ShareableContract> {
     // Convert the provided contract and metadata to the expected format
@@ -259,7 +259,7 @@ export class SharingService {
   /**
    * Get shared experience by URL or ID (placeholder)
    */
-  async getSharedExperience(shareUrl: string): Promise<any> {
+  async getSharedExperience(_shareUrl: string): Promise<any> {
     // This is a placeholder implementation
     // In a real system, this would fetch the shared experience from the URL
     return {
@@ -281,7 +281,7 @@ export class SharingService {
   /**
    * Generate a shareable URL for an experience
    */
-  async generateShareUrl(shareableExperience: any): Promise<string> {
+  async generateShareUrl(_shareableExperience: any): Promise<string> {
     // This is a placeholder implementation
     // In a real system, this would generate a unique URL for the shared experience
     const shareId = `share-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -291,8 +291,8 @@ export class SharingService {
   /**
    * Import from URL (placeholder)
    */
-  async importFromUrl(shareUrl: string, userId: string): Promise<any> {
-    const sharedExperience = await this.getSharedExperience(shareUrl);
+  async importFromUrl(_shareUrl: string, userId: string): Promise<any> {
+    const sharedExperience = await this.getSharedExperience('');
     return {
       experienceId: `imported-${Date.now()}`,
       ...sharedExperience,
@@ -371,7 +371,7 @@ export class SharingService {
   /**
    * Subscribe to edits (placeholder)
    */
-  subscribeToEdits(callback: (edit: any) => void): () => void {
+  subscribeToEdits(_callback: (edit: any) => void): () => void {
     // Placeholder implementation
     return () => {};
   }
@@ -379,7 +379,7 @@ export class SharingService {
   /**
    * Update user presence
    */
-  async updatePresence(sessionId: string, userId: string, presence: any): Promise<void> {
+  async updatePresence(_sessionId: string, _userId: string, _presence: any): Promise<void> {
     // Placeholder implementation
   }
 }

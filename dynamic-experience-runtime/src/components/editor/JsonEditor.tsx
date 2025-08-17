@@ -6,6 +6,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Blueprint } from '../../types/blueprint';
 import { Contract } from '../../types/contract';
+import { validateSchema, BLUEPRINT_SCHEMA, CONTRACT_SCHEMA } from '../../utils/validation';
 
 interface JsonEditorProps {
   value: Blueprint | Contract;
@@ -38,7 +39,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       setIsValid(true);
       
       // Validate the parsed object matches the expected schema
-      const validationResult = validateSchema(parsed, schema);
+      const validationResult = validateAgainstSchema(parsed, schema);
       if (validationResult.isValid) {
         onChange(parsed);
       } else {
@@ -122,81 +123,14 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
 };
 
 // Schema validation function
-function validateSchema(obj: any, schema: 'blueprint' | 'contract'): { isValid: boolean; error?: string } {
-  if (schema === 'blueprint') {
-    return validateBlueprintSchema(obj);
-  } else {
-    return validateContractSchema(obj);
+function validateAgainstSchema(obj: any, schema: 'blueprint' | 'contract'): { isValid: boolean; error?: string } {
+  const schemaDef = schema === 'blueprint' ? BLUEPRINT_SCHEMA : CONTRACT_SCHEMA;
+  const result = validateSchema(obj, schemaDef);
+  if (!result.isValid) {
+    const first = result.errors[0];
+    const message = first ? `${first.path}: ${first.message}` : 'Validation failed';
+    return { isValid: false, error: message };
   }
-}
-
-function validateBlueprintSchema(obj: any): { isValid: boolean; error?: string } {
-  if (typeof obj !== 'object' || obj === null) {
-    return { isValid: false, error: 'Blueprint must be an object' };
-  }
-
-  const required = ['description', 'goal', 'requiredCapabilities', 'uiElements', 'operations', 'ambiguities'];
-  for (const field of required) {
-    if (!(field in obj)) {
-      return { isValid: false, error: `Missing required field: ${field}` };
-    }
-  }
-
-  if (typeof obj.description !== 'string') {
-    return { isValid: false, error: 'description must be a string' };
-  }
-
-  if (typeof obj.goal !== 'string') {
-    return { isValid: false, error: 'goal must be a string' };
-  }
-
-  if (!Array.isArray(obj.requiredCapabilities)) {
-    return { isValid: false, error: 'requiredCapabilities must be an array' };
-  }
-
-  if (!Array.isArray(obj.uiElements)) {
-    return { isValid: false, error: 'uiElements must be an array' };
-  }
-
-  if (!Array.isArray(obj.operations)) {
-    return { isValid: false, error: 'operations must be an array' };
-  }
-
-  if (!Array.isArray(obj.ambiguities)) {
-    return { isValid: false, error: 'ambiguities must be an array' };
-  }
-
-  return { isValid: true };
-}
-
-function validateContractSchema(obj: any): { isValid: boolean; error?: string } {
-  if (typeof obj !== 'object' || obj === null) {
-    return { isValid: false, error: 'Contract must be an object' };
-  }
-
-  const required = ['name', 'version', 'elements', 'operations'];
-  for (const field of required) {
-    if (!(field in obj)) {
-      return { isValid: false, error: `Missing required field: ${field}` };
-    }
-  }
-
-  if (typeof obj.name !== 'string') {
-    return { isValid: false, error: 'name must be a string' };
-  }
-
-  if (typeof obj.version !== 'string') {
-    return { isValid: false, error: 'version must be a string' };
-  }
-
-  if (!Array.isArray(obj.elements)) {
-    return { isValid: false, error: 'elements must be an array' };
-  }
-
-  if (!Array.isArray(obj.operations)) {
-    return { isValid: false, error: 'operations must be an array' };
-  }
-
   return { isValid: true };
 }
 
@@ -263,7 +197,9 @@ const ContractSchemaHelp: React.FC = () => (
       "triggers": [] - Trigger specifications
     }
   ],
-  "metadata": {} - Optional metadata
+  "layout": {} - Layout specification,
+  "styling": {} - Styling specification,
+  "metadata": {} - Metadata (required by schema)
 }`}</pre>
   </div>
 );

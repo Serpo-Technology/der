@@ -22,7 +22,7 @@ export class PersistenceService implements PersistenceLayer {
   async saveExperience(experience: Experience): Promise<void> {
     try {
       await invoke('save_experience', {
-        experienceId: experience.experienceId,
+        experienceId: experience.id,
         contract: experience.contract,
         state: experience.state,
         metadata: experience.metadata
@@ -47,7 +47,6 @@ export class PersistenceService implements PersistenceLayer {
 
       return {
         id: experienceData.experienceId,
-        experienceId: experienceData.experienceId,
         contract: experienceData.contract,
         state: experienceData.state || {},
         metadata: experienceData.metadata || {}
@@ -94,7 +93,6 @@ export class PersistenceService implements PersistenceLayer {
       // Convert bookmark data back to Experience format
       const experience: Experience = {
         id: bookmarkData.id,
-        experienceId: bookmarkData.id,
         contract: bookmarkData.contract,
         reactComponent: () => null, // Will be populated by DER
         state: {

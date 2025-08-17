@@ -5,7 +5,7 @@
 
 import { Blueprint as BlueprintModel } from '../../models/blueprint';
 import { Blueprint, ParsedIntent, Answer, UserModification } from '../../types/blueprint';
-import { ValidationResult, ValidationError, ValidationWarning } from '../../interfaces/ai-interpreter';
+import { ValidationResult, ValidationError, ValidationWarning } from '../../types/contract';
 
 export class BlueprintGenerator {
   generateFromIntent(intent: ParsedIntent): Blueprint {

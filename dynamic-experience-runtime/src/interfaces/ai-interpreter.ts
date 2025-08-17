@@ -4,7 +4,7 @@
  */
 
 import { Blueprint, Question, Answer, ParsedIntent } from '../types/blueprint';
-import { Contract, ContractEdits } from '../types/contract';
+import { Contract, ContractEdits, ValidationResult } from '../types/contract';
 
 export interface AIInterpreter {
   parseDescription(description: string): Promise<Blueprint>;
@@ -31,22 +31,4 @@ export interface ContractGenerator {
   generateFromBlueprint(blueprint: Blueprint): Promise<Contract>;
   applyUserEdits(contract: Contract, edits: ContractEdits): Contract;
   validateContract(contract: Contract): ValidationResult;
-}
-
-export interface ValidationResult {
-  isValid: boolean;
-  errors: ValidationError[];
-  warnings: ValidationWarning[];
-}
-
-export interface ValidationError {
-  path: string;
-  message: string;
-  code: string;
-}
-
-export interface ValidationWarning {
-  path: string;
-  message: string;
-  code: string;
 }

@@ -10,29 +10,31 @@ import { DynamicExperienceRuntime } from '../../interfaces/dynamic-runtime';
 import { DynamicExperienceRenderer } from './DynamicExperienceRenderer';
 import { ExperienceStateManager } from './ExperienceStateManager';
 import { OperationExecutor } from './OperationExecutor';
+import { PersistenceService } from '../../services/persistence/PersistenceService';
 
 export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime {
   private experiences: Map<string, Experience> = new Map();
   private stateManagers: Map<string, ExperienceStateManager> = new Map();
   private operationExecutor: OperationExecutor = new OperationExecutor();
+  private persistenceService: PersistenceService = new PersistenceService();
 
-  async renderExperience(contract: Contract): Promise<React.ComponentType> {
-    const experienceId = this.generateExperienceId(contract);
+  async renderExperience(contract: Contract, experienceId?: string): Promise<React.ComponentType> {
+    const expId = experienceId || this.generateExperienceId(contract);
     
     // Create state manager for this experience
-    const stateManager = new ExperienceStateManager(experienceId);
-    this.stateManagers.set(experienceId, stateManager);
+    const stateManager = new ExperienceStateManager(expId);
+    this.stateManagers.set(expId, stateManager);
 
     // Create the React component
     const ExperienceComponent: React.ComponentType = (props: any) => {
       return React.createElement(DynamicExperienceRenderer, {
         contract,
-        experienceId,
+        experienceId: expId,
         onStateChange: (state: ExperienceState) => {
-          this.handleStateChange(experienceId, state);
+          this.handleStateChange(expId, state);
         },
         onError: (error: Error) => {
-          this.handleExperienceError(experienceId, error);
+          this.handleExperienceError(expId, error);
         },
         ...props
       });
@@ -40,8 +42,7 @@ export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime
 
     // Create experience record
     const experience: Experience = {
-      id: experienceId,
-      experienceId: experienceId, // Unified ID
+      id: expId,
       contract,
       reactComponent: ExperienceComponent,
       state: await stateManager.initializeState(contract),
@@ -53,7 +54,7 @@ export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime
       }
     };
 
-    this.experiences.set(experienceId, experience);
+    this.experiences.set(expId, experience);
     
     return ExperienceComponent;
   }
@@ -254,6 +255,116 @@ export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime
     this.experiences.clear();
     this.stateManagers.clear();
     this.operationExecutor.clearCache();
+  }
+
+  // Persistence integration methods
+  async saveExperience(experienceId: string): Promise<void> {
+    const experience = this.experiences.get(experienceId);
+    if (!experience) {
+      throw new Error(`Experience ${experienceId} not found`);
+    }
+
+    await this.persistenceService.saveExperience(experience);
+  }
+
+  async loadExperience(experienceId: string): Promise<Experience> {
+    const experience = await this.persistenceService.loadExperience(experienceId);
+    
+    if (!experience) {
+      throw new Error(`Experience ${experienceId} not found in persistence`);
+    }
+    
+    // Restore the experience in runtime
+    const stateManager = new ExperienceStateManager(experienceId);
+    this.stateManagers.set(experienceId, stateManager);
+    
+    // Recreate the React component
+    const ExperienceComponent: React.ComponentType = (props: any) => {
+      return React.createElement(DynamicExperienceRenderer, {
+        contract: experience.contract,
+        experienceId,
+        onStateChange: (state: ExperienceState) => {
+          this.handleStateChange(experienceId, state);
+        },
+        onError: (error: Error) => {
+          this.handleExperienceError(experienceId, error);
+        },
+        ...props
+      });
+    };
+
+    experience.reactComponent = ExperienceComponent;
+    this.experiences.set(experienceId, experience);
+    
+    return experience;
+  }
+
+  async updateExperienceState(experienceId: string, stateUpdate: Partial<ExperienceState>): Promise<void> {
+    const stateManager = this.stateManagers.get(experienceId);
+    if (!stateManager) {
+      throw new Error(`State manager not found for experience ${experienceId}`);
+    }
+
+    const currentState = stateManager.getState();
+    const newState = { ...currentState, ...stateUpdate, lastUpdated: new Date() };
+    
+    stateManager.updateState(newState);
+    
+    // Update the experience record
+    const experience = this.experiences.get(experienceId);
+    if (experience) {
+      experience.state = newState;
+    }
+  }
+
+  async updateExperienceContract(experienceId: string, contract: Contract): Promise<void> {
+    const experience = this.experiences.get(experienceId);
+    if (!experience) {
+      throw new Error(`Experience ${experienceId} not found`);
+    }
+
+    const stateManager = this.stateManagers.get(experienceId);
+    if (!stateManager) {
+      throw new Error(`State manager not found for experience ${experienceId}`);
+    }
+
+    try {
+      // Update experience record
+      experience.contract = contract;
+      experience.operations = this.extractOperationsMap(contract);
+      
+      // Ensure metadata exists and update timestamp
+      if (!experience.metadata) {
+        experience.metadata = {
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          version: contract.version || '1.0.0'
+        };
+      } else {
+        experience.metadata.updatedAt = new Date();
+      }
+      
+      // Reinitialize state with new contract structure
+      const newState = await stateManager.initializeState(contract);
+      
+      // Preserve existing data where possible
+      this.preserveExistingState(stateManager, newState);
+      
+      // Update the experience in our registry
+      this.experiences.set(experienceId, experience);
+      
+    } catch (error) {
+      console.error(`Error updating experience ${experienceId}:`, error);
+      throw error;
+    }
+  }
+
+  async cleanupExperience(experienceId: string): Promise<void> {
+    // Clean up experience resources
+    this.experiences.delete(experienceId);
+    this.stateManagers.delete(experienceId);
+    
+    console.log(`Experience ${experienceId} destroyed`);
   }
 }
 

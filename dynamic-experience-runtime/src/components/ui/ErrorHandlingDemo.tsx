@@ -16,8 +16,7 @@ import {
   createBlueprintError, 
   createContractError, 
   createRuntimeError, 
-  createRepositoryError,
-  globalErrorHandler
+  createRepositoryError
 } from '../../utils/error-handling';
 
 /**

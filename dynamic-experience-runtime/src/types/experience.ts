@@ -10,7 +10,6 @@ import { Blueprint } from './blueprint';
 export interface Experience {
   // Unified ID (both for compatibility)
   id: string;
-  experienceId: string;  // Should be the same as id
   
   // Core properties
   contract: Contract;

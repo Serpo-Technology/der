@@ -58,7 +58,6 @@ export class BookmarkManager {
     const experienceId = `bookmark-${Date.now()}`;
     const experience: Experience = {
       id: experienceId,
-      experienceId: experienceId,
       contract: shareableExperience.contract || shareableExperience,
       state: {},
       metadata: {
@@ -76,7 +75,7 @@ export class BookmarkManager {
   /**
    * Get bookmarks by collection
    */
-  async getBookmarksByCollection(userId: string, collection: string): Promise<BookmarkedExperience[]> {
+  async getBookmarksByCollection(_userId: string, collection: string): Promise<BookmarkedExperience[]> {
     try {
       const filter: BookmarkFilter = {
         // Add collection filtering logic here

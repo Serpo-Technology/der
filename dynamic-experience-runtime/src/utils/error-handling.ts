@@ -24,11 +24,9 @@ import React from 'react';
  */
 export class ComprehensiveErrorHandler implements ErrorHandler {
   private errorReporter: ErrorReporter;
-  private gracefulDegradation: GracefulDegradation;
 
-  constructor(errorReporter: ErrorReporter, gracefulDegradation: GracefulDegradation) {
+  constructor(errorReporter: ErrorReporter, _gracefulDegradation: GracefulDegradation) {
     this.errorReporter = errorReporter;
-    this.gracefulDegradation = gracefulDegradation;
   }
 
   handleBlueprintError(error: BlueprintError): ErrorRecovery {
@@ -329,8 +327,8 @@ export class ComprehensiveErrorHandler implements ErrorHandler {
       }],
       operations: [],
       layout: {
-        type: 'vertical',
-        spacing: 'medium'
+        type: 'flex',
+        properties: { spacing: 'medium' }
       },
       styling: {
         theme: 'default'
@@ -339,7 +337,8 @@ export class ComprehensiveErrorHandler implements ErrorHandler {
         description: 'Fallback contract for error recovery',
         tags: ['fallback', 'error-recovery'],
         author: 'System',
-        created: new Date().toISOString(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
         version: '1.0.0'
       }
     };

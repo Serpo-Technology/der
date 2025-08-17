@@ -128,7 +128,7 @@ export class AIInterpreterService implements AIInterpreter {
   /**
    * Generate contract with preservation of user edits
    */
-  async generateContractWithPreservation(blueprint: Blueprint, existingContract: Contract, userEdits?: any[]): Promise<Contract> {
+  async generateContractWithPreservation(blueprint: Blueprint, _existingContract: Contract, userEdits?: any[]): Promise<Contract> {
     // Generate new contract from blueprint
     const newContract = await this.generateContract(blueprint);
     

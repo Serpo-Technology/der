@@ -27,7 +27,7 @@ import { BlueprintGenerator } from '../services/ai-interpreter/blueprint-generat
 import { ContractBuilder } from '../services/ai-interpreter/contract-builder';
 import { LLMClient } from '../services/ai-interpreter/llm-client';
 import { RepositoryService } from '../services/repository/repository-service';
-import { persistenceService } from '../services/persistence';
+// import { persistenceService } from '../services/persistence';
 import { integratedExperienceService } from '../services/IntegratedExperienceService';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';

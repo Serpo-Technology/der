@@ -103,7 +103,6 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
         // Create a basic Experience object for the callback
         const experience: Experience = {
           id: result.experienceId,
-          experienceId: result.experienceId,
           contract: validationResult.contract.contract,
           reactComponent: () => null,
           state: {

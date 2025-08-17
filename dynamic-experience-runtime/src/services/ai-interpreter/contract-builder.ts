@@ -7,7 +7,7 @@ import { Blueprint } from '../../types/blueprint';
 import { Contract, UIElement, OperationBinding, LayoutSpec, StyleSpec, ContractMetadata, InputBinding, OutputBinding, TriggerSpec } from '../../types/contract';
 import { ComponentRepository } from '../../types/repository';
 import { UIElementManifest, OperationManifest, ComponentCriteria } from '../../types/component';
-import { ValidationResult, ValidationError, ValidationWarning } from '../../interfaces/ai-interpreter';
+import { ValidationResult, ValidationError, ValidationWarning } from '../../types/contract';
 
 export class ContractBuilder {
   private repository: ComponentRepository;
