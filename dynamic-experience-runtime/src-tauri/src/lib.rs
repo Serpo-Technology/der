@@ -324,6 +324,58 @@ async fn load_experience_state(
     Ok(Some(state))
 }
 
+// Save full experience (contract + state + metadata)
+#[tauri::command]
+async fn save_experience(
+    app: tauri::AppHandle,
+    experience_id: String,
+    contract: Value,
+    state: Value,
+    metadata: Option<Value>
+) -> Result<(), String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    let experiences_dir = app_data_dir.join("experiences");
+    fs::create_dir_all(&experiences_dir)
+        .map_err(|e| format!("Failed to create experiences directory: {}", e))?;
+
+    let experience_file = experiences_dir.join(format!("{}.json", experience_id));
+    let mut obj = serde_json::Map::new();
+    obj.insert("experienceId".to_string(), Value::String(experience_id));
+    obj.insert("contract".to_string(), contract);
+    obj.insert("state".to_string(), state);
+    obj.insert("metadata".to_string(), metadata.unwrap_or_else(|| serde_json::json!({})));
+
+    let json = serde_json::to_string_pretty(&Value::Object(obj))
+        .map_err(|e| format!("Failed to serialize experience: {}", e))?;
+
+    fs::write(experience_file, json)
+        .map_err(|e| format!("Failed to save experience: {}", e))
+}
+
+// Load full experience
+#[tauri::command]
+async fn load_experience(
+    app: tauri::AppHandle,
+    experience_id: String
+) -> Result<Option<Value>, String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    let experience_file = app_data_dir.join("experiences").join(format!("{}.json", experience_id));
+
+    if !experience_file.exists() {
+        return Ok(None);
+    }
+
+    let json = fs::read_to_string(experience_file)
+        .map_err(|e| format!("Failed to read experience: {}", e))?;
+    let value: Value = serde_json::from_str(&json)
+        .map_err(|e| format!("Failed to parse experience: {}", e))?;
+    Ok(Some(value))
+}
+
 // Bookmark data structures
 #[derive(Debug, Serialize, Deserialize)]
 struct BookmarkedExperience {
@@ -987,20 +1039,12 @@ fn handle_tray_event(app: &AppHandle, event: TrayIconEvent) {
             println!("Tray click detected: {:?}", button);
             match button {
                 tauri::tray::MouseButton::Left => {
-                    println!("Left click - showing main window");
-                    // Left click - show main window
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.unminimize();
-                        let _ = window.set_focus();
-                        println!("Window shown and focused");
-                    } else {
-                        println!("No main window found!");
-                    }
+                    // On macOS, the status bar menu is conventionally shown on left click.
+                    // We enable show_menu_on_left_click, so do nothing here to avoid conflicting behavior.
+                    println!("Left click - menu should appear via OS");
                 }
                 tauri::tray::MouseButton::Right => {
-                    println!("Right click detected - context menu should appear");
-                    // Context menu should appear automatically with global menu handler
+                    println!("Right click detected - OS should display the tray menu");
                 }
                 _ => {
                     println!("Other button click: {:?}", button);
@@ -1073,14 +1117,29 @@ pub fn run() {
             // Create tray menu
             let menu = create_tray_menu(app.handle())?;
             println!("Tray menu created successfully");
-            
-            // Create tray icon with menu - simple approach
-            let _tray = TrayIconBuilder::with_id("main-tray")
-                .menu(&menu)
-                .tooltip("Dynamic Experience Runtime")
-                .build(app)?;
-            
-            println!("Tray icon created successfully");
+
+            // On macOS with config-based tray, an icon with id "main" is created.
+            // Attach our menu to it if present; otherwise, create a new tray with id "main".
+            if let Some(tray) = app.tray_by_id("main") {
+                println!("Found existing tray with id 'main' – attaching menu");
+                if let Err(e) = tray.set_menu(Some(menu)) {
+                    println!("Failed to set menu on existing tray: {}", e);
+                }
+                if let Err(e) = tray.set_show_menu_on_left_click(true) {
+                    println!("Failed to set show_menu_on_left_click: {}", e);
+                }
+                if let Err(e) = tray.set_tooltip(Some("Dynamic Experience Runtime")) {
+                    println!("Failed to set tooltip: {}", e);
+                }
+            } else {
+                println!("No existing tray found – creating tray with id 'main'");
+                let _tray = TrayIconBuilder::with_id("main")
+                    .menu(&menu)
+                    .show_menu_on_left_click(true)
+                    .tooltip("Dynamic Experience Runtime")
+                    .build(app)?;
+                println!("Tray icon created successfully");
+            }
             
             // Hide the window on startup - it will be shown via system tray
             if let Some(window) = app.get_webview_window("main") {
@@ -1104,6 +1163,8 @@ pub fn run() {
             execute_operation,
             save_experience_state,
             load_experience_state,
+            save_experience,
+            load_experience,
             save_contract,
             load_contract,
             query_repository,

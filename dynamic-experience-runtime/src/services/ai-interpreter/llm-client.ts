@@ -4,7 +4,7 @@
  */
 
 export interface LLMConfig {
-  provider: 'openai' | 'anthropic' | 'local';
+  provider: 'openai' | 'anthropic' | 'gemini' | 'local';
   apiKey?: string;
   baseUrl?: string;
   model: string;
@@ -27,7 +27,13 @@ export interface LLMResponse {
 }
 
 export class LLMClient {
-  private config: LLMConfig;
+  private config: LLMConfig = {
+    provider: 'gemini',
+    apiKey: "REDACTED_GEMINI_KEY",
+    model: 'gemini-2.0-flash',
+    temperature: 0.7,
+    maxTokens: 2000,
+  }
 
   constructor(config: LLMConfig) {
     this.config = config;
@@ -39,6 +45,8 @@ export class LLMClient {
         return this.sendOpenAIMessage(messages);
       case 'anthropic':
         return this.sendAnthropicMessage(messages);
+      case 'gemini':
+        return this.sendGeminiMessage(messages);
       case 'local':
         return this.sendLocalMessage(messages);
       default:
@@ -139,6 +147,50 @@ export class LLMClient {
         completionTokens: data.usage.completion_tokens || 0,
         totalTokens: data.usage.total_tokens || 0,
       } : undefined,
+    };
+  }
+
+  private async sendGeminiMessage(messages: LLMMessage[]): Promise<LLMResponse> {
+    const apiKey = this.config.apiKey;
+    if (!apiKey) throw new Error('Gemini API key is required');
+
+    // Map our chat messages to Gemini contents format
+    const contents = messages.map((m) => ({
+      role: m.role === 'system' ? 'user' : m.role, // map system to user for simplicity
+      parts: [{ text: m.content }]
+    }));
+
+    const model = this.config.model || 'gemini-1.5-flash';
+    const baseUrl = this.config.baseUrl || 'https://generativelanguage.googleapis.com';
+    const url = `${baseUrl}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+    const body: any = {
+      contents,
+      generationConfig: {
+        temperature: this.config.temperature ?? 0.7,
+        maxOutputTokens: this.config.maxTokens ?? 2000,
+      }
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${text}`);
+    }
+
+    const data = await response.json();
+    const candidate = data.candidates?.[0];
+    const parts = candidate?.content?.parts || [];
+    const content = parts.map((p: any) => p.text || '').join('');
+
+    return {
+      content,
+      usage: undefined
     };
   }
 }

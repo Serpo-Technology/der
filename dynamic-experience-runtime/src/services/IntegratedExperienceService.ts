@@ -51,8 +51,9 @@ export class IntegratedExperienceService {
     
     // Initialize AI Interpreter with repository access
     const llmConfig = {
-      provider: 'local' as const,
-      model: 'gpt-3.5-turbo',
+      provider: 'gemini' as const,
+      apiKey: 'REDACTED_GEMINI_KEY',
+      model: 'gemini-2.0-flash',
       temperature: 0.7
     };
     this.aiInterpreter = new AIInterpreterService(llmConfig, this.repository);

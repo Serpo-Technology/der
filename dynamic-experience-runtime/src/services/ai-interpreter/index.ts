@@ -21,7 +21,12 @@ export class AIInterpreterService implements AIInterpreter {
   private editPreservation: EditPreservationSystem;
 
   constructor(llmConfig: LLMConfig, repository: ComponentRepository) {
-    this.llmClient = new LLMClient(llmConfig);
+    // Default to Gemini when API key is provided and provider omitted
+    const resolvedConfig: LLMConfig = {
+      ...llmConfig,
+      provider: (llmConfig.provider as any) || 'gemini'
+    };
+    this.llmClient = new LLMClient(resolvedConfig);
     this.parser = new NaturalLanguageParser(this.llmClient);
     this.generator = new BlueprintGenerator();
     this.repository = repository;

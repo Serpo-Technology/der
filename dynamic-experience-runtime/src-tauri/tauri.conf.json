@@ -22,7 +22,7 @@
     "trayIcon": {
       "iconPath": "icons/32x32.png",
       "iconAsTemplate": true,
-      "menuOnLeftClick": false,
+      "menuOnLeftClick": true,
       "tooltip": "Dynamic Experience Runtime"
     },
     "security": {
