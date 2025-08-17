@@ -5,6 +5,7 @@
 The Dynamic Experience Runtime (DER) is a multi-layered system that transforms natural language descriptions into interactive desktop experiences through AI-generated contracts. Built with Tauri and React, the system combines the performance and security of native desktop applications with the flexibility of web technologies. The architecture follows a pipeline approach: Natural Language → Blueprint → Contract → Experience, with each stage having distinct responsibilities and clear interfaces.
 
 The system is designed around six core principles:
+
 1. **Dynamic Composition**: UI elements and operations are composed at runtime, not compile time
 2. **Loose Coupling**: Components are bound through manifests and contracts, not direct dependencies
 3. **Human-AI Collaboration**: The AI generates content while humans maintain full editorial control at every step
@@ -72,6 +73,7 @@ The system consists of five primary subsystems built on Tauri + React:
 ### AI Interpreter
 
 **Responsibilities:**
+
 - Parse natural language descriptions into structured blueprints
 - Generate blueprints in consistent JSON format for user review
 - Identify required UI elements and operations
@@ -80,6 +82,7 @@ The system consists of five primary subsystems built on Tauri + React:
 - Assist in contract regeneration while respecting user modifications
 
 **Key Interfaces:**
+
 ```typescript
 interface AIInterpreter {
   parseDescription(description: string): Blueprint
@@ -111,12 +114,14 @@ interface ParsedIntent {
 ### Contract Builder
 
 **Responsibilities:**
+
 - Validate contract structure
 - Resolve component dependencies
 - Optimize operation execution order
 - Generate final contract JSON
 
 **Key Interfaces:**
+
 ```typescript
 interface ContractBuilder {
   validateContract(contract: Contract): ValidationResult
@@ -136,6 +141,7 @@ interface Contract {
 ### Dynamic Experience Runtime (DER)
 
 **Responsibilities:**
+
 - Render React components from contract specifications
 - Manage React component lifecycle and state
 - Handle user interactions and event binding
@@ -143,6 +149,7 @@ interface Contract {
 - Update UI based on operation results
 
 **Key Interfaces:**
+
 ```typescript
 interface DynamicExperienceRuntime {
   renderExperience(contract: Contract): React.ComponentType
@@ -171,12 +178,14 @@ interface TauriCommands {
 ### Component Repository
 
 **Responsibilities:**
+
 - Store and index UI element manifests
 - Store and index operation manifests
 - Provide component discovery APIs
 - Manage component versioning and dependencies
 
 **Key Interfaces:**
+
 ```typescript
 interface ComponentRepository {
   queryUIElements(criteria: ComponentCriteria): UIElementManifest[]
@@ -209,12 +218,14 @@ interface OperationManifest {
 ### Persistence Layer
 
 **Responsibilities:**
+
 - Save and retrieve bookmarked experiences
 - Manage contract storage and versioning
 - Handle experience sharing and serialization
 - Provide experience editing and duplication capabilities
 
 **Key Interfaces:**
+
 ```typescript
 interface PersistenceLayer {
   bookmarkExperience(experience: Experience): Promise<string>
@@ -242,6 +253,7 @@ interface ExperienceUpdate {
 ### Experience Editor
 
 **Responsibilities:**
+
 - Enable editing of blueprints, contracts, and rendered experiences
 - Preserve user modifications during AI regeneration
 - Provide conflict resolution for editing conflicts
@@ -250,6 +262,7 @@ interface ExperienceUpdate {
 **Design Rationale:** The Experience Editor is a critical component that ensures human-AI collaboration by giving users full control over every step of the generation process. This addresses Requirements 2, 5, and 10 which emphasize manual editing capabilities and preservation of user modifications.
 
 **Key Interfaces:**
+
 ```typescript
 interface ExperienceEditor {
   editBlueprint(experienceId: string, blueprint: Blueprint): Promise<void>

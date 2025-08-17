@@ -16,6 +16,9 @@ import { validateBlueprint } from '../utils/validation';
 export class Blueprint implements IBlueprintInterface {
   public description: string;
   public goal: string;
+  public intent: string;
+  public confidence: number;
+  public feedback?: string;
   public requiredCapabilities: string[];
   public uiElements: UIElementRequirement[];
   public operations: OperationRequirement[];
@@ -25,6 +28,9 @@ export class Blueprint implements IBlueprintInterface {
   constructor(data: Partial<IBlueprintInterface> = {}) {
     this.description = data.description || '';
     this.goal = data.goal || '';
+    this.intent = (data as any).intent || data.description || '';
+    this.confidence = (data as any).confidence || 1.0;
+    this.feedback = (data as any).feedback;
     this.requiredCapabilities = data.requiredCapabilities || [];
     this.uiElements = data.uiElements || [];
     this.operations = data.operations || [];

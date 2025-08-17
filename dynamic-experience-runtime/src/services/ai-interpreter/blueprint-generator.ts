@@ -3,12 +3,13 @@
  * Requirements: 1.1, 1.2, 1.4
  */
 
+import { Blueprint as BlueprintModel } from '../../models/blueprint';
 import { Blueprint, ParsedIntent, Answer, UserModification } from '../../types/blueprint';
 import { ValidationResult, ValidationError, ValidationWarning } from '../../interfaces/ai-interpreter';
 
 export class BlueprintGenerator {
   generateFromIntent(intent: ParsedIntent): Blueprint {
-    return {
+    return new BlueprintModel({
       description: this.generateDescription(intent),
       goal: intent.goal,
       requiredCapabilities: [...new Set(intent.requiredCapabilities)], // Remove duplicates
@@ -16,7 +17,7 @@ export class BlueprintGenerator {
       operations: intent.operations,
       ambiguities: intent.ambiguities,
       userModifications: []
-    };
+    });
   }
 
   refineWithAnswers(blueprint: Blueprint, answers: Answer[]): Blueprint {

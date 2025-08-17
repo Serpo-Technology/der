@@ -4,7 +4,7 @@ A system that enables the creation of dynamic, interactive user experiences thro
 
 ## Project Structure
 
-```
+```text
 src/
 ├── types/                    # Core TypeScript type definitions
 │   ├── blueprint.ts         # Blueprint and natural language processing types
@@ -79,18 +79,23 @@ npm run test:ui          # Run tests with UI
 ## Core Concepts
 
 ### Blueprint
+
 Natural language descriptions transformed into structured JSON format that defines the desired application behavior.
 
 ### Contract
+
 Structured specifications that define UI elements, operations, and their bindings. Generated from blueprints and used by the runtime to render experiences.
 
 ### Experience
+
 The rendered, interactive application created from a contract. Includes React components, state management, and operation execution.
 
 ### Component Repository
+
 A system for storing and discovering UI elements and operations with their manifests, enabling dynamic composition.
 
-### Dynamic Experience Runtime (DER)
+### DER (Dynamic Experience Runtime)
+
 The core system that renders contracts into interactive React experiences with real-time updates.
 
 ## Requirements Coverage

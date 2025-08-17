@@ -41,10 +41,16 @@ export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime
     // Create experience record
     const experience: Experience = {
       id: experienceId,
+      experienceId: experienceId, // Unified ID
       contract,
       reactComponent: ExperienceComponent,
       state: await stateManager.initializeState(contract),
-      operations: this.extractOperationsMap(contract)
+      operations: this.extractOperationsMap(contract),
+      metadata: {
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: contract.version || '1.0.0'
+      }
     };
 
     this.experiences.set(experienceId, experience);

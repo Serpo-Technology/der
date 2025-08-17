@@ -47,6 +47,68 @@ export class BookmarkManager {
   }
 
   /**
+   * Alias for createBookmark to match test expectations
+   */
+  async bookmarkExperience(
+    userId: string, 
+    shareableExperience: any, 
+    options: { tags?: string[]; collection?: string } = {}
+  ): Promise<string> {
+    // Convert shareable experience to Experience format
+    const experienceId = `bookmark-${Date.now()}`;
+    const experience: Experience = {
+      id: experienceId,
+      experienceId: experienceId,
+      contract: shareableExperience.contract || shareableExperience,
+      state: {},
+      metadata: {
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: '1.0.0',
+        userId: userId,
+        collection: options.collection
+      }
+    };
+
+    return this.createBookmark(experience, options.tags);
+  }
+
+  /**
+   * Get bookmarks by collection
+   */
+  async getBookmarksByCollection(userId: string, collection: string): Promise<BookmarkedExperience[]> {
+    try {
+      const filter: BookmarkFilter = {
+        // Add collection filtering logic here
+      };
+      
+      const bookmarks = await this.getBookmarks(filter);
+      return bookmarks.filter(bookmark => {
+        // Check if bookmark has the required collection in tags or metadata
+        const hasCollection = bookmark.tags?.includes(collection) ||
+                             (bookmark.contract.metadata as any)?.collection === collection;
+        return hasCollection;
+      });
+    } catch (error) {
+      throw new Error(`Failed to get bookmarks by collection: ${error}`);
+    }
+  }
+
+  /**
+   * Get all bookmarks for a user
+   */
+  async getAllBookmarks(userId: string): Promise<BookmarkedExperience[]> {
+    try {
+      const bookmarks = await this.getBookmarks();
+      return bookmarks.filter(bookmark => 
+        (bookmark.contract.metadata as any)?.userId === userId
+      );
+    } catch (error) {
+      throw new Error(`Failed to get all bookmarks: ${error}`);
+    }
+  }
+
+  /**
    * Get all bookmarks with optional filtering and sorting
    */
   async getBookmarks(

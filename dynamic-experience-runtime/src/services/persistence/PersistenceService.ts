@@ -17,6 +17,47 @@ import { Experience, ExperienceUpdate } from '../../types/experience';
 
 export class PersistenceService implements PersistenceLayer {
   /**
+   * Save an experience
+   */
+  async saveExperience(experience: Experience): Promise<void> {
+    try {
+      await invoke('save_experience', {
+        experienceId: experience.experienceId,
+        contract: experience.contract,
+        state: experience.state,
+        metadata: experience.metadata
+      });
+    } catch (error) {
+      throw new Error(`Failed to save experience: ${error}`);
+    }
+  }
+
+  /**
+   * Load an experience by ID
+   */
+  async loadExperience(experienceId: string): Promise<Experience | null> {
+    try {
+      const experienceData = await invoke<any>('load_experience', {
+        experienceId
+      });
+
+      if (!experienceData) {
+        return null;
+      }
+
+      return {
+        id: experienceData.experienceId,
+        experienceId: experienceData.experienceId,
+        contract: experienceData.contract,
+        state: experienceData.state || {},
+        metadata: experienceData.metadata || {}
+      };
+    } catch (error) {
+      throw new Error(`Failed to load experience: ${error}`);
+    }
+  }
+
+  /**
    * Bookmark an experience for later access
    * Requirements: 4.1, 4.2
    */
@@ -53,6 +94,7 @@ export class PersistenceService implements PersistenceLayer {
       // Convert bookmark data back to Experience format
       const experience: Experience = {
         id: bookmarkData.id,
+        experienceId: bookmarkData.id,
         contract: bookmarkData.contract,
         reactComponent: () => null, // Will be populated by DER
         state: {

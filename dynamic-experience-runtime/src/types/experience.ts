@@ -5,13 +5,34 @@
 
 import React from 'react';
 import { Contract } from './contract';
+import { Blueprint } from './blueprint';
 
 export interface Experience {
+  // Unified ID (both for compatibility)
   id: string;
+  experienceId: string;  // Should be the same as id
+  
+  // Core properties
   contract: Contract;
-  reactComponent: React.ComponentType;
-  state: ExperienceState;
-  operations: Map<string, Operation>;
+  state: ExperienceState | Record<string, any>;
+  
+  // Runtime-specific (optional)
+  reactComponent?: React.ComponentType;
+  operations?: Map<string, Operation>;
+  
+  // Persistence-specific
+  metadata?: {
+    createdAt: Date;
+    updatedAt: Date;
+    version: string;
+    userId?: string;
+    collection?: string;
+  };
+  
+  // Editor-specific (optional)
+  blueprint?: Blueprint;
+  lastModified?: Date;
+  pendingConflicts?: any[];
 }
 
 export interface ExperienceState {

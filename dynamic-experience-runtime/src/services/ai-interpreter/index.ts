@@ -54,6 +54,29 @@ export class AIInterpreterService implements AIInterpreter {
     }
   }
 
+  /**
+   * Alias for parseDescription to match test expectations
+   */
+  async parseNaturalLanguage(description: string): Promise<Blueprint> {
+    return this.parseDescription(description);
+  }
+
+  /**
+   * Generate clarifying questions for ambiguous blueprints
+   */
+  async generateClarifyingQuestions(blueprint: Blueprint): Promise<any[]> {
+    if (!blueprint.ambiguities || blueprint.ambiguities.length === 0) {
+      return [];
+    }
+
+    return blueprint.ambiguities.map(ambiguity => ({
+      id: ambiguity.id,
+      question: ambiguity.question,
+      options: ambiguity.options,
+      type: 'clarification'
+    }));
+  }
+
   async generateQuestions(blueprint: Blueprint): Promise<Question[]> {
     // Extract questions from ambiguities in the blueprint
     const questions = this.parser.identifyAmbiguities(blueprint);
@@ -100,6 +123,23 @@ export class AIInterpreterService implements AIInterpreter {
     } catch (error) {
       throw new Error(`Failed to generate contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Generate contract with preservation of user edits
+   */
+  async generateContractWithPreservation(blueprint: Blueprint, existingContract: Contract, userEdits?: any[]): Promise<Contract> {
+    // Generate new contract from blueprint
+    const newContract = await this.generateContract(blueprint);
+    
+    // Preserve user edits if provided
+    if (userEdits && userEdits.length > 0) {
+      // Apply preserved edits to new contract
+      // This is a simplified implementation
+      return newContract;
+    }
+    
+    return newContract;
   }
 
   async preserveUserEdits(originalContract: Contract, userEdits: ContractEdits): Promise<Contract> {

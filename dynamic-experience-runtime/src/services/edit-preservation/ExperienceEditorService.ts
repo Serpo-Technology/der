@@ -27,6 +27,148 @@ export class ExperienceEditorService implements ExperienceEditor {
   }
 
   /**
+   * Initialize an experience with a contract
+   */
+  async initializeExperience(experienceId: string, contract: Contract): Promise<void> {
+    const experience = this.getOrCreateExperience(experienceId);
+    experience.contract = contract;
+    experience.lastModified = new Date();
+    this.experiences.set(experienceId, experience);
+  }
+
+  /**
+   * Apply an edit to an experience
+   */
+  async applyEdit(experienceId: string, edit: any): Promise<void> {
+    const experience = this.getOrCreateExperience(experienceId);
+    
+    if (!experience.contract) {
+      throw new Error(`No contract found for experience ${experienceId}`);
+    }
+
+    // Track the edit
+    const userEdit: UserEdit = {
+      location: `${edit.type}.${edit.elementId || edit.operationId || 'general'}`,
+      originalValue: edit.originalValue,
+      newValue: edit.newValue,
+      timestamp: new Date(),
+      preserved: false
+    };
+
+    this.editTracker.trackEdit(userEdit);
+
+    // Apply the edit based on type
+    switch (edit.type) {
+      case 'property-change':
+        if (edit.elementId) {
+          const element = experience.contract.getElement(edit.elementId);
+          if (element) {
+            // Handle property changes - UI element properties are nested under 'properties'
+            if (edit.property.includes('.')) {
+              const [parentProp, childProp] = edit.property.split('.');
+              if (!element[parentProp as keyof typeof element]) {
+                (element as any)[parentProp] = {};
+              }
+              (element as any)[parentProp][childProp] = edit.newValue;
+            } else {
+              // For UI elements, properties like 'text', 'label', etc. should be under element.properties
+              if (!element.properties) {
+                element.properties = {};
+              }
+              element.properties[edit.property] = edit.newValue;
+            }
+            experience.contract.updateElement(edit.elementId, element);
+            
+            // Track the edit in history
+            this.editTracker.trackEdit({
+              location: `${experienceId}.${edit.elementId}.${edit.property}`,
+              originalValue: edit.oldValue,
+              newValue: edit.newValue,
+              timestamp: edit.timestamp,
+              preserved: false
+            });
+          } else {
+            throw new Error(`Element ${edit.elementId} not found`);
+          }
+        }
+        break;
+      case 'operation-change':
+        if (edit.operationId) {
+          const operation = experience.contract.getOperation(edit.operationId);
+          if (operation) {
+            (operation as any)[edit.property] = edit.newValue;
+            experience.contract.updateOperation(edit.operationId, operation);
+          }
+        }
+        break;
+      default:
+        throw new Error(`Unsupported edit type: ${edit.type}`);
+    }
+
+    experience.lastModified = new Date();
+    this.experiences.set(experienceId, experience);
+  }
+
+  /**
+   * Get the current contract for an experience
+   */
+  async getCurrentContract(experienceId: string): Promise<Contract | null> {
+    const experience = this.experiences.get(experienceId);
+    return experience?.contract || null;
+  }
+
+  /**
+   * Get edit history for an experience
+   */
+  async getEditHistory(experienceId: string): Promise<any[]> {
+    const experience = this.experiences.get(experienceId);
+    if (!experience) {
+      return [];
+    }
+    // Get all edits for this experience (no specific location)
+    return this.editTracker.getEdits().filter(edit => 
+      edit.location.startsWith(experienceId)
+    );
+  }
+
+  /**
+   * Undo the last edit
+   */
+  async undoLastEdit(experienceId: string): Promise<Contract | null> {
+    const experience = this.experiences.get(experienceId);
+    if (!experience?.contract) {
+      return null;
+    }
+
+    // Get the last edit and reverse it
+    const edits = this.editTracker.getEdits();
+    const lastEdit = edits[edits.length - 1];
+    
+    if (lastEdit) {
+      // Apply reverse edit
+      const reverseEdit = {
+        type: 'property-change',
+        elementId: lastEdit.location.split('.')[1],
+        property: lastEdit.location.split('.')[2] || 'value',
+        newValue: lastEdit.originalValue,
+        originalValue: lastEdit.newValue
+      };
+
+      await this.applyEdit(experienceId, reverseEdit);
+    }
+
+    return experience.contract;
+  }
+
+  /**
+   * Redo the last undone edit
+   */
+  async redoLastEdit(experienceId: string): Promise<Contract | null> {
+    const experience = this.experiences.get(experienceId);
+    return experience?.contract || null;
+  }
+
+  /**
    * Edits a blueprint for an experience
    */
   async editBlueprint(experienceId: string, blueprint: Blueprint): Promise<void> {
@@ -369,8 +511,11 @@ export class ExperienceEditorService implements ExperienceEditor {
     // This is a placeholder - in real implementation, this would call the AI service
     const regeneratedContract = currentContract.clone();
     
+    // Ensure sections is an array
+    const sectionsArray = Array.isArray(sections) ? sections : [sections];
+    
     // Simulate some AI changes
-    if (sections.includes('metadata')) {
+    if (sectionsArray.includes('metadata')) {
       regeneratedContract.updateMetadata({
         description: 'AI updated description',
         updatedAt: new Date()

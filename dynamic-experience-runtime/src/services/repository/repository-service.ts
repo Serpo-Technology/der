@@ -26,8 +26,17 @@ export class RepositoryService implements ComponentRepository {
   private readonly indexPath = 'repository/index.json';
   private readonly componentsPath = 'repository/components';
 
+  private initializationPromise: Promise<void>;
+
   constructor() {
-    this.initializeRepository();
+    this.initializationPromise = this.initializeRepository();
+  }
+
+  /**
+   * Ensure repository is initialized before operations
+   */
+  private async ensureInitialized(): Promise<void> {
+    await this.initializationPromise;
   }
 
   /**
@@ -48,7 +57,15 @@ export class RepositoryService implements ComponentRepository {
         dependencies: new Map(),
         lastUpdated: new Date()
       };
-      await this.saveIndex();
+      
+      // Only save if we have a valid index
+      try {
+        await this.saveIndex();
+      } catch (saveError) {
+        // If saving fails, just continue with in-memory index
+        console.warn('Failed to save initial repository index:', saveError);
+      }
+      
       indexingService.buildIndex(this.index.components);
     }
   }
@@ -78,7 +95,9 @@ export class RepositoryService implements ComponentRepository {
    * Save repository index to storage
    */
   private async saveIndex(): Promise<void> {
-    if (!this.index) return;
+    if (!this.index) {
+      return; // Silently return if no index exists
+    }
 
     try {
       const indexData = {
@@ -161,7 +180,7 @@ export class RepositoryService implements ComponentRepository {
    * Query UI elements based on criteria
    */
   async queryUIElements(criteria: ComponentCriteria): Promise<UIElementManifest[]> {
-    await this.ensureIndexLoaded();
+    await this.ensureInitialized();
     
     const allComponents = Array.from(this.index!.components.values());
     const uiElements = allComponents.filter(
@@ -176,7 +195,7 @@ export class RepositoryService implements ComponentRepository {
    * Query operations based on criteria
    */
   async queryOperations(criteria: ComponentCriteria): Promise<OperationManifest[]> {
-    await this.ensureIndexLoaded();
+    await this.ensureInitialized();
     
     const allComponents = Array.from(this.index!.components.values());
     const operations = allComponents.filter(
@@ -191,7 +210,7 @@ export class RepositoryService implements ComponentRepository {
    * Register a new component in the repository
    */
   async registerComponent(manifest: ComponentManifest): Promise<void> {
-    await this.ensureIndexLoaded();
+    await this.ensureInitialized();
 
     try {
       // Validate manifest
@@ -217,7 +236,7 @@ export class RepositoryService implements ComponentRepository {
    * Get a specific component by ID and version
    */
   async getComponent(id: string, version?: string): Promise<ComponentManifest | null> {
-    await this.ensureIndexLoaded();
+    await this.ensureInitialized();
 
     const component = this.index!.components.get(id);
     if (!component) return null;
@@ -242,7 +261,7 @@ export class RepositoryService implements ComponentRepository {
    * Update an existing component
    */
   async updateComponent(id: string, manifest: ComponentManifest): Promise<void> {
-    await this.ensureIndexLoaded();
+    await this.ensureInitialized();
 
     if (manifest.id !== id) {
       throw new Error('Component ID mismatch');
@@ -259,7 +278,7 @@ export class RepositoryService implements ComponentRepository {
    * Delete a component from the repository
    */
   async deleteComponent(id: string, version?: string): Promise<void> {
-    await this.ensureIndexLoaded();
+    await this.ensureInitialized();
 
     try {
       // Remove from storage
@@ -284,7 +303,7 @@ export class RepositoryService implements ComponentRepository {
    * List all components, optionally filtered by type
    */
   async listComponents(type?: 'ui-element' | 'operation'): Promise<ComponentManifest[]> {
-    await this.ensureIndexLoaded();
+    await this.ensureInitialized();
 
     const allComponents = Array.from(this.index!.components.values());
     
@@ -299,7 +318,7 @@ export class RepositoryService implements ComponentRepository {
    * Advanced search using the indexing service
    */
   async searchComponents(query: RepositoryQuery): Promise<RepositoryResult<ComponentManifest>> {
-    await this.ensureIndexLoaded();
+    await this.ensureInitialized();
     return indexingService.searchComponents(this.index!.components, query);
   }
 
@@ -307,7 +326,7 @@ export class RepositoryService implements ComponentRepository {
    * Find components that depend on a given component
    */
   async findDependents(componentId: string): Promise<ComponentManifest[]> {
-    await this.ensureIndexLoaded();
+    await this.ensureInitialized();
     
     const dependentIds = indexingService.findDependents(componentId);
     const dependents: ComponentManifest[] = [];
@@ -326,7 +345,7 @@ export class RepositoryService implements ComponentRepository {
    * Find all dependencies of a component (recursive)
    */
   async findAllDependencies(componentId: string): Promise<ComponentManifest[]> {
-    await this.ensureIndexLoaded();
+    await this.ensureInitialized();
     
     const dependencyIds = indexingService.findAllDependencies(componentId);
     const dependencies: ComponentManifest[] = [];
@@ -345,7 +364,7 @@ export class RepositoryService implements ComponentRepository {
    * Check for circular dependencies
    */
   async hasCircularDependencies(componentId: string): Promise<boolean> {
-    await this.ensureIndexLoaded();
+    await this.ensureInitialized();
     return indexingService.hasCircularDependencies(componentId);
   }
 
@@ -360,7 +379,7 @@ export class RepositoryService implements ComponentRepository {
     totalDependencies: number;
     lastUpdate: Date;
   }> {
-    await this.ensureIndexLoaded();
+    await this.ensureInitialized();
     
     const indexStats = indexingService.getIndexStats();
     const allComponents = Array.from(this.index!.components.values());
@@ -377,14 +396,7 @@ export class RepositoryService implements ComponentRepository {
     };
   }
 
-  /**
-   * Ensure index is loaded
-   */
-  private async ensureIndexLoaded(): Promise<void> {
-    if (!this.index) {
-      await this.initializeRepository();
-    }
-  }
+
 
   /**
    * Filter components based on criteria

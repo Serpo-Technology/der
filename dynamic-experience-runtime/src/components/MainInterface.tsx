@@ -28,6 +28,7 @@ import { ContractBuilder } from '../services/ai-interpreter/contract-builder';
 import { LLMClient } from '../services/ai-interpreter/llm-client';
 import { RepositoryService } from '../services/repository/repository-service';
 import { persistenceService } from '../services/persistence';
+import { integratedExperienceService } from '../services/IntegratedExperienceService';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
@@ -114,7 +115,7 @@ export const MainInterface: React.FC = () => {
     loadBookmarkedExperiences(); // Load on startup
   }, [loadBookmarkedExperiences]);
 
-  // Handle natural language processing
+  // Handle natural language processing with integrated service
   const handleGenerateBlueprint = useCallback(async () => {
     if (!state.naturalLanguageInput.trim()) {
       setState(prev => ({ ...prev, error: 'Please enter a description of what you want to build.' }));
@@ -124,18 +125,23 @@ export const MainInterface: React.FC = () => {
     setState(prev => ({ ...prev, isProcessing: true, error: null }));
 
     try {
-      // Parse natural language input
-      const intent = await services.naturalLanguageParser.extractIntent(state.naturalLanguageInput);
-      
-      // Generate blueprint from intent
-      const blueprint = services.blueprintGenerator.generateFromIntent(intent);
+      // Use integrated service for complete workflow
+      const result = await integratedExperienceService.createExperienceFromNaturalLanguage(
+        state.naturalLanguageInput,
+        {
+          preserveEdits: true,
+          autoSave: true,
+          enableRealTimeUpdates: true
+        }
+      );
       
       // Validate blueprint
-      const validation = services.blueprintGenerator.validateBlueprint(blueprint);
+      const validation = services.blueprintGenerator.validateBlueprint(result.blueprint);
       
       setState(prev => ({
         ...prev,
-        blueprint,
+        blueprint: result.blueprint,
+        contract: result.contract,
         currentMode: 'blueprint',
         validationResults: { ...prev.validationResults, blueprint: validation },
         isProcessing: false
@@ -255,26 +261,24 @@ export const MainInterface: React.FC = () => {
     }));
   }, []);
 
-  // Handle bookmark creation
+  // Handle bookmark creation using integrated service
   const handleBookmarkExperience = useCallback(async () => {
     if (!state.contract) return;
 
     setState(prev => ({ ...prev, isProcessing: true, error: null }));
     try {
-      const experience: Experience = {
-        id: `exp-${Date.now()}`,
-        contract: state.contract.toObject(),
-        reactComponent: () => null,
-        state: {
-          data: {},
-          loading: {},
-          errors: {},
-          lastUpdated: new Date()
-        },
-        operations: new Map()
-      };
+      const experienceId = `exp-${Date.now()}`;
+      
+      await integratedExperienceService.bookmarkExperience(
+        experienceId,
+        'current-user', // TODO: Get from auth service
+        {
+          personalNote: 'Created from natural language',
+          tags: ['custom', 'generated'],
+          collection: 'My Experiences'
+        }
+      );
 
-      await persistenceService.bookmarkExperience(experience);
       setState(prev => ({ 
         ...prev, 
         currentExperienceBookmarked: true,
@@ -308,16 +312,35 @@ export const MainInterface: React.FC = () => {
     setState(prev => ({ ...prev, showImportDialog: false }));
   }, []);
 
-  // Handle import success
+  // Handle import success using integrated service
   const handleImportSuccess = useCallback(async (experience: Experience) => {
-    setState(prev => ({
-      ...prev,
-      contract: ContractClass.fromObject(experience.contract),
-      currentMode: 'preview',
-      currentExperienceBookmarked: true,
-      showImportDialog: false
-    }));
-    await loadBookmarkedExperiences();
+    setState(prev => ({ ...prev, isProcessing: true, error: null }));
+    
+    try {
+      // Convert Experience to Contract if needed
+      const contract = experience.contract instanceof ContractClass 
+        ? experience.contract 
+        : ContractClass.fromObject(experience.contract);
+
+      setState(prev => ({
+        ...prev,
+        blueprint: experience.blueprint || null,
+        contract: contract,
+        currentMode: 'preview',
+        currentExperienceBookmarked: false,
+        showImportDialog: false,
+        isProcessing: false
+      }));
+      
+      await loadBookmarkedExperiences();
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to import experience',
+        showImportDialog: false,
+        isProcessing: false
+      }));
+    }
   }, [loadBookmarkedExperiences]);
 
   // Handle success/error messages

@@ -82,10 +82,10 @@ describe('RepositoryService', () => {
 
   beforeEach(() => {
     mockInvoke.mockClear();
-    // Mock empty index by default - first call (loadIndex) fails, second call (saveIndex) succeeds
+    // Mock initialization calls - loadIndex fails, saveIndex succeeds
     mockInvoke
-      .mockRejectedValueOnce(new Error('No index found')) // loadIndex fails
-      .mockResolvedValueOnce(undefined); // saveIndex succeeds
+      .mockRejectedValueOnce(new Error('No index found')) // loadIndex fails during initialization
+      .mockResolvedValueOnce(undefined); // saveIndex succeeds during initialization
     repositoryService = new RepositoryService();
   });
 
@@ -108,7 +108,7 @@ describe('RepositoryService', () => {
     });
 
     it('should register an operation component', async () => {
-      mockInvoke.mockResolvedValueOnce('{}'); // loadIndex
+      // The repositoryService was already initialized in beforeEach, so we need to mock the calls for registerComponent
       mockInvoke.mockResolvedValueOnce(undefined); // writeComponentManifest
       mockInvoke.mockResolvedValueOnce(undefined); // writeRepositoryIndex
 
@@ -196,7 +196,9 @@ describe('RepositoryService', () => {
         lastUpdated: new Date().toISOString()
       };
       mockInvoke.mockClear();
-      mockInvoke.mockResolvedValue(JSON.stringify(mockIndexData));
+      // Mock initialization calls first
+      mockInvoke.mockResolvedValueOnce(JSON.stringify(mockIndexData)); // loadIndex succeeds
+      // Then mock the specific call for reading component manifest
       mockInvoke.mockResolvedValueOnce(JSON.stringify(mockUIElementManifest)); // read_component_manifest
       
       const testService = new RepositoryService();

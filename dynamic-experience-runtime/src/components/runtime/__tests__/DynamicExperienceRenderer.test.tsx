@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DynamicExperienceRenderer } from '../DynamicExperienceRenderer';
 import { Contract } from '../../../types/contract';
@@ -77,32 +77,40 @@ describe('DynamicExperienceRenderer', () => {
     vi.clearAllMocks();
   });
 
-  it('renders without crashing', () => {
-    render(
-      <DynamicExperienceRenderer
-        contract={mockContract}
-        experienceId="test-exp-1"
-      />
-    );
+  it('renders without crashing', async () => {
+    act(() => {
+      render(
+        <DynamicExperienceRenderer
+          contract={mockContract}
+          experienceId="test-exp-1"
+        />
+      );
+    });
 
-    expect(screen.getByTestId('mock-component')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-component')).toBeInTheDocument();
+    });
   });
 
-  it('applies layout styles correctly', () => {
-    render(
-      <DynamicExperienceRenderer
-        contract={mockContract}
-        experienceId="test-exp-1"
-      />
-    );
+  it('applies layout styles correctly', async () => {
+    act(() => {
+      render(
+        <DynamicExperienceRenderer
+          contract={mockContract}
+          experienceId="test-exp-1"
+        />
+      );
+    });
 
-    const container = screen.getByTestId('mock-component').parentElement;
-    expect(container).toHaveClass('dynamic-experience-container');
-    expect(container).toHaveAttribute('data-experience-id', 'test-exp-1');
-    expect(container).toHaveAttribute('data-contract-name', 'Test Experience');
+    await waitFor(() => {
+      const container = screen.getByTestId('mock-component').parentElement;
+      expect(container).toHaveClass('dynamic-experience-container');
+      expect(container).toHaveAttribute('data-experience-id', 'test-exp-1');
+      expect(container).toHaveAttribute('data-contract-name', 'Test Experience');
+    });
   });
 
-  it('handles different layout types', () => {
+  it('handles different layout types', async () => {
     const gridContract = {
       ...mockContract,
       layout: {
@@ -111,12 +119,16 @@ describe('DynamicExperienceRenderer', () => {
       }
     };
 
-    const { rerender } = render(
-      <DynamicExperienceRenderer
-        contract={gridContract}
-        experienceId="test-exp-1"
-      />
-    );
+    let rerender: any;
+    act(() => {
+      const result = render(
+        <DynamicExperienceRenderer
+          contract={gridContract}
+          experienceId="test-exp-1"
+        />
+      );
+      rerender = result.rerender;
+    });
 
     // Test absolute layout
     const absoluteContract = {
@@ -127,26 +139,32 @@ describe('DynamicExperienceRenderer', () => {
       }
     };
 
-    rerender(
-      <DynamicExperienceRenderer
-        contract={absoluteContract}
-        experienceId="test-exp-1"
-      />
-    );
+    act(() => {
+      rerender(
+        <DynamicExperienceRenderer
+          contract={absoluteContract}
+          experienceId="test-exp-1"
+        />
+      );
+    });
 
-    expect(screen.getByTestId('mock-component')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-component')).toBeInTheDocument();
+    });
   });
 
   it('calls onStateChange when state updates', async () => {
     const onStateChange = vi.fn();
 
-    render(
-      <DynamicExperienceRenderer
-        contract={mockContract}
-        experienceId="test-exp-1"
-        onStateChange={onStateChange}
-      />
-    );
+    act(() => {
+      render(
+        <DynamicExperienceRenderer
+          contract={mockContract}
+          experienceId="test-exp-1"
+          onStateChange={onStateChange}
+        />
+      );
+    });
 
     // Wait for initial state setup
     await waitFor(() => {
@@ -167,20 +185,22 @@ describe('DynamicExperienceRenderer', () => {
       setError: vi.fn()
     }) as any);
 
-    render(
-      <DynamicExperienceRenderer
-        contract={mockContract}
-        experienceId="test-exp-1"
-        onError={onError}
-      />
-    );
+    act(() => {
+      render(
+        <DynamicExperienceRenderer
+          contract={mockContract}
+          experienceId="test-exp-1"
+          onError={onError}
+        />
+      );
+    });
 
     await waitFor(() => {
       expect(onError).toHaveBeenCalledWith(expect.any(Error));
     });
   });
 
-  it('renders multiple UI elements', () => {
+  it('renders multiple UI elements', async () => {
     const multiElementContract = {
       ...mockContract,
       elements: [
@@ -201,31 +221,39 @@ describe('DynamicExperienceRenderer', () => {
       ]
     };
 
-    render(
-      <DynamicExperienceRenderer
-        contract={multiElementContract}
-        experienceId="test-exp-1"
-      />
-    );
+    act(() => {
+      render(
+        <DynamicExperienceRenderer
+          contract={multiElementContract}
+          experienceId="test-exp-1"
+        />
+      );
+    });
 
-    const components = screen.getAllByTestId('mock-component');
-    expect(components).toHaveLength(2);
+    await waitFor(() => {
+      const components = screen.getAllByTestId('mock-component');
+      expect(components).toHaveLength(2);
+    });
   });
 
-  it('handles empty contract elements', () => {
+  it('handles empty contract elements', async () => {
     const emptyContract = {
       ...mockContract,
       elements: []
     };
 
-    render(
-      <DynamicExperienceRenderer
-        contract={emptyContract}
-        experienceId="test-exp-1"
-      />
-    );
+    act(() => {
+      render(
+        <DynamicExperienceRenderer
+          contract={emptyContract}
+          experienceId="test-exp-1"
+        />
+      );
+    });
 
-    const container = screen.getByTestId('dynamic-experience-container');
-    expect(container).toHaveClass('dynamic-experience-container');
+    await waitFor(() => {
+      const container = screen.getByTestId('dynamic-experience-container');
+      expect(container).toHaveClass('dynamic-experience-container');
+    });
   });
 });
