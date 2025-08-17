@@ -11,6 +11,7 @@ import { DynamicExperienceRenderer } from './DynamicExperienceRenderer';
 import { ExperienceStateManager } from './ExperienceStateManager';
 import { OperationExecutor } from './OperationExecutor';
 import { PersistenceService } from '../../services/persistence/PersistenceService';
+import { emit } from '@tauri-apps/api/event';
 
 export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime {
   private experiences: Map<string, Experience> = new Map();
@@ -353,6 +354,10 @@ export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime
       // Update the experience in our registry
       this.experiences.set(experienceId, experience);
       
+      // Emit cross-window update event so standalone windows can update
+      try {
+        await emit('experience-contract-updated', { experienceId, contract });
+      } catch (_) {}
     } catch (error) {
       console.error(`Error updating experience ${experienceId}:`, error);
       throw error;

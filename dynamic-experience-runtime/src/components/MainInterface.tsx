@@ -40,6 +40,7 @@ interface MainInterfaceState {
   naturalLanguageInput: string;
   blueprint: Blueprint | null;
   contract: ContractClass | null;
+  currentExperienceId?: string | null;
   experienceState: ExperienceState | null;
   isProcessing: boolean;
   error: string | null;
@@ -59,6 +60,7 @@ export const MainInterface: React.FC = () => {
     naturalLanguageInput: '',
     blueprint: null,
     contract: null,
+    currentExperienceId: null,
     experienceState: null,
     isProcessing: false,
     error: null,
@@ -142,6 +144,7 @@ export const MainInterface: React.FC = () => {
         ...prev,
         blueprint: result.blueprint,
         contract: result.contract,
+        currentExperienceId: result.experienceId,
         currentMode: 'blueprint',
         validationResults: { ...prev.validationResults, blueprint: validation },
         isProcessing: false
@@ -256,6 +259,7 @@ export const MainInterface: React.FC = () => {
     setState(prev => ({ 
       ...prev, 
       contract: ContractClass.fromObject(experience.contract),
+      currentExperienceId: experience.id,
       currentMode: 'preview',
       currentExperienceBookmarked: true
     }));
@@ -471,6 +475,17 @@ export const MainInterface: React.FC = () => {
             onShare={handleShowSharingDialog}
             isBookmarked={state.currentExperienceBookmarked}
             isProcessing={state.isProcessing}
+            onOpenWindow={async () => {
+              try {
+                await invoke('open_experience_window', {
+                  experienceId: state.currentExperienceId || `exp-${Date.now()}`,
+                  contract: state.contract,
+                  title: state.contract.name || 'Experience'
+                });
+              } catch (e) {
+                console.error('Failed to open window', e);
+              }
+            }}
           />
         )}
 
@@ -669,6 +684,7 @@ interface PreviewViewProps {
   onError: (error: Error) => void;
   onBookmark?: () => void;
   onShare?: () => void;
+  onOpenWindow?: () => void;
   isBookmarked?: boolean;
   isProcessing?: boolean;
 }
@@ -679,6 +695,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   onError,
   onBookmark,
   onShare,
+  onOpenWindow,
   isBookmarked = false,
   isProcessing = false
 }) => {
@@ -708,6 +725,16 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               title="Share this experience"
             >
               📤 Share
+            </button>
+          )}
+          {onOpenWindow && (
+            <button
+              className="open-window-button"
+              onClick={onOpenWindow}
+              disabled={isProcessing}
+              title="Open in new window"
+            >
+              🪟 Open Window
             </button>
           )}
         </div>

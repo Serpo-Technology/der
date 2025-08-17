@@ -1,6 +1,7 @@
 use std::fs;
 use std::collections::HashMap;
-use tauri::{Manager, AppHandle, Emitter, menu::{Menu, MenuItem, PredefinedMenuItem}, tray::{TrayIconBuilder, TrayIconEvent}};
+use tauri::{Manager, AppHandle, Emitter, menu::{Menu, MenuItem, PredefinedMenuItem}, tray::{TrayIconBuilder, TrayIconEvent}, webview::WebviewWindowBuilder};
+use tauri::utils::config::WebviewUrl;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -683,6 +684,8 @@ async fn duplicate_experience(
     Ok(duplicate_id)
 }
 
+// (SQLite is initialized via the JS plugin on first use.)
+
 // Update experience with versioning
 #[derive(Debug, Serialize, Deserialize)]
 struct ExperienceVersion {
@@ -1009,15 +1012,10 @@ async fn list_bookmarked_experiences(app: AppHandle) -> Result<Vec<Value>, Strin
 }
 
 fn create_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
-    println!("Creating tray menu items...");
     let show_window = MenuItem::with_id(app, "show_window", "Open DER", true, None::<&str>)?;
-    println!("Created show_window menu item");
     let new_experience = MenuItem::with_id(app, "new_experience", "New Experience", true, None::<&str>)?;
-    println!("Created new_experience menu item");
     let bookmarks = MenuItem::with_id(app, "bookmarks", "Bookmarked Experiences", true, None::<&str>)?;
-    println!("Created bookmarks menu item");
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    println!("Created quit menu item");
     
     let menu = Menu::with_items(app, &[
         &show_window,
@@ -1027,131 +1025,120 @@ fn create_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
         &PredefinedMenuItem::separator(app)?,
         &quit,
     ])?;
-    println!("Menu created with 6 items (4 menu items + 2 separators)");
     
     Ok(menu)
 }
 
-fn handle_tray_event(app: &AppHandle, event: TrayIconEvent) {
-    println!("Handling tray event: {:?}", event);
-    match event {
-        TrayIconEvent::Click { button, .. } => {
-            println!("Tray click detected: {:?}", button);
-            match button {
-                tauri::tray::MouseButton::Left => {
-                    // On macOS, the status bar menu is conventionally shown on left click.
-                    // We enable show_menu_on_left_click, so do nothing here to avoid conflicting behavior.
-                    println!("Left click - menu should appear via OS");
-                }
-                tauri::tray::MouseButton::Right => {
-                    println!("Right click detected - OS should display the tray menu");
-                }
-                _ => {
-                    println!("Other button click: {:?}", button);
-                }
-            }
-        }
-        TrayIconEvent::Enter { .. } => {
-            println!("Mouse entered tray icon area");
-        }
-        TrayIconEvent::Leave { .. } => {
-            println!("Mouse left tray icon area");
-        }
-        TrayIconEvent::Move { .. } => {
-            // Ignore move events to reduce noise
-        }
-        _ => {
-            println!("Other tray event: {:?}", event);
-        }
-    }
-}
+// No explicit tray click handler required; menu shows via macOS left click automatically
 
 fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
-    println!("Menu event received: {:?}", event.id);
     match event.id.as_ref() {
         "show_window" => {
-            println!("Show window menu item clicked");
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
-                println!("Window shown via menu");
             }
         }
         "new_experience" => {
-            println!("New experience menu item clicked");
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
                 // Emit event to switch to create mode
                 let _ = window.emit("navigate-to-create", ());
-                println!("Window shown and navigate-to-create event emitted");
             }
         }
         "bookmarks" => {
-            println!("Bookmarks menu item clicked");
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
                 // Emit event to show bookmarks
                 let _ = window.emit("show-bookmarks", ());
-                println!("Window shown and show-bookmarks event emitted");
             }
         }
         "quit" => {
-            println!("Quit menu item clicked");
             app.exit(0);
         }
-        _ => {
-            println!("Unknown menu item: {:?}", event.id);
-        }
+        _ => {}
     }
+}
+
+// Open an OS window for a specific experience id with an initial contract
+#[tauri::command]
+async fn open_experience_window(
+    app: AppHandle,
+    experience_id: String,
+    contract: Value,
+    title: Option<String>
+) -> Result<(), String> {
+    let label = format!("exp-{}", experience_id);
+    if app.get_webview_window(&label).is_some() {
+        // Focus existing window
+        if let Some(w) = app.get_webview_window(&label) {
+            w.show().map_err(|e| e.to_string())?;
+            w.set_focus().map_err(|e| e.to_string())?;
+        }
+        return Ok(());
+    }
+
+    // Build bootstrap script to pass data to the webview
+    let bootstrap = serde_json::json!({
+        "experienceId": experience_id,
+        "contract": contract
+    });
+    let init_script = format!(
+        "window.__DER_BOOTSTRAP = {};",
+        bootstrap.to_string()
+    );
+
+    let mut builder = WebviewWindowBuilder::new(
+        &app,
+        label.clone(),
+        WebviewUrl::App("index.html".into())
+    )
+    .initialization_script(&init_script)
+    .inner_size(900.0, 700.0)
+    .visible(true);
+
+    if let Some(t) = title {
+        builder = builder.title(&t);
+    }
+
+    builder.build().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_sql::Builder::default().build())
         .setup(|app| {
-            println!("Setting up application...");
             
             // Create tray menu
             let menu = create_tray_menu(app.handle())?;
-            println!("Tray menu created successfully");
 
             // On macOS with config-based tray, an icon with id "main" is created.
             // Attach our menu to it if present; otherwise, create a new tray with id "main".
             if let Some(tray) = app.tray_by_id("main") {
-                println!("Found existing tray with id 'main' – attaching menu");
-                if let Err(e) = tray.set_menu(Some(menu)) {
-                    println!("Failed to set menu on existing tray: {}", e);
-                }
-                if let Err(e) = tray.set_show_menu_on_left_click(true) {
-                    println!("Failed to set show_menu_on_left_click: {}", e);
-                }
-                if let Err(e) = tray.set_tooltip(Some("Dynamic Experience Runtime")) {
-                    println!("Failed to set tooltip: {}", e);
-                }
+                let _ = tray.set_menu(Some(menu));
+                let _ = tray.set_show_menu_on_left_click(true);
+                let _ = tray.set_tooltip(Some("Dynamic Experience Runtime"));
             } else {
-                println!("No existing tray found – creating tray with id 'main'");
                 let _tray = TrayIconBuilder::with_id("main")
                     .menu(&menu)
                     .show_menu_on_left_click(true)
                     .tooltip("Dynamic Experience Runtime")
                     .build(app)?;
-                println!("Tray icon created successfully");
             }
             
             // Hide the window on startup - it will be shown via system tray
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.hide();
-                println!("Main window hidden");
-            } else {
-                println!("Warning: No main window found to hide");
             }
             
             Ok(())
         })
-        .on_tray_icon_event(handle_tray_event)
+        // rely on native tray menu behavior; no custom tray click handler
         .on_menu_event(handle_menu_event)
         .invoke_handler(tauri::generate_handler![
             greet,
@@ -1181,6 +1168,7 @@ pub fn run() {
             update_experience,
             get_experience_versions,
             restore_experience_version
+            ,open_experience_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
