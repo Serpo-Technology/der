@@ -1,12 +1,20 @@
 import "./App.css";
 import { MainInterface } from "./components/MainInterface.tsx";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { LiveExperienceRenderer } from "./components/runtime/LiveExperienceRenderer";
 import { listen } from "@tauri-apps/api/event";
 import type { Contract as ContractType } from "./types/contract";
 import { integratedExperienceService } from "./services/IntegratedExperienceService";
+import { repositoryService } from "./services/repository/repository-service";
+import { registerBuiltins } from "./services/repository/builtins";
 
 function App() {
+  // Seed the shared component catalog once at startup.
+  useEffect(() => {
+    registerBuiltins(repositoryService).catch((error) =>
+      console.warn("Failed to register built-in components", error)
+    );
+  }, []);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const injected = (globalThis as any).__DER_BOOTSTRAP as { experienceId?: string; contract?: ContractType } | undefined;
 
@@ -66,7 +74,7 @@ const ExperienceWindow: React.FC<{ initialExperienceId: string; initialContract:
         }
       );
     })();
-    return () => { unlisten && unlisten(); };
+    return () => { if (unlisten) unlisten(); };
   }, [initialExperienceId]);
 
   return (

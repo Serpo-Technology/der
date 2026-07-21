@@ -120,10 +120,10 @@ export class BlueprintGenerator {
         });
       }
 
-      if (!['remote', 'local', 'repository'].includes(operation.executionType)) {
+      if (!['builtin', 'remote', 'local', 'repository'].includes(operation.executionType)) {
         errors.push({
           path: `operations[${index}].executionType`,
-          message: 'Operation execution type must be remote, local, or repository',
+          message: 'Operation execution type must be builtin, remote, local, or repository',
           code: 'INVALID_EXECUTION_TYPE'
         });
       }

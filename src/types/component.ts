@@ -31,7 +31,7 @@ export interface OperationManifest extends ComponentManifest {
   type: 'operation';
   inputs: InputSpec[];
   outputs: OutputSpec[];
-  executionType: 'remote' | 'local' | 'repository';
+  executionType: 'builtin' | 'remote' | 'local' | 'repository';
   implementation: OperationImplementation;
 }
 

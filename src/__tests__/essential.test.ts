@@ -3,7 +3,7 @@
  * Simple tests without heavy mocking to verify core system works
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { Blueprint } from '../models/blueprint';
 import { Contract } from '../models/contract';
 import { ExperienceEditorService } from '../services/edit-preservation/ExperienceEditorService';

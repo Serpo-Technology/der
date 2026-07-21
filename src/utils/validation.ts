@@ -88,7 +88,7 @@ export const BLUEPRINT_SCHEMA: JSONSchema = {
           purpose: { type: 'string' },
           inputs: { type: 'array', items: { type: 'string' } },
           outputs: { type: 'array', items: { type: 'string' } },
-          executionType: { type: 'string', enum: ['remote', 'local', 'repository'] }
+          executionType: { type: 'string', enum: ['builtin', 'remote', 'local', 'repository'] }
         },
         required: ['name', 'purpose', 'inputs', 'outputs', 'executionType']
       }

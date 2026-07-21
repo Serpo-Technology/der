@@ -8,7 +8,6 @@ import { Blueprint } from '../models/blueprint';
 import { Contract } from '../models/contract';
 import { ExperienceEditorService } from '../services/edit-preservation/ExperienceEditorService';
 import { SharingService } from '../services/persistence/SharingService';
-import { BookmarkManager } from '../services/persistence/BookmarkManager';
 
 // Mock Tauri
 vi.mock('@tauri-apps/api/core', () => ({
@@ -18,12 +17,10 @@ vi.mock('@tauri-apps/api/core', () => ({
 describe('Simple Integration Tests', () => {
   let editorService: ExperienceEditorService;
   let sharingService: SharingService;
-  let bookmarkManager: BookmarkManager;
 
   beforeEach(() => {
     editorService = new ExperienceEditorService();
     sharingService = new SharingService();
-    bookmarkManager = new BookmarkManager();
   });
 
   describe('Blueprint to Contract Flow', () => {
@@ -160,21 +157,6 @@ describe('Simple Integration Tests', () => {
 
   describe('Sharing and Collaboration', () => {
     it('should handle basic sharing workflow', async () => {
-      const contract = new Contract({
-        name: 'Shared Form',
-        elements: [
-          {
-            id: 'title',
-            type: 'text',
-            properties: { text: 'Contact Us' },
-            dataBindings: [],
-            eventBindings: [],
-            children: []
-          }
-        ],
-        operations: []
-      });
-
       // Test collaboration session creation
       const session = await sharingService.createCollaborationSession('shared-form', 'host-user');
       

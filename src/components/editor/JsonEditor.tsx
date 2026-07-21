@@ -58,7 +58,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       const parsed = JSON.parse(jsonText);
       const formatted = JSON.stringify(parsed, null, 2);
       setJsonText(formatted);
-    } catch (error) {
+    } catch {
       // If JSON is invalid, don't format
     }
   };
@@ -68,7 +68,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       const parsed = JSON.parse(jsonText);
       const minified = JSON.stringify(parsed);
       setJsonText(minified);
-    } catch (error) {
+    } catch {
       // If JSON is invalid, don't minify
     }
   };

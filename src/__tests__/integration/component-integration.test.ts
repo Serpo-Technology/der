@@ -1,615 +1,402 @@
 /**
  * Integration Tests: Component Integration and Operation Binding
- * Tests how components work together and operations are bound to UI elements
+ * Exercises the real runtime conventions end to end:
+ * - state seeds from contract.initialState plus operation output placeholders;
+ * - controlled inputs write their value into state under `element_${id}`;
+ * - operations execute per executionType (builtin operations run the real
+ *   registry functions) and results mirror at `operation_${opId}`;
+ * - list elements repeat their children per bound item and event handlers
+ *   receive the current item as event context.
  */
 
+import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ComponentRenderer } from '../../components/runtime/ComponentRenderer';
-import { OperationExecutor } from '../../components/runtime/OperationExecutor';
+import { OperationExecutor, OperationResolutionError } from '../../components/runtime/OperationExecutor';
 import { ExperienceStateManager } from '../../components/runtime/ExperienceStateManager';
-import { RepositoryService } from '../../services/repository/repository-service';
-import { Contract } from '../../models/contract';
-import type { UIElement, OperationBinding } from '../../types/contract';
-import type { ComponentManifest } from '../../types/component';
+import { DynamicExperienceRenderer } from '../../components/runtime/DynamicExperienceRenderer';
+import { Contract as ContractModel } from '../../models/contract';
+import { SAMPLE_TODO_CONTRACT } from '../../test/llm-mocks';
+import { installInvokeMock, invokeMock } from '../support/tauri-invoke-mock';
+import type { Contract, OperationBinding, UIElement } from '../../types/contract';
+import type { ExperienceState } from '../../types/experience';
 
-// Mock external dependencies
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn()
+  invoke: vi.fn(),
 }));
+
+function emptyState(): ExperienceState {
+  return { data: {}, loading: {}, errors: {}, lastUpdated: new Date() };
+}
 
 describe('Component Integration and Operation Binding', () => {
   let componentRenderer: ComponentRenderer;
   let operationExecutor: OperationExecutor;
   let stateManager: ExperienceStateManager;
-  let repository: RepositoryService;
 
-  const mockFormComponent: ComponentManifest = {
-    id: 'form',
-    name: 'Form',
-    version: '1.0.0',
-    type: 'ui-element',
-    description: 'Form container component',
-    capabilities: ['form', 'validation'],
-    dependencies: [],
-    schema: {
-      type: 'object',
-      properties: {
-        onSubmit: { type: 'function' },
-        validation: { type: 'object' }
-      }
-    },
-    inputs: [
-      { name: 'fields', type: 'array', required: true },
-      { name: 'validation', type: 'object', required: false }
-    ],
-    outputs: [
-      { name: 'onSubmit', type: 'event' },
-      { name: 'onValidation', type: 'event' }
-    ],
-    renderFunction: 'renderForm',
-    styleSchema: {
-      type: 'object',
-      properties: {
-        layout: { type: 'string' }
-      }
-    }
-  };
-
-  const mockInputComponent: ComponentManifest = {
-    id: 'input',
-    name: 'Input Field',
-    version: '1.0.0',
-    type: 'ui-element',
-    description: 'Text input field',
-    capabilities: ['input', 'validation'],
-    dependencies: [],
-    schema: {
-      type: 'object',
-      properties: {
-        value: { type: 'string' },
-        onChange: { type: 'function' }
-      }
-    },
-    inputs: [
-      { name: 'placeholder', type: 'string', required: false },
-      { name: 'required', type: 'boolean', required: false }
-    ],
-    outputs: [
-      { name: 'onChange', type: 'event' },
-      { name: 'onBlur', type: 'event' }
-    ],
-    renderFunction: 'renderInput',
-    styleSchema: {
-      type: 'object',
-      properties: {
-        width: { type: 'string' }
-      }
-    }
-  };
-
-  const mockValidationOperation: ComponentManifest = {
-    id: 'validate-email',
-    name: 'Email Validation',
-    version: '1.0.0',
-    type: 'operation',
-    description: 'Validates email format',
-    capabilities: ['validation', 'sync'],
-    dependencies: [],
-    schema: {
-      type: 'object',
-      properties: {
-        email: { type: 'string' }
-      }
-    },
-    inputs: [
-      { name: 'email', type: 'string', required: true }
-    ],
-    outputs: [
-      { name: 'isValid', type: 'boolean' },
-      { name: 'error', type: 'string' }
-    ],
-    executionType: 'local',
-    implementation: {
-      type: 'local',
-      function: 'validateEmail'
-    }
-  };
-
-  const mockApiOperation: ComponentManifest = {
-    id: 'submit-form',
-    name: 'Submit Form Data',
-    version: '1.0.0',
-    type: 'operation',
-    description: 'Submits form data to API',
-    capabilities: ['http', 'async'],
-    dependencies: [],
-    schema: {
-      type: 'object',
-      properties: {
-        data: { type: 'object' },
-        endpoint: { type: 'string' }
-      }
-    },
-    inputs: [
-      { name: 'formData', type: 'object', required: true },
-      { name: 'endpoint', type: 'string', required: true }
-    ],
-    outputs: [
-      { name: 'response', type: 'object' },
-      { name: 'success', type: 'boolean' }
-    ],
-    executionType: 'remote',
-    implementation: {
-      type: 'remote',
-      endpoint: '/api/submit',
-      method: 'POST'
-    }
-  };
-
-  beforeEach(async () => {
+  beforeEach(() => {
+    installInvokeMock();
+    // TauriCommandService only calls invoke when it detects a Tauri window;
+    // flag one so remote operations exercise the mocked execute_operation
+    // command instead of the service's own offline fallback.
+    (window as any).__TAURI__ = {};
     componentRenderer = new ComponentRenderer();
     operationExecutor = new OperationExecutor();
     stateManager = new ExperienceStateManager('test-experience');
-    repository = new RepositoryService();
-
-    // Mock repository responses
-    vi.spyOn(repository, 'getComponent').mockImplementation(async (id: string) => {
-      switch (id) {
-        case 'form': return mockFormComponent;
-        case 'input': return mockInputComponent;
-        case 'validate-email': return mockValidationOperation;
-        case 'submit-form': return mockApiOperation;
-        default: return null;
-      }
-    });
   });
 
-  describe('UI Component Integration', () => {
-    it('should render nested components with proper hierarchy', async () => {
-      const formElement: UIElement = {
-        id: 'contact-form',
-        type: 'form',
-        properties: {
-          layout: 'vertical'
-        },
-        dataBindings: [],
-        eventBindings: [],
-        children: [
-          {
-            id: 'email-input',
-            type: 'input',
-            properties: {
-              placeholder: 'Enter your email',
-              required: true
-            },
-            dataBindings: [],
-            eventBindings: []
-          },
-          {
-            id: 'name-input',
-            type: 'input',
-            properties: {
-              placeholder: 'Enter your name',
-              required: true
-            },
-            dataBindings: [],
-            eventBindings: []
-          }
-        ]
-      };
-
-      const renderedComponent = await componentRenderer.renderUIElement(formElement, {});
-      
-      expect(renderedComponent).toBeDefined();
-      // Should render parent form with nested input components
-      expect(renderedComponent.props.children).toHaveLength(2);
-    });
-
-    it('should handle component dependencies correctly', async () => {
-      // Create a component that depends on another
-      const dependentComponent: ComponentManifest = {
-        ...mockFormComponent,
-        id: 'advanced-form',
-        dependencies: ['input', 'validate-email']
-      };
-
-      vi.spyOn(repository, 'getComponent').mockResolvedValueOnce(dependentComponent);
-      vi.spyOn(repository, 'findAllDependencies').mockResolvedValue([
-        mockInputComponent,
-        mockValidationOperation
-      ]);
-
-      const element: UIElement = {
-        id: 'advanced-form-1',
-        type: 'advanced-form',
-        properties: {},
-        dataBindings: [],
-        eventBindings: []
-      };
-
-      const renderedComponent = await componentRenderer.renderUIElement(element, {});
-      
-      expect(renderedComponent).toBeDefined();
-      // Should successfully render despite dependencies
-    });
-
-    it('should apply proper styling and theming', async () => {
-      const styledElement: UIElement = {
-        id: 'styled-form',
-        type: 'form',
-        properties: {
-          layout: 'horizontal'
-        },
-        style: {
-          backgroundColor: '#f0f0f0',
-          padding: '20px',
-          borderRadius: '8px'
-        },
-        dataBindings: [],
-        eventBindings: []
-      };
-
-      const renderedComponent = await componentRenderer.renderUIElement(styledElement, {});
-      
-      expect(renderedComponent.props.style).toEqual({
-        backgroundColor: '#f0f0f0',
-        padding: '20px',
-        borderRadius: '8px'
-      });
-    });
-  });
-
-  describe('Operation Binding and Execution', () => {
-    it('should bind operations to UI element events', async () => {
-      const operationBinding: OperationBinding = {
-        id: 'email-validation-binding',
-        operationId: 'validate-email',
-        trigger: {
-          elementId: 'email-input',
-          event: 'onBlur'
-        },
-        inputMappings: [
-          {
-            operationInput: 'email',
-            source: {
-              type: 'element',
-              elementId: 'email-input',
-              property: 'value'
-            }
-          }
-        ],
-        outputMappings: [
-          {
-            operationOutput: 'isValid',
-            target: {
-              type: 'element',
-              elementId: 'email-input',
-              property: 'isValid'
-            }
-          },
-          {
-            operationOutput: 'error',
-            target: {
-              type: 'state',
-              key: 'emailError'
-            }
-          }
-        ]
-      };
-
-      // Simulate operation execution
-      const mockExecutionResult = {
-        isValid: false,
-        error: 'Invalid email format'
-      };
-
-      vi.spyOn(operationExecutor, 'executeOperation').mockResolvedValue(mockExecutionResult);
-
-      const result = await operationExecutor.executeOperation(
-        operationBinding.operationId,
-        { email: 'invalid-email' }
-      );
-
-      expect(result).toEqual(mockExecutionResult);
-      expect(operationExecutor.executeOperation).toHaveBeenCalledWith(
-        'validate-email',
-        { email: 'invalid-email' }
-      );
-    });
-
-    it('should handle complex operation chains', async () => {
-      // Create a chain: input validation -> form submission -> success handling
-      const validationBinding: OperationBinding = {
-        id: 'validation-chain',
-        operationId: 'validate-email',
-        trigger: {
-          elementId: 'email-input',
-          event: 'onChange'
-        },
-        inputMappings: [
-          {
-            operationInput: 'email',
-            source: {
-              type: 'element',
-              elementId: 'email-input',
-              property: 'value'
-            }
-          }
-        ],
-        outputMappings: [
-          {
-            operationOutput: 'isValid',
-            target: {
-              type: 'state',
-              key: 'emailValid'
-            }
-          }
-        ]
-      };
-
-      const submissionBinding: OperationBinding = {
-        id: 'submission-chain',
-        operationId: 'submit-form',
-        trigger: {
-          elementId: 'contact-form',
-          event: 'onSubmit'
-        },
-        conditions: [
-          {
-            type: 'state',
-            key: 'emailValid',
-            operator: 'equals',
-            value: true
-          }
-        ],
-        inputMappings: [
-          {
-            operationInput: 'formData',
-            source: {
-              type: 'state',
-              key: 'formData'
-            }
-          }
-        ],
-        outputMappings: [
-          {
-            operationOutput: 'success',
-            target: {
-              type: 'state',
-              key: 'submissionSuccess'
-            }
-          }
-        ]
-      };
-
-      // Mock successful validation
-      vi.spyOn(operationExecutor, 'executeOperation')
-        .mockResolvedValueOnce({ isValid: true })
-        .mockResolvedValueOnce({ success: true, response: { id: 123 } });
-
-      // Execute validation first
-      const validationResult = await operationExecutor.executeOperation(
-        'validate-email',
-        { email: 'test@example.com' }
-      );
-
-      expect(validationResult.isValid).toBe(true);
-
-      // Then execute submission
-      const submissionResult = await operationExecutor.executeOperation(
-        'submit-form',
-        { formData: { email: 'test@example.com', name: 'Test User' } }
-      );
-
-      expect(submissionResult.success).toBe(true);
-    });
-
-    it('should handle operation errors gracefully', async () => {
-      const errorBinding: OperationBinding = {
-        id: 'error-handling',
-        operationId: 'submit-form',
-        trigger: {
-          elementId: 'contact-form',
-          event: 'onSubmit'
-        },
-        inputMappings: [
-          {
-            operationInput: 'formData',
-            source: {
-              type: 'element',
-              elementId: 'contact-form',
-              property: 'data'
-            }
-          }
-        ],
-        outputMappings: [
-          {
-            operationOutput: 'error',
-            target: {
-              type: 'state',
-              key: 'submissionError'
-            }
-          }
-        ],
-        errorHandling: {
-          strategy: 'capture',
-          fallbackValue: { success: false, error: 'Submission failed' }
-        }
-      };
-
-      // Mock operation failure
-      vi.spyOn(operationExecutor, 'executeOperation').mockRejectedValue(
-        new Error('Network error')
-      );
-
-      // Should handle error gracefully
-      await expect(
-        operationExecutor.executeOperation('submit-form', { formData: {} })
-      ).rejects.toThrow('Network error');
-    });
-  });
-
-  describe('State Management Integration', () => {
-    it('should synchronize state between components and operations', async () => {
-      const contract: Contract = {
-        name: 'Contact Form',
+  describe('Experience State Initialization', () => {
+    it('seeds declared initial state, operation placeholders, and element defaults', async () => {
+      const contract = {
+        name: 'seeded-app',
         version: '1.0.0',
+        initialState: { todos: [], filter: 'all' },
         elements: [
           {
-            id: 'email-input',
+            id: 'entry',
             type: 'input',
-            properties: { placeholder: 'Email' },
-            dataBindings: [
-              {
-                property: 'value',
-                source: {
-                  type: 'state',
-                  key: 'email'
-                }
-              }
-            ],
-            eventBindings: [
-              {
-                event: 'onChange',
-                action: {
-                  type: 'updateState',
-                  key: 'email',
-                  value: '${event.target.value}'
-                }
-              }
-            ]
-          }
+            properties: { defaultValue: 'seed text' },
+            dataBindings: [],
+            eventBindings: [],
+          },
         ],
         operations: [
           {
-            id: 'validate-email-op',
-            type: 'validate-email',
-            inputMappings: [
-              {
-                operationInput: 'email',
-                source: {
-                  type: 'state',
-                  key: 'email'
-                }
-              }
-            ]
-          }
+            id: 'op-1',
+            operationName: 'todos.add',
+            executionType: 'builtin',
+            inputs: [],
+            outputs: [{ name: 'todos', target: 'state', targetId: 'todos' }],
+            triggers: [],
+          },
         ],
-        operationBindings: []
-      };
+        layout: { type: 'flex', properties: {} },
+        styling: { theme: 'default' },
+        metadata: { createdAt: new Date(), updatedAt: new Date(), version: '1.0.0' },
+      } as unknown as Contract;
 
-      // Initialize state
-      const initialState = await stateManager.initializeState(contract);
-      expect(initialState).toBeDefined();
+      const state = await stateManager.initializeState(contract);
 
-      // Update state
-      await stateManager.updateState('email', 'test@example.com');
-      const currentState = stateManager.getCurrentState();
-      
-      expect(currentState.data.email).toBe('test@example.com');
+      // Declared app state
+      expect(state.data.todos).toEqual([]);
+      expect(state.data.filter).toBe('all');
+      // Operation output placeholder and loading flag
+      expect(state.data['operation_op-1_todos']).toBeNull();
+      expect(state.loading['op-1']).toBe(false);
+      // Element default value lands under element_${id}
+      expect(state.data['element_entry']).toBe('seed text');
     });
 
-    it('should handle real-time state updates', async () => {
-      const stateChangeCallback = vi.fn();
-      
-      // Subscribe to state changes
-      const unsubscribe = stateManager.subscribeToStateChanges(stateChangeCallback);
+    it('mirrors operation results and routes outputs to state and elements', () => {
+      stateManager.updateStateFromOperationResult('op-1', { result: 42, extra: 'echo' }, [
+        { name: 'result', target: 'state', targetId: 'total' },
+        { name: 'extra', target: 'ui-element', targetId: 'field' },
+      ]);
 
-      // Update state multiple times
-      await stateManager.updateState('field1', 'value1');
-      await stateManager.updateState('field2', 'value2');
-      await stateManager.updateState('field1', 'updated-value1');
+      // Whole result mirrors under operation_${opId}
+      expect(stateManager.getData('operation_op-1')).toEqual({ result: 42, extra: 'echo' });
+      // Outputs route per their targets
+      expect(stateManager.getData('total')).toBe(42);
+      expect(stateManager.getData('element_field')).toBe('echo');
+      // Per-output raw values are also stored
+      expect(stateManager.getData('operation_op-1_result')).toBe(42);
+      expect(stateManager.getData('operation_op-1_extra')).toBe('echo');
+    });
 
-      expect(stateChangeCallback).toHaveBeenCalledTimes(3);
-      
-      // Cleanup
+    it('notifies subscribers on state changes', () => {
+      const callback = vi.fn();
+      const unsubscribe = stateManager.subscribeToStateChanges(callback);
+
+      stateManager.setData('a', 1);
+      stateManager.setData('b', 2);
+      expect(callback).toHaveBeenCalledTimes(2);
+
       unsubscribe();
-    });
-
-    it('should persist state across component re-renders', async () => {
-      // Set initial state
-      await stateManager.updateState('persistentData', { important: 'value' });
-      
-      // Simulate component re-render by creating new state manager with same ID
-      const newStateManager = new ExperienceStateManager('test-experience');
-      
-      // Should restore previous state
-      const restoredState = newStateManager.getCurrentState();
-      expect(restoredState.data.persistentData).toEqual({ important: 'value' });
+      stateManager.setData('c', 3);
+      expect(callback).toHaveBeenCalledTimes(2);
     });
   });
 
-  describe('Performance and Optimization', () => {
-    it('should render components efficiently with many bindings', async () => {
-      // Create a complex form with many data bindings
-      const complexElements: UIElement[] = Array.from({ length: 50 }, (_, i) => ({
-        id: `input-${i}`,
-        type: 'input',
-        properties: { placeholder: `Field ${i}` },
-        dataBindings: [
-          {
-            property: 'value',
-            source: {
-              type: 'state',
-              key: `field${i}`
-            }
-          }
-        ],
-        eventBindings: [
-          {
-            event: 'onChange',
-            action: {
-              type: 'updateState',
-              key: `field${i}`,
-              value: '${event.target.value}'
-            }
-          }
-        ]
-      }));
+  describe('Operation Execution', () => {
+    it('runs builtin todos.add against real registry code and mutates the todos state', async () => {
+      stateManager.setData('todos', []);
+      stateManager.setData('element_todo-input', 'Buy milk');
 
-      const startTime = Date.now();
-      
-      // Render all components
-      const renderedComponents = await Promise.all(
-        complexElements.map(element => 
-          componentRenderer.renderUIElement(element, {})
-        )
-      );
-      
-      const endTime = Date.now();
-      const duration = endTime - startTime;
+      const operation: OperationBinding = {
+        id: 'op-add',
+        operationName: 'todos.add',
+        executionType: 'builtin',
+        inputs: [{ name: 'title', source: 'ui-element', sourceId: 'todo-input' }],
+        outputs: [],
+        triggers: [],
+      };
 
-      expect(renderedComponents).toHaveLength(50);
-      expect(duration).toBeLessThan(1000); // Should complete within 1 second
+      const result = await operationExecutor.executeOperation(operation, {}, stateManager);
+
+      expect((result.todos as unknown[]).length).toBe(1);
+      const todos = stateManager.getData('todos') as Array<{ title: string; completed: boolean }>;
+      expect(todos).toHaveLength(1);
+      expect(todos[0].title).toBe('Buy milk');
+      expect(todos[0].completed).toBe(false);
+      expect(result.reset).toBe('');
     });
 
-    it('should handle concurrent operation executions', async () => {
-      const operations = Array.from({ length: 10 }, (_, i) => ({
-        id: `operation-${i}`,
-        data: { value: i }
-      }));
+    it('runs builtin todos.toggle with the item event context from a list row', async () => {
+      const todo = { id: 't-1', title: 'Existing', completed: false };
+      stateManager.setData('todos', [todo]);
 
-      vi.spyOn(operationExecutor, 'executeOperation').mockImplementation(
-        async (id: string, data: any) => {
-          // Simulate async operation
-          await new Promise(resolve => setTimeout(resolve, 100));
-          return { result: `processed-${data.value}` };
-        }
+      const operation: OperationBinding = {
+        id: 'op-toggle',
+        operationName: 'todos.toggle',
+        executionType: 'builtin',
+        inputs: [{ name: 'id', source: 'item', sourceId: 'id' }],
+        outputs: [],
+        triggers: [],
+      };
+
+      await operationExecutor.executeOperation(operation, { item: todo }, stateManager);
+
+      const todos = stateManager.getData('todos') as Array<{ completed: boolean }>;
+      expect(todos[0].completed).toBe(true);
+    });
+
+    it('resolves constant and state input sources', async () => {
+      stateManager.setData('offset', 10);
+
+      const operation: OperationBinding = {
+        id: 'op-sum',
+        operationName: 'math.add',
+        executionType: 'builtin',
+        inputs: [
+          { name: 'a', source: 'constant', sourceId: '32' },
+          { name: 'b', source: 'state', sourceId: 'offset' },
+        ],
+        outputs: [],
+        triggers: [],
+      };
+
+      const result = await operationExecutor.executeOperation(operation, {}, stateManager);
+      expect(result.result).toBe(42);
+    });
+
+    it('executes local operations from their implementation code with state access', async () => {
+      stateManager.setData('count', 5);
+
+      const operation: OperationBinding = {
+        id: 'op-local',
+        operationName: 'custom.increment',
+        executionType: 'local',
+        inputs: [{ name: 'step', source: 'constant', sourceId: '3' }],
+        outputs: [],
+        triggers: [],
+        implementation: {
+          type: 'local',
+          code: 'const next = Number(ctx.getState("count")) + Number(inputs.step); ctx.setState("count", next); return { next };',
+        },
+      };
+
+      const result = await operationExecutor.executeOperation(operation, {}, stateManager);
+
+      expect(result.next).toBe(8);
+      expect(stateManager.getData('count')).toBe(8);
+    });
+
+    it('executes remote operations through the execute_operation command', async () => {
+      installInvokeMock({
+        onCommand: (cmd) =>
+          cmd === 'execute_operation' ? { success: true, data: { temperature: 18 } } : undefined,
+      });
+
+      const operation: OperationBinding = {
+        id: 'op-remote',
+        operationName: 'weather.fetch',
+        executionType: 'remote',
+        inputs: [{ name: 'city', source: 'constant', sourceId: 'Oslo' }],
+        outputs: [],
+        triggers: [],
+        implementation: { type: 'remote', endpoint: 'https://api.example.com/weather', method: 'GET' },
+      };
+
+      const result = await operationExecutor.executeOperation(operation, {}, stateManager);
+
+      expect(result).toEqual({ temperature: 18 });
+      const call = invokeMock.mock.calls.find(([cmd]) => cmd === 'execute_operation');
+      expect(call).toBeDefined();
+      expect((call?.[1] as any).request.inputs).toEqual({ city: 'Oslo' });
+    });
+
+    it('propagates remote operation failures', async () => {
+      installInvokeMock({
+        onCommand: (cmd) =>
+          cmd === 'execute_operation' ? { success: false, error: 'upstream 500' } : undefined,
+      });
+
+      const operation: OperationBinding = {
+        id: 'op-remote',
+        operationName: 'weather.fetch',
+        executionType: 'remote',
+        inputs: [],
+        outputs: [],
+        triggers: [],
+        implementation: { type: 'remote', endpoint: 'https://api.example.com/weather' },
+      };
+
+      await expect(
+        operationExecutor.executeOperation(operation, {}, stateManager)
+      ).rejects.toThrow('Remote operation failed: upstream 500');
+    });
+
+    it('rejects operations that resolve to no runnable implementation', async () => {
+      const operation: OperationBinding = {
+        id: 'op-mystery',
+        operationName: 'does.not.exist',
+        inputs: [],
+        outputs: [],
+        triggers: [],
+      };
+
+      await expect(
+        operationExecutor.executeOperation(operation, {}, stateManager)
+      ).rejects.toThrow(OperationResolutionError);
+    });
+  });
+
+  describe('Component Rendering Conventions', () => {
+    it('auto-controls input elements: value reads from state and changes write back', () => {
+      const setElementValue = vi.fn();
+      const element: UIElement = {
+        id: 'note-input',
+        type: 'input',
+        properties: { placeholder: 'Note' },
+        dataBindings: [],
+        eventBindings: [],
+      };
+
+      const state = emptyState();
+      state.data['element_note-input'] = 'from state';
+
+      const Rendered = componentRenderer.renderUIElement(element, state, vi.fn(), {
+        setElementValue,
+      });
+      render(React.createElement(Rendered));
+
+      const input = screen.getByPlaceholderText('Note') as HTMLInputElement;
+      expect(input.value).toBe('from state');
+
+      fireEvent.change(input, { target: { value: 'updated text' } });
+      expect(setElementValue).toHaveBeenCalledWith('note-input', 'updated text');
+    });
+
+    it('repeats list children per bound item and passes the item as event context', async () => {
+      const onOperationExecute = vi.fn().mockResolvedValue(undefined);
+      const element: UIElement = {
+        id: 'rows',
+        type: 'list',
+        properties: {},
+        dataBindings: [{ property: 'items', source: 'state', sourceId: 'todos' }],
+        eventBindings: [],
+        children: [
+          {
+            id: 'row-title',
+            type: 'text',
+            properties: {},
+            dataBindings: [{ property: 'content', source: 'item', sourceId: 'title' }],
+            eventBindings: [],
+          },
+          {
+            id: 'row-remove',
+            type: 'button',
+            properties: { text: 'Remove' },
+            dataBindings: [],
+            eventBindings: [{ event: 'click', operationId: 'op-remove' }],
+          },
+        ],
+      };
+
+      const state = emptyState();
+      const second = { id: 'b', title: 'Second' };
+      state.data.todos = [{ id: 'a', title: 'First' }, second];
+
+      const Rendered = componentRenderer.renderUIElement(element, state, onOperationExecute, {});
+      render(React.createElement(Rendered));
+
+      expect(screen.getByText('First')).toBeInTheDocument();
+      expect(screen.getByText('Second')).toBeInTheDocument();
+      const removeButtons = screen.getAllByText('Remove');
+      expect(removeButtons).toHaveLength(2);
+
+      fireEvent.click(removeButtons[1]);
+      await waitFor(() => {
+        expect(onOperationExecute).toHaveBeenCalledWith('op-remove', { item: second });
+      });
+    });
+
+    it('renders unknown element types with a visible fallback', () => {
+      const element: UIElement = {
+        id: 'mystery',
+        type: 'holo-panel',
+        properties: {},
+        dataBindings: [],
+        eventBindings: [],
+      };
+
+      const Rendered = componentRenderer.renderUIElement(element, emptyState(), vi.fn(), {});
+      render(React.createElement(Rendered));
+
+      expect(screen.getByText(/Unknown Component: holo-panel/)).toBeInTheDocument();
+    });
+  });
+
+  describe('Full Runtime Interaction', () => {
+    it('runs the generated todo contract end to end: type, add, and toggle', async () => {
+      const contract = ContractModel.fromObject(SAMPLE_TODO_CONTRACT) as unknown as Contract;
+
+      let latestState: ExperienceState | null = null;
+      render(
+        React.createElement(DynamicExperienceRenderer, {
+          contract,
+          experienceId: 'runtime-exp',
+          onStateChange: (state: ExperienceState) => {
+            latestState = state;
+          },
+        })
       );
 
-      const startTime = Date.now();
-      
-      const results = await Promise.all(
-        operations.map(op => 
-          operationExecutor.executeOperation(op.id, op.data)
-        )
-      );
-      
-      const endTime = Date.now();
-      const duration = endTime - startTime;
+      // Initial state seeds and renders the empty list
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('What needs doing?')).toBeInTheDocument();
+      });
+      expect(latestState?.data.todos).toEqual([]);
 
-      expect(results).toHaveLength(10);
-      expect(duration).toBeLessThan(500); // Should complete concurrently, not sequentially
+      // Typing writes the input value into state under element_${id}
+      const input = screen.getByPlaceholderText('What needs doing?') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: 'Buy milk' } });
+      expect(latestState?.data['element_todo-input']).toBe('Buy milk');
+
+      // Clicking Add runs the builtin todos.add operation and the list updates
+      fireEvent.click(screen.getByText('Add'));
+      await waitFor(() => {
+        expect(screen.getByText('Buy milk')).toBeInTheDocument();
+      });
+
+      const todosAfterAdd = latestState?.data.todos as Array<{ title: string; completed: boolean }>;
+      expect(todosAfterAdd).toHaveLength(1);
+      expect(todosAfterAdd[0].title).toBe('Buy milk');
+      // The operation result mirrors under operation_${opId}
+      expect(latestState?.data['operation_op-add']).toBeDefined();
+      // The declared reset output routed back into the entry input; the
+      // element tree remounts on state changes, so query the input fresh.
+      expect(latestState?.data['element_todo-input']).toBe('');
+      const inputAfterAdd = screen.getByPlaceholderText('What needs doing?') as HTMLInputElement;
+      expect(inputAfterAdd.value).toBe('');
+
+      // Clicking the row button runs todos.toggle with the row item as context
+      fireEvent.click(screen.getByText('Done'));
+      await waitFor(() => {
+        const todos = latestState?.data.todos as Array<{ completed: boolean }>;
+        expect(todos[0].completed).toBe(true);
+      });
     });
   });
 });

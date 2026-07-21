@@ -200,7 +200,7 @@ const ConflictItem: React.FC<ConflictItemProps> = ({
       <div className="resolution-options">
         <h5>Choose Resolution:</h5>
         {conflict.resolutionOptions.map(option => (
-          <ResolutionOption
+          <ResolutionOptionItem
             key={option.id}
             option={option}
             conflict={conflict}
@@ -224,7 +224,7 @@ interface ResolutionOptionProps {
   onCustomValueChange: (value: string) => void;
 }
 
-const ResolutionOption: React.FC<ResolutionOptionProps> = ({
+const ResolutionOptionItem: React.FC<ResolutionOptionProps> = ({
   option,
   conflict,
   isSelected,

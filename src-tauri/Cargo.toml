@@ -27,4 +27,7 @@ regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["time"] }
 uuid = { version = "1.0", features = ["v4"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+sha2 = "0.10"
+base64 = "0.22"
 

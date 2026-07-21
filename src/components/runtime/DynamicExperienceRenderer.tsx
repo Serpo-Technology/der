@@ -8,7 +8,9 @@ import { Contract, UIElement } from '../../types/contract';
 import { ExperienceState } from '../../types/experience';
 import { ComponentRenderer } from './ComponentRenderer';
 import { ExperienceStateManager } from './ExperienceStateManager';
-import { OperationExecutor } from './OperationExecutor';
+import { OperationExecutor, EventContext } from './OperationExecutor';
+import { ErrorBoundary } from '../ui/ErrorBoundary';
+import { normalizeContract } from '../../schemas/contract';
 
 interface DynamicExperienceRendererProps {
   contract: Contract;
@@ -30,6 +32,9 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
     lastUpdated: new Date()
   });
 
+  // Convert legacy trigger wiring into event bindings before anything runs.
+  const normalizedContract = useMemo(() => normalizeContract(contract), [contract]);
+
   const stateManager = useMemo(() => new ExperienceStateManager(experienceId), [experienceId]);
   const operationExecutor = useMemo(() => new OperationExecutor(), []);
   const componentRenderer = useMemo(() => new ComponentRenderer(), []);
@@ -38,7 +43,7 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
   useEffect(() => {
     const initializeState = async () => {
       try {
-        const initialState = await stateManager.initializeState(contract);
+        const initialState = await stateManager.initializeState(normalizedContract);
         setExperienceState(initialState);
         onStateChange?.(initialState);
       } catch (error) {
@@ -47,7 +52,7 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
     };
 
     initializeState();
-  }, [contract, stateManager, onStateChange, onError]);
+  }, [normalizedContract, stateManager, onStateChange, onError]);
 
   // Subscribe to state changes
   useEffect(() => {
@@ -60,47 +65,66 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
   }, [stateManager, onStateChange]);
 
   // Handle operation execution
-  const handleOperationExecution = useCallback(async (operationId: string, inputs: any[]) => {
-    try {
-      const operation = contract.operations.find(op => op.id === operationId);
-      if (!operation) {
-        throw new Error(`Operation ${operationId} not found in contract`);
+  const handleOperationExecution = useCallback(
+    async (operationId: string, eventContext: EventContext) => {
+      try {
+        const operation = normalizedContract.operations.find(op => op.id === operationId);
+        if (!operation) {
+          throw new Error(`Operation ${operationId} not found in contract`);
+        }
+
+        stateManager.setLoading(operationId, true);
+        const result = await operationExecutor.executeOperation(operation, eventContext, stateManager);
+
+        // Update state with operation results
+        stateManager.updateStateFromOperationResult(operationId, result, operation.outputs);
+
+      } catch (error) {
+        stateManager.setError(operationId, error as Error);
+        onError?.(error as Error);
+      } finally {
+        stateManager.setLoading(operationId, false);
       }
+    },
+    [normalizedContract.operations, stateManager, operationExecutor, onError]
+  );
 
-      stateManager.setLoading(operationId, true);
-      const result = await operationExecutor.executeOperation(operation, inputs);
-      
-      // Update state with operation results
-      stateManager.updateStateFromOperationResult(operationId, result, operation.outputs);
-      
-    } catch (error) {
-      stateManager.setError(operationId, error as Error);
-      onError?.(error as Error);
-    } finally {
-      stateManager.setLoading(operationId, false);
-    }
-  }, [contract.operations, stateManager, operationExecutor, onError]);
+  // Controlled inputs write their value here on every change
+  const setElementValue = useCallback(
+    (elementId: string, value: unknown) => {
+      stateManager.setData(`element_${elementId}`, value);
+    },
+    [stateManager]
+  );
 
-  // Render UI elements recursively
+  // Render UI elements recursively, containing render failures per element
   const renderUIElements = useCallback((elements: UIElement[]): React.ReactNode => {
     return elements.map((element) => {
       const RenderedComponent = componentRenderer.renderUIElement(
         element,
         experienceState,
-        handleOperationExecution
+        handleOperationExecution,
+        { setElementValue }
       );
-      
+
       return (
-        <React.Fragment key={element.id}>
+        <ErrorBoundary
+          key={element.id}
+          fallback={
+            <div style={{ color: '#b91c1c', fontSize: '0.85rem' }}>
+              Element "{element.id}" failed to render
+            </div>
+          }
+        >
           <RenderedComponent />
-        </React.Fragment>
+        </ErrorBoundary>
       );
     });
-  }, [componentRenderer, experienceState, handleOperationExecution]);
+  }, [componentRenderer, experienceState, handleOperationExecution, setElementValue]);
 
   // Apply layout styling
   const layoutStyles = useMemo(() => {
-    const { layout } = contract;
+    const { layout } = normalizedContract;
     const baseStyles: React.CSSProperties = {
       width: '100%',
       height: '100%'
@@ -128,21 +152,25 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
       default:
         return baseStyles;
     }
-  }, [contract.layout]);
+  }, [normalizedContract]);
 
   return (
-    <div 
+    <div
       className="dynamic-experience-container"
       style={layoutStyles as React.CSSProperties}
       data-experience-id={experienceId}
-      data-contract-name={contract.name}
+      data-contract-name={normalizedContract.name}
       data-testid="dynamic-experience-container"
     >
-      {(!contract.elements || contract.elements.length === 0) ? (
-        <div style={{ color: '#6c757d', fontStyle: 'italic' }}>No elements to render</div>
-      ) : (
-        renderUIElements(contract.elements)
-      )}
+      <ErrorBoundary
+        fallback={<div style={{ color: '#b91c1c' }}>This experience failed to render.</div>}
+      >
+        {(!normalizedContract.elements || normalizedContract.elements.length === 0) ? (
+          <div style={{ color: '#6c757d', fontStyle: 'italic' }}>No elements to render</div>
+        ) : (
+          renderUIElements(normalizedContract.elements)
+        )}
+      </ErrorBoundary>
     </div>
   );
 };

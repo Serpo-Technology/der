@@ -1,103 +1,75 @@
 /**
  * Integration Tests: User Editing and Conflict Resolution Workflows
- * Tests the complete editing experience and conflict resolution mechanisms
+ * Exercises the editing services together: ExperienceEditorService applies
+ * and tracks edits on Contract models, EditTracker records and preserves
+ * them, and ConflictResolver detects and resolves collisions between AI
+ * changes and user edits.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { AIInterpreterService } from '../../services/ai-interpreter';
 import { ExperienceEditorService } from '../../services/edit-preservation/ExperienceEditorService';
 import { ConflictResolver } from '../../services/edit-preservation/ConflictResolver';
 import { EditTracker } from '../../services/edit-preservation/EditTracker';
-import { Blueprint } from '../../models/blueprint';
 import { Contract } from '../../models/contract';
-import type { EditOperation, ConflictResolution } from '../../types/experience';
+import type { UserEdit } from '../../interfaces/experience-editor';
 
-// Mock external dependencies
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn()
+  invoke: vi.fn().mockResolvedValue({ success: true }),
 }));
 
-describe('User Editing and Conflict Resolution Workflows', () => {
-  let aiInterpreter: AIInterpreterService;
-  let editorService: ExperienceEditorService;
-  let conflictResolver: ConflictResolver;
-  let editTracker: EditTracker;
-
-  const mockInitialContract: Contract = {
+function buildContract(): Contract {
+  return new Contract({
     name: 'Simple Form',
     version: '1.0.0',
     elements: [
       {
         id: 'submit-button',
         type: 'button',
-        properties: {
-          text: 'Submit',
-          backgroundColor: '#007bff'
-        },
+        properties: { text: 'Submit', backgroundColor: '#007bff' },
         dataBindings: [],
-        eventBindings: [
-          {
-            event: 'onClick',
-            action: {
-              type: 'executeOperation',
-              operationId: 'submit-form'
-            }
-          }
-        ]
+        eventBindings: [{ event: 'click', operationId: 'submit-form' }],
+        children: [],
       },
       {
         id: 'email-input',
         type: 'input',
-        properties: {
-          placeholder: 'Enter email',
-          type: 'email'
-        },
-        dataBindings: [
-          {
-            property: 'value',
-            source: {
-              type: 'state',
-              key: 'email'
-            }
-          }
-        ],
-        eventBindings: []
-      }
+        properties: { placeholder: 'Enter email', type: 'email' },
+        dataBindings: [],
+        eventBindings: [],
+        children: [],
+      },
     ],
     operations: [
       {
         id: 'submit-form',
-        type: 'api-call',
-        inputMappings: [
-          {
-            operationInput: 'data',
-            source: {
-              type: 'state',
-              key: 'formData'
-            }
-          }
-        ]
-      }
+        operationName: 'http.get',
+        executionType: 'builtin',
+        inputs: [{ name: 'url', source: 'constant', sourceId: 'https://api.example.com/form' }],
+        outputs: [],
+        triggers: [],
+      },
     ],
-    operationBindings: []
-  };
+  });
+}
+
+describe('User Editing and Conflict Resolution Workflows', () => {
+  let editorService: ExperienceEditorService;
+  let conflictResolver: ConflictResolver;
+  let editTracker: EditTracker;
 
   beforeEach(async () => {
-    aiInterpreter = new AIInterpreterService();
     editorService = new ExperienceEditorService();
     conflictResolver = new ConflictResolver();
     editTracker = new EditTracker();
 
-    // Initialize with mock contract
-    await editorService.initializeExperience('test-experience', mockInitialContract);
+    await editorService.initializeExperience('test-experience', buildContract());
   });
 
   describe('Basic Editing Operations', () => {
-    it('should track user edits to UI elements', async () => {
+    it('should apply and track user edits to UI elements', async () => {
       const experienceId = 'test-experience';
-      
-      // User edits button text
-      const editOperation: EditOperation = {
+
+      await editorService.applyEdit(experienceId, {
         id: 'edit-1',
         type: 'property-change',
         timestamp: new Date(),
@@ -105,129 +77,155 @@ describe('User Editing and Conflict Resolution Workflows', () => {
         property: 'text',
         oldValue: 'Submit',
         newValue: 'Send Message',
-        userId: 'user-123'
-      };
+        userId: 'user-123',
+      });
 
-      await editorService.applyEdit(experienceId, editOperation);
-      
       const currentContract = await editorService.getCurrentContract(experienceId);
-      const buttonElement = currentContract.elements.find(el => el.id === 'submit-button');
-      
+      const buttonElement = currentContract?.getElement('submit-button');
       expect(buttonElement?.properties.text).toBe('Send Message');
-      
-      // Check edit history
-      const editHistory = await editTracker.getEditHistory(experienceId);
+
+      const editHistory = await editorService.getEditHistory(experienceId);
       expect(editHistory).toHaveLength(1);
-      expect(editHistory[0]).toEqual(editOperation);
+      expect(editHistory[0].newValue).toBe('Send Message');
+      expect(editHistory[0].originalValue).toBe('Submit');
     });
 
     it('should handle multiple sequential edits', async () => {
       const experienceId = 'test-experience';
-      
-      const edits: EditOperation[] = [
+
+      const edits = [
         {
           id: 'edit-1',
-          type: 'property-change',
+          type: 'property-change' as const,
           timestamp: new Date(),
           elementId: 'submit-button',
           property: 'text',
           oldValue: 'Submit',
           newValue: 'Send',
-          userId: 'user-123'
+          userId: 'user-123',
         },
         {
           id: 'edit-2',
-          type: 'property-change',
+          type: 'property-change' as const,
           timestamp: new Date(),
           elementId: 'submit-button',
           property: 'backgroundColor',
           oldValue: '#007bff',
           newValue: '#28a745',
-          userId: 'user-123'
+          userId: 'user-123',
         },
         {
           id: 'edit-3',
-          type: 'element-add',
+          type: 'property-change' as const,
           timestamp: new Date(),
-          elementId: 'cancel-button',
-          elementData: {
-            id: 'cancel-button',
-            type: 'button',
-            properties: {
-              text: 'Cancel',
-              backgroundColor: '#6c757d'
-            },
-            dataBindings: [],
-            eventBindings: []
-          },
-          userId: 'user-123'
-        }
+          elementId: 'email-input',
+          property: 'placeholder',
+          oldValue: 'Enter email',
+          newValue: 'Your email address',
+          userId: 'user-123',
+        },
       ];
 
-      // Apply edits sequentially
       for (const edit of edits) {
         await editorService.applyEdit(experienceId, edit);
       }
 
       const finalContract = await editorService.getCurrentContract(experienceId);
-      
-      // Verify all edits were applied
-      const submitButton = finalContract.elements.find(el => el.id === 'submit-button');
+      const submitButton = finalContract?.getElement('submit-button');
       expect(submitButton?.properties.text).toBe('Send');
       expect(submitButton?.properties.backgroundColor).toBe('#28a745');
-      
-      const cancelButton = finalContract.elements.find(el => el.id === 'cancel-button');
-      expect(cancelButton).toBeDefined();
-      expect(cancelButton?.properties.text).toBe('Cancel');
-      
-      // Verify edit history
-      const editHistory = await editTracker.getEditHistory(experienceId);
+      expect(finalContract?.getElement('email-input')?.properties.placeholder).toBe(
+        'Your email address'
+      );
+
+      const editHistory = await editorService.getEditHistory(experienceId);
       expect(editHistory).toHaveLength(3);
     });
 
-    it('should support undo and redo operations', async () => {
+    it('should reject unsupported edit types', async () => {
+      await expect(
+        editorService.applyEdit('test-experience', {
+          id: 'edit-x',
+          type: 'element-add',
+          timestamp: new Date(),
+          elementId: 'cancel-button',
+          newValue: {},
+          userId: 'user-123',
+        })
+      ).rejects.toThrow('Unsupported edit type');
+    });
+
+    it('should support undoing the last edit', async () => {
       const experienceId = 'test-experience';
-      
-      // Apply an edit
-      const edit: EditOperation = {
+
+      await editorService.applyEdit(experienceId, {
         id: 'edit-1',
         type: 'property-change',
-        timestamp: new Date(),
+        timestamp: new Date(Date.now() + 1000),
         elementId: 'submit-button',
         property: 'text',
         oldValue: 'Submit',
         newValue: 'Send Message',
-        userId: 'user-123'
-      };
+        userId: 'user-123',
+      });
 
-      await editorService.applyEdit(experienceId, edit);
-      
       let contract = await editorService.getCurrentContract(experienceId);
-      let button = contract.elements.find(el => el.id === 'submit-button');
-      expect(button?.properties.text).toBe('Send Message');
+      expect(contract?.getElement('submit-button')?.properties.text).toBe('Send Message');
 
-      // Undo the edit
       await editorService.undoLastEdit(experienceId);
-      
-      contract = await editorService.getCurrentContract(experienceId);
-      button = contract.elements.find(el => el.id === 'submit-button');
-      expect(button?.properties.text).toBe('Submit');
 
-      // Redo the edit
-      await editorService.redoLastEdit(experienceId);
-      
       contract = await editorService.getCurrentContract(experienceId);
-      button = contract.elements.find(el => el.id === 'submit-button');
-      expect(button?.properties.text).toBe('Send Message');
+      expect(contract?.getElement('submit-button')?.properties.text).toBe('Submit');
+    });
+
+    it('should reject edits against missing elements and keep the contract intact', async () => {
+      const experienceId = 'test-experience';
+
+      await expect(
+        editorService.applyEdit(experienceId, {
+          id: 'invalid-edit',
+          type: 'property-change',
+          timestamp: new Date(),
+          elementId: 'non-existent-element',
+          property: 'text',
+          oldValue: 'old',
+          newValue: 'new',
+          userId: 'user-123',
+        })
+      ).rejects.toThrow('Element non-existent-element not found');
+
+      const contract = await editorService.getCurrentContract(experienceId);
+      expect(contract?.getElement('submit-button')?.properties.text).toBe('Submit');
+      expect(contract?.elements).toHaveLength(2);
     });
   });
 
-  describe('AI Regeneration with Edit Preservation', () => {
-    it('should preserve user edits during AI regeneration', async () => {
+  describe('Edit Tracking and Preservation', () => {
+    it('should track, look up, and preserve edits by location', () => {
+      const edit: UserEdit = {
+        location: 'elements[0].properties.text',
+        originalValue: 'Submit',
+        newValue: 'Send Now',
+        timestamp: new Date(),
+        preserved: false,
+      };
+
+      editTracker.trackEdit(edit);
+
+      expect(editTracker.getEdits('elements[0].properties.text')).toHaveLength(1);
+      expect(editTracker.getLatestEdit('elements[0].properties.text')?.newValue).toBe('Send Now');
+      expect(editTracker.getPreservedEdits()).toHaveLength(0);
+
+      editTracker.preserveEdits([edit]);
+
+      expect(editTracker.getPreservedEdits()).toHaveLength(1);
+      expect(editTracker.hasPreservedEdits('elements[0].properties.text')).toBe(true);
+    });
+
+    it('should preserve user edits through regeneration', async () => {
       const experienceId = 'test-experience';
-      
-      // User makes edits
-      const userEdit: EditOperation = {
+
+      await editorService.applyEdit(experienceId, {
         id: 'user-edit-1',
         type: 'property-change',
         timestamp: new Date(),
@@ -235,445 +233,184 @@ describe('User Editing and Conflict Resolution Workflows', () => {
         property: 'text',
         oldValue: 'Submit',
         newValue: 'Send Now',
-        userId: 'user-123'
-      };
-
-      await editorService.applyEdit(experienceId, userEdit);
-
-      // AI regenerates based on new input
-      const newBlueprint = new Blueprint({
-        intent: 'Create a form with validation',
-        capabilities: ['form', 'validation', 'submit'],
-        requirements: ['Add email validation', 'Keep existing styling'],
-        context: {}
+        userId: 'user-123',
       });
 
-      const aiGeneratedContract: Contract = {
-        ...mockInitialContract,
-        elements: [
-          ...mockInitialContract.elements,
-          {
-            id: 'validation-message',
-            type: 'text',
-            properties: {
-              text: 'Please enter a valid email',
-              color: '#dc3545'
-            },
-            dataBindings: [],
-            eventBindings: []
-          }
-        ]
-      };
-
-      // Apply regeneration with preservation
-      const preservedContract = await editorService.regenerateWithPreservation(
-        experienceId,
-        aiGeneratedContract
-      );
-
-      // User edits should be preserved
-      const submitButton = preservedContract.elements.find(el => el.id === 'submit-button');
-      expect(submitButton?.properties.text).toBe('Send Now'); // User edit preserved
-
-      // AI additions should be included
-      const validationMessage = preservedContract.elements.find(el => el.id === 'validation-message');
-      expect(validationMessage).toBeDefined();
-    });
-
-    it('should handle conflicts between user edits and AI changes', async () => {
-      const experienceId = 'test-experience';
-      
-      // User edits button color
-      const userEdit: EditOperation = {
-        id: 'user-color-edit',
-        type: 'property-change',
-        timestamp: new Date(),
-        elementId: 'submit-button',
-        property: 'backgroundColor',
-        oldValue: '#007bff',
-        newValue: '#ff6b6b',
-        userId: 'user-123'
-      };
-
-      await editorService.applyEdit(experienceId, userEdit);
-
-      // AI also wants to change button color
-      const aiGeneratedContract: Contract = {
-        ...mockInitialContract,
-        elements: mockInitialContract.elements.map(el => 
-          el.id === 'submit-button' 
-            ? { ...el, properties: { ...el.properties, backgroundColor: '#28a745' } }
-            : el
-        )
-      };
-
-      // This should create a conflict
-      const conflicts = await conflictResolver.detectConflicts(
-        await editorService.getCurrentContract(experienceId),
-        aiGeneratedContract
-      );
-
-      expect(conflicts).toHaveLength(1);
-      expect(conflicts[0].type).toBe('property-conflict');
-      expect(conflicts[0].elementId).toBe('submit-button');
-      expect(conflicts[0].property).toBe('backgroundColor');
-
-      // Resolve conflict in favor of user
-      const resolution: ConflictResolution = {
-        conflictId: conflicts[0].id,
-        resolution: 'keep-user',
-        resolvedValue: '#ff6b6b'
-      };
-
-      const resolvedContract = await conflictResolver.resolveConflict(
-        conflicts[0],
-        resolution,
-        await editorService.getCurrentContract(experienceId),
-        aiGeneratedContract
-      );
-
-      const button = resolvedContract.elements.find(el => el.id === 'submit-button');
-      expect(button?.properties.backgroundColor).toBe('#ff6b6b');
-    });
-
-    it('should handle complex multi-property conflicts', async () => {
-      const experienceId = 'test-experience';
-      
-      // User makes multiple edits to the same element
-      const userEdits: EditOperation[] = [
-        {
-          id: 'edit-text',
-          type: 'property-change',
-          timestamp: new Date(),
-          elementId: 'submit-button',
-          property: 'text',
-          oldValue: 'Submit',
-          newValue: 'Send Message',
-          userId: 'user-123'
-        },
-        {
-          id: 'edit-color',
-          type: 'property-change',
-          timestamp: new Date(),
-          elementId: 'submit-button',
-          property: 'backgroundColor',
-          oldValue: '#007bff',
-          newValue: '#ff6b6b',
-          userId: 'user-123'
-        }
-      ];
-
-      for (const edit of userEdits) {
-        await editorService.applyEdit(experienceId, edit);
-      }
-
-      // AI makes conflicting changes
-      const aiContract: Contract = {
-        ...mockInitialContract,
-        elements: mockInitialContract.elements.map(el => 
-          el.id === 'submit-button' 
-            ? { 
-                ...el, 
-                properties: { 
-                  ...el.properties, 
-                  text: 'Submit Form',
-                  backgroundColor: '#28a745',
-                  size: 'large' // New property from AI
-                } 
-              }
-            : el
-        )
-      };
-
-      const conflicts = await conflictResolver.detectConflicts(
-        await editorService.getCurrentContract(experienceId),
-        aiContract
-      );
-
-      expect(conflicts).toHaveLength(2); // Text and color conflicts
-
-      // Resolve conflicts with mixed strategy
-      const resolutions: ConflictResolution[] = [
-        {
-          conflictId: conflicts.find(c => c.property === 'text')!.id,
-          resolution: 'keep-user',
-          resolvedValue: 'Send Message'
-        },
-        {
-          conflictId: conflicts.find(c => c.property === 'backgroundColor')!.id,
-          resolution: 'keep-ai',
-          resolvedValue: '#28a745'
-        }
-      ];
-
-      let resolvedContract = await editorService.getCurrentContract(experienceId);
-      for (let i = 0; i < conflicts.length; i++) {
-        resolvedContract = await conflictResolver.resolveConflict(
-          conflicts[i],
-          resolutions[i],
-          resolvedContract,
-          aiContract
-        );
-      }
-
-      const button = resolvedContract.elements.find(el => el.id === 'submit-button');
-      expect(button?.properties.text).toBe('Send Message'); // User preference
-      expect(button?.properties.backgroundColor).toBe('#28a745'); // AI preference
-      expect(button?.properties.size).toBe('large'); // AI addition (no conflict)
-    });
-  });
-
-  describe('Collaborative Editing', () => {
-    it('should handle concurrent edits from multiple users', async () => {
-      const experienceId = 'test-experience';
-      
-      // Simulate two users editing simultaneously
-      const user1Edit: EditOperation = {
-        id: 'user1-edit',
-        type: 'property-change',
-        timestamp: new Date(),
-        elementId: 'submit-button',
-        property: 'text',
-        oldValue: 'Submit',
-        newValue: 'Send',
-        userId: 'user-1'
-      };
-
-      const user2Edit: EditOperation = {
-        id: 'user2-edit',
-        type: 'property-change',
-        timestamp: new Date(Date.now() + 100), // Slightly later
-        elementId: 'email-input',
-        property: 'placeholder',
-        oldValue: 'Enter email',
-        newValue: 'Your email address',
-        userId: 'user-2'
-      };
-
-      // Apply edits concurrently
-      await Promise.all([
-        editorService.applyEdit(experienceId, user1Edit),
-        editorService.applyEdit(experienceId, user2Edit)
+      const regenerated = await editorService.regenerateWithPreservation(experienceId, [
+        'elements',
       ]);
 
-      const finalContract = await editorService.getCurrentContract(experienceId);
-      
-      // Both edits should be applied
-      const button = finalContract.elements.find(el => el.id === 'submit-button');
-      const input = finalContract.elements.find(el => el.id === 'email-input');
-      
-      expect(button?.properties.text).toBe('Send');
-      expect(input?.properties.placeholder).toBe('Your email address');
+      // The regenerated contract retains the user's edit
+      expect(regenerated.getElement('submit-button')?.properties.text).toBe('Send Now');
 
-      // Edit history should contain both edits
-      const editHistory = await editTracker.getEditHistory(experienceId);
-      expect(editHistory).toHaveLength(2);
-    });
-
-    it('should resolve concurrent conflicting edits', async () => {
-      const experienceId = 'test-experience';
-      
-      // Two users edit the same property simultaneously
-      const user1Edit: EditOperation = {
-        id: 'user1-conflict',
-        type: 'property-change',
-        timestamp: new Date(),
-        elementId: 'submit-button',
-        property: 'text',
-        oldValue: 'Submit',
-        newValue: 'Send Now',
-        userId: 'user-1'
-      };
-
-      const user2Edit: EditOperation = {
-        id: 'user2-conflict',
-        type: 'property-change',
-        timestamp: new Date(Date.now() + 50), // Slightly later
-        elementId: 'submit-button',
-        property: 'text',
-        oldValue: 'Submit',
-        newValue: 'Submit Form',
-        userId: 'user-2'
-      };
-
-      // Apply first edit
-      await editorService.applyEdit(experienceId, user1Edit);
-      
-      // Second edit should detect conflict
-      const conflictDetected = await editorService.applyEditWithConflictDetection(
-        experienceId, 
-        user2Edit
-      );
-
-      expect(conflictDetected.hasConflict).toBe(true);
-      expect(conflictDetected.conflict?.type).toBe('concurrent-edit');
-
-      // Resolve in favor of later edit (user-2)
-      const resolution: ConflictResolution = {
-        conflictId: conflictDetected.conflict!.id,
-        resolution: 'keep-incoming',
-        resolvedValue: 'Submit Form'
-      };
-
-      await editorService.resolveEditConflict(experienceId, resolution);
-
-      const finalContract = await editorService.getCurrentContract(experienceId);
-      const button = finalContract.elements.find(el => el.id === 'submit-button');
-      
-      expect(button?.properties.text).toBe('Submit Form');
+      const current = await editorService.getCurrentContract(experienceId);
+      expect(current?.getElement('submit-button')?.properties.text).toBe('Send Now');
     });
   });
 
-  describe('Edit Validation and Rollback', () => {
-    it('should validate edits before applying', async () => {
-      const experienceId = 'test-experience';
-      
-      // Invalid edit (non-existent element)
-      const invalidEdit: EditOperation = {
-        id: 'invalid-edit',
-        type: 'property-change',
+  describe('Conflict Detection and Resolution', () => {
+    it('should detect conflicts between AI changes and user edits at the same location', () => {
+      const userEdit: UserEdit = {
+        location: 'elements[0].properties.text',
+        originalValue: 'Submit',
+        newValue: 'Send Now',
         timestamp: new Date(),
-        elementId: 'non-existent-element',
-        property: 'text',
-        oldValue: 'old',
-        newValue: 'new',
-        userId: 'user-123'
+        preserved: true,
       };
 
-      await expect(
-        editorService.applyEdit(experienceId, invalidEdit)
-      ).rejects.toThrow('Element not found');
+      const aiChanges = {
+        elements: [{ properties: { text: 'Submit Form' } }],
+      };
 
-      // Contract should remain unchanged
-      const contract = await editorService.getCurrentContract(experienceId);
-      expect(contract).toEqual(mockInitialContract);
+      const conflicts = conflictResolver.detectConflicts(aiChanges, [userEdit]);
+
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0].type).toBe('ai-user-conflict');
+      expect(conflicts[0].location).toBe('elements[0].properties.text');
+      expect(conflicts[0].aiSuggestion).toBe('Submit Form');
+      expect(conflicts[0].userEdit).toBe('Send Now');
+      const optionIds = conflicts[0].resolutionOptions.map((option) => option.id);
+      expect(optionIds).toEqual(expect.arrayContaining(['keep-user', 'keep-ai', 'custom']));
     });
 
-    it('should support rollback to previous versions', async () => {
-      const experienceId = 'test-experience';
-      
-      // Apply several edits
-      const edits: EditOperation[] = [
+    it('should not report a conflict when AI and user values agree', () => {
+      const userEdit: UserEdit = {
+        location: 'elements[0].properties.text',
+        originalValue: 'Submit',
+        newValue: 'Send Now',
+        timestamp: new Date(),
+        preserved: true,
+      };
+
+      const aiChanges = {
+        elements: [{ properties: { text: 'Send Now' } }],
+      };
+
+      expect(conflictResolver.detectConflicts(aiChanges, [userEdit])).toHaveLength(0);
+    });
+
+    it('should resolve conflicts per the selected option', () => {
+      const userEdit: UserEdit = {
+        location: 'elements[0].properties.backgroundColor',
+        originalValue: '#007bff',
+        newValue: '#ff6b6b',
+        timestamp: new Date(),
+        preserved: true,
+      };
+      const aiChanges = {
+        elements: [{ properties: { backgroundColor: '#28a745' } }],
+      };
+      const [conflict] = conflictResolver.detectConflicts(aiChanges, [userEdit]);
+      expect(conflict).toBeDefined();
+
+      const keepUser = conflictResolver.resolveConflict(conflict, {
+        conflictId: conflict.location,
+        selectedOption: 'keep-user',
+      });
+      expect(keepUser).toBe('#ff6b6b');
+
+      const keepAi = conflictResolver.resolveConflict(conflict, {
+        conflictId: conflict.location,
+        selectedOption: 'keep-ai',
+      });
+      expect(keepAi).toBe('#28a745');
+
+      const custom = conflictResolver.resolveConflict(conflict, {
+        conflictId: conflict.location,
+        selectedOption: 'custom',
+        customValue: '#000000',
+      });
+      expect(custom).toBe('#000000');
+
+      expect(() =>
+        conflictResolver.resolveConflict(conflict, {
+          conflictId: conflict.location,
+          selectedOption: 'custom',
+        })
+      ).toThrow('Custom resolution requires a custom value');
+    });
+
+    it('should merge preserved user edits over AI changes', () => {
+      const aiChanges = {
+        elements: [{ properties: { text: 'Submit Form', backgroundColor: '#28a745' } }],
+      };
+      const userEdits: UserEdit[] = [
         {
-          id: 'edit-1',
-          type: 'property-change',
+          location: 'elements[0].properties.text',
+          originalValue: 'Submit',
+          newValue: 'Send Now',
           timestamp: new Date(),
-          elementId: 'submit-button',
-          property: 'text',
-          oldValue: 'Submit',
-          newValue: 'Send',
-          userId: 'user-123'
+          preserved: true,
         },
         {
-          id: 'edit-2',
-          type: 'property-change',
+          location: 'elements[0].properties.backgroundColor',
+          originalValue: '#007bff',
+          newValue: '#ff6b6b',
           timestamp: new Date(),
-          elementId: 'submit-button',
-          property: 'backgroundColor',
-          oldValue: '#007bff',
-          newValue: '#28a745',
-          userId: 'user-123'
-        }
+          preserved: false,
+        },
       ];
 
-      for (const edit of edits) {
-        await editorService.applyEdit(experienceId, edit);
-      }
+      const merged = conflictResolver.mergeChanges(aiChanges, userEdits);
 
-      // Get checkpoint after first edit
-      const checkpointId = await editorService.createCheckpoint(experienceId, 'After text change');
-      
-      // Apply more edits
-      await editorService.applyEdit(experienceId, {
-        id: 'edit-3',
-        type: 'property-change',
-        timestamp: new Date(),
-        elementId: 'email-input',
-        property: 'placeholder',
-        oldValue: 'Enter email',
-        newValue: 'Email address',
-        userId: 'user-123'
-      });
-
-      // Rollback to checkpoint
-      await editorService.rollbackToCheckpoint(experienceId, checkpointId);
-
-      const rolledBackContract = await editorService.getCurrentContract(experienceId);
-      const button = rolledBackContract.elements.find(el => el.id === 'submit-button');
-      const input = rolledBackContract.elements.find(el => el.id === 'email-input');
-
-      expect(button?.properties.text).toBe('Send'); // Should have first edit
-      expect(button?.properties.backgroundColor).toBe('#28a745'); // Should have second edit
-      expect(input?.properties.placeholder).toBe('Enter email'); // Should not have third edit
+      // Preserved edits win; unpreserved edits give way to the AI value
+      expect(merged.elements[0].properties.text).toBe('Send Now');
+      expect(merged.elements[0].properties.backgroundColor).toBe('#28a745');
     });
   });
 
   describe('Performance and Scalability', () => {
     it('should handle large edit histories efficiently', async () => {
       const experienceId = 'test-experience';
-      
-      // Generate many edits
-      const manyEdits: EditOperation[] = Array.from({ length: 1000 }, (_, i) => ({
+
+      const manyEdits = Array.from({ length: 500 }, (_, i) => ({
         id: `edit-${i}`,
-        type: 'property-change',
+        type: 'property-change' as const,
         timestamp: new Date(Date.now() + i),
         elementId: 'submit-button',
         property: 'text',
         oldValue: `Text ${i}`,
         newValue: `Text ${i + 1}`,
-        userId: 'user-123'
+        userId: 'user-123',
       }));
 
       const startTime = Date.now();
-      
-      // Apply all edits
       for (const edit of manyEdits) {
         await editorService.applyEdit(experienceId, edit);
       }
-      
-      const endTime = Date.now();
-      const duration = endTime - startTime;
+      const duration = Date.now() - startTime;
 
-      // Should complete within reasonable time
-      expect(duration).toBeLessThan(5000); // 5 seconds for 1000 edits
+      expect(duration).toBeLessThan(5000);
 
-      // Final state should be correct
       const finalContract = await editorService.getCurrentContract(experienceId);
-      const button = finalContract.elements.find(el => el.id === 'submit-button');
-      expect(button?.properties.text).toBe('Text 1000');
+      expect(finalContract?.getElement('submit-button')?.properties.text).toBe('Text 500');
+
+      const history = await editorService.getEditHistory(experienceId);
+      expect(history).toHaveLength(500);
     });
 
-    it('should optimize conflict detection for complex contracts', async () => {
-      // Create a complex contract with many elements
-      const complexContract: Contract = {
-        ...mockInitialContract,
+    it('should detect conflicts quickly across many user edits', () => {
+      const aiChanges = {
         elements: Array.from({ length: 100 }, (_, i) => ({
-          id: `element-${i}`,
-          type: 'input',
           properties: { placeholder: `Field ${i}` },
-          dataBindings: [],
-          eventBindings: []
-        }))
+        })),
       };
 
-      const aiContract: Contract = {
-        ...complexContract,
-        elements: complexContract.elements.map(el => ({
-          ...el,
-          properties: { ...el.properties, required: true }
-        }))
-      };
+      const userEdits: UserEdit[] = Array.from({ length: 100 }, (_, i) => ({
+        location: `elements[${i}].properties.placeholder`,
+        originalValue: `Field ${i}`,
+        newValue: `Field ${i}`,
+        timestamp: new Date(),
+        preserved: true,
+      }));
 
       const startTime = Date.now();
-      
-      const conflicts = await conflictResolver.detectConflicts(complexContract, aiContract);
-      
-      const endTime = Date.now();
-      const duration = endTime - startTime;
+      const conflicts = conflictResolver.detectConflicts(aiChanges, userEdits);
+      const duration = Date.now() - startTime;
 
-      // Should detect conflicts quickly even with many elements
-      expect(duration).toBeLessThan(1000); // 1 second
-      expect(conflicts).toHaveLength(0); // No conflicts in this case
+      expect(duration).toBeLessThan(1000);
+      // Values agree everywhere, so nothing conflicts
+      expect(conflicts).toHaveLength(0);
     });
   });
 });

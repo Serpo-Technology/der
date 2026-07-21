@@ -5,9 +5,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AIInterpreterService } from '../index';
-import { LLMConfig } from '../llm-client';
+import type { LLMClient } from '../llm-client';
 import { Answer } from '../../../types/blueprint';
 import { Contract } from '../../../types/contract';
+import { SAMPLE_TODO_CONTRACT } from '../../../test/llm-mocks';
 
 // Mock the dependencies
 vi.mock('../llm-client');
@@ -25,19 +26,16 @@ const mockRepository = {
   listComponents: vi.fn()
 } as any;
 
+// Mock LLM client injected into the service
+const mockLLMClient = {
+  sendMessage: vi.fn()
+} as unknown as LLMClient;
+
 describe('AIInterpreterService', () => {
   let service: AIInterpreterService;
-  let mockConfig: LLMConfig;
 
   beforeEach(() => {
-    mockConfig = {
-      provider: 'openai',
-      apiKey: 'test-key',
-      model: 'gpt-3.5-turbo',
-      temperature: 0.7
-    };
-    
-    service = new AIInterpreterService(mockConfig, mockRepository);
+    service = new AIInterpreterService(mockRepository, mockLLMClient);
     vi.clearAllMocks();
   });
 
@@ -249,7 +247,7 @@ describe('AIInterpreterService', () => {
   });
 
   describe('generateContract', () => {
-    it('should generate contract from blueprint', async () => {
+    it('should generate contract from blueprint through the LLM', async () => {
       const blueprint = {
         description: 'Test app',
         goal: 'Create app',
@@ -260,16 +258,21 @@ describe('AIInterpreterService', () => {
         userModifications: []
       };
 
-      // Mock repository responses
-      vi.mocked(mockRepository.queryUIElements).mockResolvedValue([]);
+      // Mock repository catalog lookup and the LLM contract response
       vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      vi.mocked(mockLLMClient.sendMessage).mockResolvedValue({
+        content: JSON.stringify(SAMPLE_TODO_CONTRACT)
+      });
 
       const contract = await service.generateContract(blueprint);
 
-      expect(contract.name).toBe('create-app');
+      expect(contract.name).toBe('todo-list');
       expect(contract.version).toBe('1.0.0');
-      expect(contract.elements).toEqual([]);
-      expect(contract.operations).toEqual([]);
+      expect(contract.elements).toHaveLength(4);
+      expect(contract.operations).toHaveLength(2);
+      expect(contract.metadata.description).toBe(blueprint.goal);
+      const messages = vi.mocked(mockLLMClient.sendMessage).mock.calls[0][0];
+      expect(messages.find(m => m.role === 'system')?.content).toContain('Contract JSON');
     });
 
     it('should apply user edits to generated contract', async () => {
@@ -290,9 +293,10 @@ describe('AIInterpreterService', () => {
         styleEdits: { theme: 'dark', customStyles: { color: 'blue' } }
       };
 
-      // Mock repository responses
-      vi.mocked(mockRepository.queryUIElements).mockResolvedValue([]);
       vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      vi.mocked(mockLLMClient.sendMessage).mockResolvedValue({
+        content: JSON.stringify(SAMPLE_TODO_CONTRACT)
+      });
 
       const contract = await service.generateContract(blueprint, userEdits);
 
@@ -300,6 +304,25 @@ describe('AIInterpreterService', () => {
       expect(contract.layout.properties.columns).toBe(2);
       expect(contract.styling.theme).toBe('dark');
       expect(contract.styling.customStyles?.color).toBe('blue');
+    });
+
+    it('should wrap LLM failures in a generation error', async () => {
+      const blueprint = {
+        description: 'Test app',
+        goal: 'Create app',
+        requiredCapabilities: [],
+        uiElements: [],
+        operations: [],
+        ambiguities: [],
+        userModifications: []
+      };
+
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      vi.mocked(mockLLMClient.sendMessage).mockResolvedValue({ content: 'not json' });
+
+      await expect(service.generateContract(blueprint)).rejects.toThrow(
+        'Failed to generate contract'
+      );
     });
   });
 
@@ -369,13 +392,15 @@ describe('AIInterpreterService', () => {
         }
       };
 
-      // Mock repository responses
-      vi.mocked(mockRepository.queryUIElements).mockResolvedValue([]);
+      // Mock repository catalog lookup and the LLM contract response
       vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      vi.mocked(mockLLMClient.sendMessage).mockResolvedValue({
+        content: JSON.stringify(SAMPLE_TODO_CONTRACT)
+      });
 
       const regeneratedContract = await service.regenerateWithPreservation(blueprint, existingContract, ['styling']);
 
-      expect(regeneratedContract.name).toBe('create-app'); // New contract name
+      expect(regeneratedContract.name).toBe('todo-list'); // Freshly generated contract
       expect(regeneratedContract.version).toBe('1.0.0');
     });
   });
@@ -406,13 +431,16 @@ describe('AIInterpreterService', () => {
         }
       };
 
-      // Mock repository responses
-      vi.mocked(mockRepository.queryUIElements).mockResolvedValue([]);
+      // Mock repository catalog lookup and the LLM contract response
       vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      vi.mocked(mockLLMClient.sendMessage).mockResolvedValue({
+        content: JSON.stringify(SAMPLE_TODO_CONTRACT)
+      });
 
       const { contract, conflicts } = await service.regenerateWithConflictDetection(blueprint, existingContract, ['styling']);
 
       expect(contract).toBeDefined();
+      expect(contract.name).toBe('todo-list');
       expect(conflicts).toBeInstanceOf(Array);
     });
   });

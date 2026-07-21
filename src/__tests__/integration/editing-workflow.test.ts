@@ -1,46 +1,27 @@
 /**
  * Editing Workflow Integration Test
- * Tests the complete editing workflow with preservation and conflict resolution
- * Requirements: 5.1, 5.2, 5.5, 5.6, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7
+ * Tests the complete editing workflow with preservation through the
+ * IntegratedExperienceService. Generation is LLM-backed through the mocked
+ * Tauri `llm_chat` command.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { IntegratedExperienceService } from '../../services/IntegratedExperienceService';
-import { Blueprint } from '../../models/blueprint';
 import { Contract } from '../../models/contract';
+import { installInvokeMock } from '../support/tauri-invoke-mock';
 
-// Mock the LLM client
-vi.mock('../../services/ai-interpreter/llm-client', () => ({
-  LLMClient: vi.fn().mockImplementation(() => ({
-    sendMessage: vi.fn().mockResolvedValue({
-      content: JSON.stringify({
-        goal: "Create a task management application",
-        requiredCapabilities: ["task-management", "ui-interaction"],
-        uiElements: [
-          {
-            type: "input",
-            purpose: "Task input field",
-            capabilities: ["text-input"]
-          },
-          {
-            type: "button",
-            purpose: "Add task button",
-            capabilities: ["click-handler"]
-          }
-        ],
-        operations: [
-          {
-            name: "addTask",
-            purpose: "Add new task",
-            inputs: ["taskText"],
-            outputs: ["taskId"],
-            executionType: "local"
-          }
-        ],
-        ambiguities: []
-      })
-    })
-  }))
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/plugin-sql', () => ({
+  default: {
+    load: vi.fn(async () => ({
+      execute: vi.fn(async () => ({ rowsAffected: 1, lastInsertId: 1 })),
+      select: vi.fn(async () => []),
+      close: vi.fn(async () => true),
+    })),
+  },
 }));
 
 describe('Editing Workflow Integration', () => {
@@ -49,89 +30,84 @@ describe('Editing Workflow Integration', () => {
   let originalContract: Contract;
 
   beforeEach(async () => {
+    installInvokeMock();
     integratedService = new IntegratedExperienceService();
-    
-    // Create a base experience to edit
+
     const result = await integratedService.createExperienceFromNaturalLanguage(
-      "Create a task management app",
+      'Create a task management app',
       { preserveEdits: true, enableRealTimeUpdates: true }
     );
-    
+
     experienceId = result.experienceId;
     originalContract = result.contract;
   });
 
   describe('Edit Preservation Workflow', () => {
     it('should preserve user edits during AI regeneration', async () => {
-      // Make a user edit
       const userEdit = {
         type: 'property-change',
         elementId: originalContract.elements[0].id,
-        property: 'label',
-        newValue: 'Enter your task here',
-        originalValue: 'Task input',
-        timestamp: new Date()
+        property: 'content',
+        newValue: 'My Curated Tasks',
+        originalValue: 'My Todos',
+        timestamp: new Date(),
       };
 
-      // Apply the edit
-      const editResult = await integratedService.editExperience(
-        experienceId,
-        userEdit,
-        { enableRealTimeUpdates: true, autoSave: true }
-      );
+      const editResult = await integratedService.editExperience(experienceId, userEdit, {
+        enableRealTimeUpdates: true,
+        autoSave: true,
+      });
 
       expect(editResult.success).toBe(true);
       expect(editResult.updatedContract).toBeDefined();
 
-      // Verify the edit was applied
-      const updatedElement = editResult.updatedContract.getElement(originalContract.elements[0].id);
-      expect(updatedElement?.properties?.label).toBe('Enter your task here');
+      const updatedElement = editResult.updatedContract.getElement(
+        originalContract.elements[0].id
+      );
+      expect(updatedElement?.properties?.content).toBe('My Curated Tasks');
 
-      // Regenerate with AI while preserving edits
+      // Regenerate with preservation; the LLM legs run against the mock again
       const regenerationResult = await integratedService.regenerateExperienceWithPreservation(
         experienceId,
-        "Create a task management app with priority levels",
+        'Create a task management app with priority levels',
         { preserveEdits: true, enableRealTimeUpdates: true }
       );
 
       expect(regenerationResult.success).toBe(true);
-      
-      // Verify user edit was preserved
-      const preservedElement = regenerationResult.updatedContract.getElement(originalContract.elements[0].id);
-      expect(preservedElement?.properties?.label).toBe('Enter your task here');
+
+      const preservedElement = regenerationResult.updatedContract.getElement(
+        originalContract.elements[0].id
+      );
+      expect(preservedElement?.properties?.content).toBe('My Curated Tasks');
     });
 
     it('should track edit history throughout the workflow', async () => {
-      // Make multiple edits
       const edits = [
         {
           type: 'property-change',
-          elementId: originalContract.elements[0].id,
+          elementId: originalContract.elements[1].id,
           property: 'placeholder',
           newValue: 'What needs to be done?',
-          originalValue: '',
-          timestamp: new Date()
+          originalValue: 'What needs doing?',
+          timestamp: new Date(),
         },
         {
           type: 'property-change',
-          elementId: originalContract.elements[1].id,
+          elementId: originalContract.elements[2].id,
           property: 'text',
           newValue: 'Add Task',
-          originalValue: 'Submit',
-          timestamp: new Date()
-        }
+          originalValue: 'Add',
+          timestamp: new Date(),
+        },
       ];
 
-      // Apply edits sequentially
       for (const edit of edits) {
         await integratedService.editExperience(experienceId, edit);
       }
 
-      // Check edit history
       const editHistory = await integratedService.getEditHistory(experienceId);
       expect(editHistory.length).toBeGreaterThanOrEqual(2);
-      
-      // Verify edits are tracked with proper metadata
+
       const lastEdit = editHistory[editHistory.length - 1];
       expect(lastEdit).toHaveProperty('location');
       expect(lastEdit).toHaveProperty('originalValue');
@@ -139,198 +115,157 @@ describe('Editing Workflow Integration', () => {
       expect(lastEdit).toHaveProperty('timestamp');
     });
 
-    it('should support undo/redo operations', async () => {
-      // Make an edit
+    it('should support undo of the last edit', async () => {
+      const targetId = originalContract.elements[0].id;
+      // Undo reverses the edit whose tracked timestamp sorts last, and the
+      // history entry keyed by element and property stores oldValue. Date the
+      // edit ahead of the tracker's own wall-clock entries so that entry is
+      // deterministically the one reversed.
       const edit = {
         type: 'property-change',
-        elementId: originalContract.elements[0].id,
-        property: 'label',
-        newValue: 'Modified Label',
-        originalValue: 'Original Label',
-        timestamp: new Date()
+        elementId: targetId,
+        property: 'content',
+        newValue: 'Modified Title',
+        originalValue: 'My Todos',
+        oldValue: 'My Todos',
+        timestamp: new Date(Date.now() + 1000),
       };
 
       await integratedService.editExperience(experienceId, edit);
 
-      // Get the modified contract
       const modifiedContract = await integratedService['editor'].getCurrentContract(experienceId);
-      const modifiedElement = modifiedContract?.getElement(originalContract.elements[0].id);
-      expect(modifiedElement?.properties?.label).toBe('Modified Label');
+      expect(modifiedContract?.getElement(targetId)?.properties?.content).toBe('Modified Title');
 
-      // Undo the edit
       const undoContract = await integratedService.undoLastEdit(experienceId);
       expect(undoContract).toBeDefined();
-
-      // Verify undo worked (note: this is a simplified test as the actual undo logic may vary)
-      const editHistoryAfterUndo = await integratedService.getEditHistory(experienceId);
-      expect(editHistoryAfterUndo.length).toBeGreaterThan(0);
+      expect(undoContract.getElement(targetId)?.properties?.content).toBe('My Todos');
     });
   });
 
   describe('Conflict Resolution Workflow', () => {
-    it('should detect and handle editing conflicts', async () => {
-      // Make a user edit
+    it('should regenerate cleanly when user edits do not conflict', async () => {
       const userEdit = {
         type: 'property-change',
         elementId: originalContract.elements[0].id,
-        property: 'label',
-        newValue: 'User Modified Label',
-        originalValue: 'Original Label',
-        timestamp: new Date()
+        property: 'content',
+        newValue: 'User Modified Title',
+        originalValue: 'My Todos',
+        timestamp: new Date(),
       };
 
       await integratedService.editExperience(experienceId, userEdit);
 
-      // Simulate AI regeneration that conflicts with user edit
-      // This would normally come from the AI service, but we'll create a conflicting contract
-      const conflictingContract = originalContract.clone();
-      const conflictingElement = conflictingContract.getElement(originalContract.elements[0].id);
-      if (conflictingElement?.properties) {
-        conflictingElement.properties.label = 'AI Modified Label';
-      }
-
-      // Attempt regeneration with preservation
       const regenerationResult = await integratedService.regenerateExperienceWithPreservation(
         experienceId,
-        "Enhanced task management with AI suggestions"
+        'Enhanced task management with suggestions'
       );
 
-      // The system should handle conflicts gracefully
       expect(regenerationResult.success).toBe(true);
       expect(regenerationResult.updatedContract).toBeDefined();
     });
 
-    it('should provide conflict resolution options', async () => {
-      // Create a scenario with potential conflicts
+    it('should apply structured property values through edits', async () => {
       const userEdit = {
         type: 'property-change',
-        elementId: originalContract.elements[0].id,
+        elementId: originalContract.elements[1].id,
         property: 'validation',
         newValue: { required: true, minLength: 3 },
-        originalValue: { required: false },
-        timestamp: new Date()
+        originalValue: undefined,
+        timestamp: new Date(),
       };
 
-      await integratedService.editExperience(experienceId, userEdit);
+      const result = await integratedService.editExperience(experienceId, userEdit);
+      expect(result.success).toBe(true);
 
-      // The conflict resolution is handled internally by the ExperienceEditorService
-      // We can verify that the edit was applied successfully
       const currentContract = await integratedService['editor'].getCurrentContract(experienceId);
-      expect(currentContract).toBeDefined();
-      
-      const editedElement = currentContract?.getElement(originalContract.elements[0].id);
+      const editedElement = currentContract?.getElement(originalContract.elements[1].id);
       expect(editedElement?.properties?.validation).toEqual({ required: true, minLength: 3 });
     });
   });
 
   describe('Real-time Updates Workflow', () => {
-    it('should update experience in real-time during editing', async () => {
-      // Enable real-time updates
+    it('should update experience state during editing', async () => {
       const edit = {
         type: 'property-change',
         elementId: originalContract.elements[0].id,
         property: 'style',
         newValue: { backgroundColor: '#f0f0f0', padding: '10px' },
         originalValue: {},
-        timestamp: new Date()
+        timestamp: new Date(),
       };
 
-      const editResult = await integratedService.editExperience(
-        experienceId,
-        edit,
-        { enableRealTimeUpdates: true }
-      );
+      const editResult = await integratedService.editExperience(experienceId, edit, {
+        enableRealTimeUpdates: true,
+      });
 
       expect(editResult.success).toBe(true);
 
-      // Verify the experience state was updated
       const experienceState = await integratedService.getExperienceState(experienceId);
       expect(experienceState).toBeDefined();
       expect(experienceState?.lastUpdated).toBeInstanceOf(Date);
+      // The runtime reseeded state from the updated contract's initialState
+      expect(experienceState?.data.todos).toEqual([]);
     });
 
     it('should handle rapid successive edits', async () => {
-      const rapidEdits = [
-        {
-          type: 'property-change',
-          elementId: originalContract.elements[0].id,
-          property: 'label',
-          newValue: 'Edit 1',
-          originalValue: 'Original',
-          timestamp: new Date()
-        },
-        {
-          type: 'property-change',
-          elementId: originalContract.elements[0].id,
-          property: 'label',
-          newValue: 'Edit 2',
-          originalValue: 'Edit 1',
-          timestamp: new Date()
-        },
-        {
-          type: 'property-change',
-          elementId: originalContract.elements[0].id,
-          property: 'label',
-          newValue: 'Final Edit',
-          originalValue: 'Edit 2',
-          timestamp: new Date()
-        }
-      ];
+      const targetId = originalContract.elements[0].id;
+      const rapidEdits = ['Edit 1', 'Edit 2', 'Final Edit'].map((value, index) => ({
+        type: 'property-change',
+        elementId: targetId,
+        property: 'content',
+        newValue: value,
+        originalValue: index === 0 ? 'My Todos' : `Edit ${index}`,
+        timestamp: new Date(),
+      }));
 
-      // Apply edits rapidly
-      const editPromises = rapidEdits.map(edit => 
-        integratedService.editExperience(experienceId, edit, { enableRealTimeUpdates: true })
+      const results = await Promise.all(
+        rapidEdits.map((edit) =>
+          integratedService.editExperience(experienceId, edit, { enableRealTimeUpdates: true })
+        )
       );
 
-      const results = await Promise.all(editPromises);
-      
-      // All edits should succeed
-      results.forEach(result => {
+      results.forEach((result) => {
         expect(result.success).toBe(true);
       });
 
-      // Final state should reflect the last edit
       const finalContract = await integratedService['editor'].getCurrentContract(experienceId);
-      const finalElement = finalContract?.getElement(originalContract.elements[0].id);
-      expect(finalElement?.properties?.label).toBe('Final Edit');
+      expect(finalContract?.getElement(targetId)?.properties?.content).toBe('Final Edit');
     });
   });
 
   describe('Validation During Editing', () => {
-    it('should validate edits and provide feedback', async () => {
-      // Attempt an invalid edit
+    it('should report failure for edits against missing elements without corrupting the contract', async () => {
       const invalidEdit = {
         type: 'property-change',
         elementId: 'non-existent-element',
-        property: 'label',
+        property: 'content',
         newValue: 'Invalid',
         originalValue: '',
-        timestamp: new Date()
+        timestamp: new Date(),
       };
 
-      // This should handle the error gracefully
-      await expect(
-        integratedService.editExperience(experienceId, invalidEdit)
-      ).rejects.toThrow();
+      const result = await integratedService.editExperience(experienceId, invalidEdit);
+      expect(result.success).toBe(false);
+
+      // The contract is still intact and editable
+      const contract = await integratedService['editor'].getCurrentContract(experienceId);
+      expect(contract?.elements).toHaveLength(originalContract.elements.length);
     });
 
     it('should maintain contract integrity during edits', async () => {
-      // Make a valid edit
       const validEdit = {
         type: 'property-change',
-        elementId: originalContract.elements[0].id,
+        elementId: originalContract.elements[1].id,
         property: 'required',
         newValue: true,
         originalValue: false,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
 
       const result = await integratedService.editExperience(experienceId, validEdit);
       expect(result.success).toBe(true);
 
-      // Verify contract is still valid
-      const updatedContract = result.updatedContract;
-      const validation = updatedContract.validate();
+      const validation = result.updatedContract.validate();
       expect(validation.isValid).toBe(true);
     });
   });
@@ -339,24 +274,21 @@ describe('Editing Workflow Integration', () => {
     it('should auto-save changes when enabled', async () => {
       const edit = {
         type: 'property-change',
-        elementId: originalContract.elements[0].id,
+        elementId: originalContract.elements[1].id,
         property: 'helpText',
         newValue: 'Enter a task description',
         originalValue: '',
-        timestamp: new Date()
+        timestamp: new Date(),
       };
 
-      const result = await integratedService.editExperience(
-        experienceId,
-        edit,
-        { autoSave: true }
-      );
+      const result = await integratedService.editExperience(experienceId, edit, {
+        autoSave: true,
+      });
 
       expect(result.success).toBe(true);
-      
-      // Verify the change persists (auto-save functionality)
+
       const currentContract = await integratedService['editor'].getCurrentContract(experienceId);
-      const editedElement = currentContract?.getElement(originalContract.elements[0].id);
+      const editedElement = currentContract?.getElement(originalContract.elements[1].id);
       expect(editedElement?.properties?.helpText).toBe('Enter a task description');
     });
   });

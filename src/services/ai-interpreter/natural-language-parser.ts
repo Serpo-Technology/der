@@ -3,9 +3,12 @@
  * Requirements: 1.1, 1.2, 1.4
  */
 
-import { ParsedIntent, UIElementRequirement, OperationRequirement, Ambiguity, Question } from '../../types/blueprint';
+import { ParsedIntent, Question } from '../../types/blueprint';
 import { ValidationResult, ValidationError, ValidationWarning } from '../../types/contract';
 import { LLMClient, LLMMessage } from './llm-client';
+import { ParsedIntentSchema } from '../../schemas/blueprint';
+import { generateValidatedJson } from './llm-json';
+import { BUILTIN_OPERATIONS, ELEMENT_CATALOG } from '../operations/registry';
 
 export class NaturalLanguageParser {
   private llmClient: LLMClient;
@@ -15,52 +18,23 @@ export class NaturalLanguageParser {
   }
 
   async extractIntent(description: string): Promise<ParsedIntent> {
-    const systemPrompt = this.getIntentExtractionPrompt();
-    const userPrompt = `Please analyze this user description and extract the structured intent:
-
-"${description}"
-
-Return a JSON object with the following structure:
-{
-  "goal": "clear statement of what the user wants to achieve",
-  "requiredCapabilities": ["list", "of", "required", "capabilities"],
-  "uiElements": [
-    {
-      "type": "element type (e.g., button, input, list, chart)",
-      "purpose": "what this element is for",
-      "capabilities": ["required", "capabilities"]
-    }
-  ],
-  "operations": [
-    {
-      "name": "operation name",
-      "purpose": "what this operation does",
-      "inputs": ["input", "parameters"],
-      "outputs": ["output", "data"],
-      "executionType": "remote|local|repository"
-    }
-  ],
-  "ambiguities": [
-    {
-      "id": "unique_id",
-      "description": "what is ambiguous",
-      "options": ["possible", "interpretations"],
-      "question": "clarifying question to ask user"
-    }
-  ]
-}`;
-
     const messages: LLMMessage[] = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
+      { role: 'system', content: this.getIntentExtractionPrompt() },
+      {
+        role: 'user',
+        content: `Analyze this description and return the structured intent JSON:\n\n"${description}"`,
+      },
     ];
 
     try {
-      const response = await this.llmClient.sendMessage(messages);
-      const parsedIntent = this.parseIntentResponse(response.content);
-      return parsedIntent;
+      return await generateValidatedJson(this.llmClient, messages, ParsedIntentSchema, {
+        label: 'Blueprint',
+        maxTokens: 4096,
+      });
     } catch (error) {
-      throw new Error(`Failed to extract intent: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to extract intent: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -120,76 +94,30 @@ Return a JSON object with the following structure:
   }
 
   private getIntentExtractionPrompt(): string {
-    return `You are an expert system that analyzes user descriptions of desired applications and extracts structured intent.
+    const operationNames = Object.keys(BUILTIN_OPERATIONS).join(', ');
+    const elementTypes = Object.keys(ELEMENT_CATALOG).join(', ');
+    return `You analyze a user's description of a small desktop app and extract structured intent.
 
-Your task is to:
-1. Identify the main goal the user wants to achieve
-2. Determine what UI elements would be needed
-3. Identify what operations/functionality would be required
-4. Detect any ambiguities that need clarification
+Return one JSON object only (no prose, no code fences) with exactly this shape:
+{
+  "goal": "one sentence stating what the user wants",
+  "requiredCapabilities": ["specific capability tags like data-entry, list-display, http-fetch"],
+  "uiElements": [
+    { "type": "element type", "purpose": "what it is for", "capabilities": ["tags"] }
+  ],
+  "operations": [
+    { "name": "operation name", "purpose": "what it does", "inputs": ["parameter names"], "outputs": ["output names"], "executionType": "builtin" }
+  ],
+  "ambiguities": [
+    { "id": "unique_id", "description": "what is unclear", "options": ["interpretation A", "interpretation B"], "question": "clarifying question" }
+  ]
+}
 
 Guidelines:
-- UI element types should be common web/desktop elements: button, input, textarea, select, checkbox, radio, list, table, chart, image, video, etc.
-- Operation execution types:
-  - "remote": API calls, web services, external data sources
-  - "local": file system operations, device capabilities, local computations
-  - "repository": operations provided by the component repository
-- Identify ambiguities when the user's intent could be interpreted multiple ways
-- Required capabilities should be specific and actionable (e.g., "data-visualization", "file-upload", "user-authentication")
-
-Always return valid JSON that matches the specified structure exactly.`;
-  }
-
-  private parseIntentResponse(response: string): ParsedIntent {
-    try {
-      // Extract JSON from response (handle cases where LLM adds extra text)
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in LLM response');
-      }
-
-      const parsed = JSON.parse(jsonMatch[0]);
-      
-      // Validate and normalize the parsed response
-      return {
-        goal: parsed.goal || '',
-        requiredCapabilities: Array.isArray(parsed.requiredCapabilities) ? parsed.requiredCapabilities : [],
-        uiElements: this.normalizeUIElements(parsed.uiElements || []),
-        operations: this.normalizeOperations(parsed.operations || []),
-        ambiguities: this.normalizeAmbiguities(parsed.ambiguities || [])
-      };
-    } catch (error) {
-      throw new Error(`Failed to parse LLM response: ${error instanceof Error ? error.message : 'Invalid JSON'}`);
-    }
-  }
-
-  private normalizeUIElements(elements: any[]): UIElementRequirement[] {
-    return elements.map((element, _index) => ({
-      type: element.type || 'unknown',
-      purpose: element.purpose || '',
-      properties: element.properties || {},
-      capabilities: Array.isArray(element.capabilities) ? element.capabilities : []
-    }));
-  }
-
-  private normalizeOperations(operations: any[]): OperationRequirement[] {
-    return operations.map((operation, index) => ({
-      name: operation.name || `operation_${index}`,
-      purpose: operation.purpose || '',
-      inputs: Array.isArray(operation.inputs) ? operation.inputs : [],
-      outputs: Array.isArray(operation.outputs) ? operation.outputs : [],
-      executionType: ['remote', 'local', 'repository'].includes(operation.executionType) 
-        ? operation.executionType 
-        : 'remote'
-    }));
-  }
-
-  private normalizeAmbiguities(ambiguities: any[]): Ambiguity[] {
-    return ambiguities.map((ambiguity, index) => ({
-      id: ambiguity.id || `ambiguity_${index}`,
-      description: ambiguity.description || '',
-      options: Array.isArray(ambiguity.options) ? ambiguity.options : [],
-      question: ambiguity.question || ''
-    }));
+- Preferred element types (rendered natively): ${elementTypes}. Plain HTML tag names are also accepted.
+- Built-in operations exist for common behavior: ${operationNames}. When one fits, use its exact name and executionType "builtin".
+- Other executionType values: "remote" for calling an external HTTP API, "local" for custom in-app computation.
+- Only list ambiguities that genuinely change what should be built; do not invent questions for clear requests.
+- Keep the design minimal: the fewest elements and operations that satisfy the request.`;
   }
 }

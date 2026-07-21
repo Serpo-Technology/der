@@ -1,14 +1,19 @@
 /**
  * Contract Builder Tests
- * Requirements: 2.1, 2.2, 2.5, 2.6
+ *
+ * The builder prompts the LLM with a catalog-constrained system prompt,
+ * validates the response against ContractSchema (one repair round), and
+ * post-processes ids, element types, and operation execution types.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ContractBuilder } from '../contract-builder';
+import { LLMClient } from '../llm-client';
 import { ComponentRepository } from '../../../types/repository';
-import { UIElementManifest, OperationManifest } from '../../../types/component';
+import { OperationManifest } from '../../../types/component';
 import { Blueprint } from '../../../types/blueprint';
 import { Contract } from '../../../types/contract';
+import { SAMPLE_TODO_CONTRACT } from '../../../test/llm-mocks';
 
 // Mock repository
 const mockRepository = {
@@ -21,345 +26,370 @@ const mockRepository = {
   listComponents: vi.fn()
 } as unknown as ComponentRepository;
 
+// Mock LLM client
+const mockLLMClient = {
+  sendMessage: vi.fn()
+} as unknown as LLMClient;
+
+const blueprint: Blueprint = {
+  description: 'A simple todo application',
+  goal: 'Create a todo list application',
+  requiredCapabilities: ['task-management'],
+  uiElements: [
+    { type: 'input', purpose: 'Add new tasks', capabilities: ['text-input'] },
+    { type: 'button', purpose: 'Submit task', capabilities: ['click-action'] }
+  ],
+  operations: [
+    {
+      name: 'todos.add',
+      purpose: 'Add a new task',
+      inputs: ['title'],
+      outputs: ['todos'],
+      executionType: 'builtin'
+    }
+  ],
+  ambiguities: [],
+  userModifications: []
+};
+
+/** Minimal valid contract JSON the mocked LLM can return, with overrides. */
+function contractJson(overrides: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    name: 'sample-app',
+    version: '1.0.0',
+    initialState: {},
+    elements: [
+      { id: 'title', type: 'text', properties: { content: 'Hi' }, dataBindings: [], eventBindings: [] }
+    ],
+    operations: [],
+    layout: { type: 'flex', properties: {} },
+    styling: { theme: 'default' },
+    ...overrides
+  });
+}
+
+function mockLLMResponse(content: string): void {
+  vi.mocked(mockLLMClient.sendMessage).mockResolvedValueOnce({ content });
+}
+
 describe('ContractBuilder', () => {
   let builder: ContractBuilder;
 
   beforeEach(() => {
-    builder = new ContractBuilder(mockRepository);
     vi.clearAllMocks();
+    builder = new ContractBuilder(mockRepository, mockLLMClient);
+    vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe('generateFromBlueprint', () => {
-    it('should generate contract from blueprint with UI elements and operations', async () => {
-      const blueprint: Blueprint = {
-        description: 'A simple todo application',
-        goal: 'Create a todo list application',
-        requiredCapabilities: ['task-management'],
-        uiElements: [
-          {
-            type: 'input',
-            purpose: 'Add new tasks',
-            capabilities: ['text-input']
-          },
-          {
-            type: 'button',
-            purpose: 'Submit task',
-            capabilities: ['click-action']
-          }
-        ],
-        operations: [
-          {
-            name: 'addTask',
-            purpose: 'Add a new task',
-            inputs: ['taskText'],
-            outputs: ['taskId'],
-            executionType: 'local'
-          }
-        ],
-        ambiguities: [],
-        userModifications: []
-      };
-
-      // Mock repository responses
-      const mockUIManifest: UIElementManifest = {
-        id: 'input-1',
-        name: 'input',
-        version: '1.0.0',
-        type: 'ui-element',
-        description: 'Text input element',
-        capabilities: ['text-input'],
-        dependencies: [],
-        schema: { type: 'object', properties: { placeholder: { type: 'string' } } },
-        inputs: [],
-        outputs: [{ name: 'value', type: 'string' }],
-        renderFunction: 'renderInput',
-        styleSchema: { type: 'object' }
-      };
-
-      const mockButtonManifest: UIElementManifest = {
-        id: 'button-1',
-        name: 'button',
-        version: '1.0.0',
-        type: 'ui-element',
-        description: 'Button element',
-        capabilities: ['click-action'],
-        dependencies: [],
-        schema: { type: 'object', properties: { text: { type: 'string' } } },
-        inputs: [],
-        outputs: [{ name: 'click', type: 'event' }],
-        renderFunction: 'renderButton',
-        styleSchema: { type: 'object' }
-      };
-
-      const mockOperationManifest: OperationManifest = {
-        id: 'add-task-1',
-        name: 'addTask',
-        version: '1.0.0',
-        type: 'operation',
-        description: 'Add task operation',
-        capabilities: ['task-management'],
-        dependencies: [],
-        schema: { type: 'object' },
-        inputs: [{ name: 'taskText', type: 'string', required: true }],
-        outputs: [{ name: 'taskId', type: 'string' }],
-        executionType: 'local',
-        implementation: { type: 'local', code: 'function addTask() {}' }
-      };
-
-      vi.mocked(mockRepository.queryUIElements)
-        .mockResolvedValueOnce([mockUIManifest])
-        .mockResolvedValueOnce([mockButtonManifest]);
-
-      vi.mocked(mockRepository.queryOperations)
-        .mockResolvedValueOnce([mockOperationManifest]);
+    it('should generate a contract from the LLM response', async () => {
+      mockLLMResponse(JSON.stringify(SAMPLE_TODO_CONTRACT));
 
       const contract = await builder.generateFromBlueprint(blueprint);
 
-      expect(contract.name).toBe('create-a-todo');
+      expect(contract.name).toBe('todo-list');
       expect(contract.version).toBe('1.0.0');
-      expect(contract.elements).toHaveLength(2);
-      expect(contract.operations).toHaveLength(1);
+      expect(contract.elements).toHaveLength(4);
+      expect(contract.operations).toHaveLength(2);
+      expect(contract.operations.every(op => op.executionType === 'builtin')).toBe(true);
       expect(contract.layout.type).toBe('flex');
       expect(contract.styling.theme).toBe('default');
-      expect(contract.metadata.description).toBe(blueprint.description);
+      expect(mockLLMClient.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockLLMClient.sendMessage).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ jsonMode: true })
+      );
     });
 
-    it('should create fallback elements when no manifests found', async () => {
-      const blueprint: Blueprint = {
-        description: 'Test app',
-        goal: 'Create test app',
-        requiredCapabilities: [],
-        uiElements: [
-          {
-            type: 'unknown-element',
-            purpose: 'Test element',
-            capabilities: []
-          }
-        ],
-        operations: [],
-        ambiguities: [],
-        userModifications: []
+    it('should prompt with the builtin catalog and repository operations', async () => {
+      const customOp: OperationManifest = {
+        id: 'sentiment-1',
+        name: 'text.sentiment',
+        version: '1.0.0',
+        type: 'operation',
+        description: 'Scores text sentiment',
+        capabilities: ['text-analysis'],
+        dependencies: [],
+        schema: { type: 'object' },
+        inputs: [{ name: 'text', type: 'string', required: true }],
+        outputs: [{ name: 'score', type: 'number' }],
+        executionType: 'local',
+        implementation: { type: 'local', code: 'return { score: 1 };' }
       };
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([customOp]);
+      mockLLMResponse(JSON.stringify(SAMPLE_TODO_CONTRACT));
 
-      // Mock empty repository responses
-      vi.mocked(mockRepository.queryUIElements).mockResolvedValue([]);
+      await builder.generateFromBlueprint(blueprint);
+
+      expect(mockRepository.queryOperations).toHaveBeenCalledWith({});
+      const messages = vi.mocked(mockLLMClient.sendMessage).mock.calls[0][0];
+      const system = messages.find(m => m.role === 'system')!;
+      expect(system.content).toContain('Contract JSON');
+      expect(system.content).toContain('todos.add');
+      expect(system.content).toContain('REGISTERED CUSTOM OPERATIONS');
+      expect(system.content).toContain('text.sentiment');
+      const user = messages.find(m => m.role === 'user')!;
+      expect(user.content).toContain(blueprint.goal);
+    });
+
+    it('should still generate when the repository is unavailable', async () => {
+      vi.mocked(mockRepository.queryOperations).mockRejectedValue(new Error('no repository'));
+      mockLLMResponse(JSON.stringify(SAMPLE_TODO_CONTRACT));
 
       const contract = await builder.generateFromBlueprint(blueprint);
 
-      expect(contract.elements).toHaveLength(1);
-      expect(contract.elements[0].type).toBe('unknown-element');
-      expect(contract.elements[0].properties.placeholder).toBe(true);
+      expect(contract.name).toBe('todo-list');
     });
 
-    it('should create placeholder operations when no manifests found', async () => {
-      const blueprint: Blueprint = {
-        description: 'Test app',
-        goal: 'Create test app',
-        requiredCapabilities: [],
-        uiElements: [],
-        operations: [
-          {
-            name: 'unknownOperation',
-            purpose: 'Test operation',
-            inputs: ['input1'],
-            outputs: ['output1'],
-            executionType: 'local'
-          }
-        ],
-        ambiguities: [],
-        userModifications: []
-      };
-
-      // Mock empty repository responses
-      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+    it('should auto-fill metadata with the blueprint goal as description', async () => {
+      mockLLMResponse(JSON.stringify(SAMPLE_TODO_CONTRACT));
 
       const contract = await builder.generateFromBlueprint(blueprint);
 
-      expect(contract.operations).toHaveLength(1);
-      expect(contract.operations[0].operationName).toBe('unknownOperation');
+      expect(contract.metadata.description).toBe(blueprint.goal);
+      expect(contract.metadata.createdAt).toBeInstanceOf(Date);
+      expect(contract.metadata.updatedAt).toBeInstanceOf(Date);
+      expect(contract.metadata.version).toBe('1.0.0');
     });
 
-    it('should generate appropriate styling based on capabilities', async () => {
-      const modernBlueprint: Blueprint = {
-        description: 'Modern app',
-        goal: 'Create modern app',
-        requiredCapabilities: ['modern-ui', 'minimal-design'],
-        uiElements: [],
-        operations: [],
-        ambiguities: [],
-        userModifications: []
-      };
+    it('should recover with one repair round when the first response is malformed', async () => {
+      mockLLMResponse('Sorry, here is prose without JSON');
+      mockLLMResponse(JSON.stringify(SAMPLE_TODO_CONTRACT));
 
-      const darkBlueprint: Blueprint = {
-        description: 'Dark app',
-        goal: 'Create dark app',
-        requiredCapabilities: ['dark-theme'],
-        uiElements: [],
-        operations: [],
-        ambiguities: [],
-        userModifications: []
-      };
+      const contract = await builder.generateFromBlueprint(blueprint);
 
-      const modernContract = await builder.generateFromBlueprint(modernBlueprint);
-      const darkContract = await builder.generateFromBlueprint(darkBlueprint);
+      expect(contract.name).toBe('todo-list');
+      expect(mockLLMClient.sendMessage).toHaveBeenCalledTimes(2);
+      const repairMessages = vi.mocked(mockLLMClient.sendMessage).mock.calls[1][0];
+      expect(repairMessages[repairMessages.length - 2].role).toBe('assistant');
+      const repairRequest = repairMessages[repairMessages.length - 1];
+      expect(repairRequest.role).toBe('user');
+      expect(repairRequest.content).toContain('previous response had problems');
+    });
 
-      expect(modernContract.styling.theme).toBe('modern');
-      expect(darkContract.styling.theme).toBe('dark');
+    it('should throw after a failed repair round', async () => {
+      mockLLMResponse('not json');
+      mockLLMResponse('still not json');
+
+      await expect(builder.generateFromBlueprint(blueprint)).rejects.toThrow(
+        'Contract generation failed after a repair attempt'
+      );
+      expect(mockLLMClient.sendMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('should rename duplicate ids with numeric suffixes', async () => {
+      mockLLMResponse(
+        contractJson({
+          elements: [
+            { id: 'dup', type: 'text', properties: {}, dataBindings: [], eventBindings: [] },
+            { id: 'dup', type: 'text', properties: {}, dataBindings: [], eventBindings: [] }
+          ]
+        })
+      );
+
+      const contract = await builder.generateFromBlueprint(blueprint);
+
+      expect(contract.elements.map(el => el.id)).toEqual(['dup', 'dup-2']);
+      expect(console.warn).toHaveBeenCalled();
+    });
+
+    it('should render unknown element types as containers and keep intrinsic tags', async () => {
+      mockLLMResponse(
+        contractJson({
+          elements: [
+            { id: 'weird', type: 'sparkle-widget', properties: {}, dataBindings: [], eventBindings: [] },
+            { id: 'markup', type: 'DIV', properties: {}, dataBindings: [], eventBindings: [] },
+            { id: 'plain', type: 'button', properties: {}, dataBindings: [], eventBindings: [] }
+          ]
+        })
+      );
+
+      const contract = await builder.generateFromBlueprint(blueprint);
+
+      expect(contract.elements.map(el => el.type)).toEqual(['container', 'div', 'button']);
+      expect(console.warn).toHaveBeenCalled();
+    });
+
+    it('should resolve operation execution types and drop unrunnable operations', async () => {
+      mockLLMResponse(
+        contractJson({
+          elements: [
+            {
+              id: 'btn',
+              type: 'button',
+              properties: {},
+              dataBindings: [],
+              eventBindings: [
+                { event: 'click', operationId: 'op-ghost' },
+                { event: 'click', operationId: 'op-local' }
+              ]
+            }
+          ],
+          operations: [
+            {
+              id: 'op-builtin',
+              operationName: 'todos.add',
+              executionType: 'local',
+              implementation: { type: 'local', code: 'ignored' },
+              inputs: [],
+              outputs: [],
+              triggers: []
+            },
+            {
+              id: 'op-local',
+              operationName: 'custom.compute',
+              implementation: { type: 'local', code: 'return {};' },
+              inputs: [],
+              outputs: [],
+              triggers: []
+            },
+            {
+              id: 'op-remote',
+              operationName: 'fetch.data',
+              implementation: { type: 'remote', endpoint: 'https://api.example.com' },
+              inputs: [],
+              outputs: [],
+              triggers: []
+            },
+            {
+              id: 'op-ghost',
+              operationName: 'mystery.op',
+              inputs: [],
+              outputs: [],
+              triggers: []
+            }
+          ]
+        })
+      );
+
+      const contract = await builder.generateFromBlueprint(blueprint);
+
+      expect(contract.operations.map(op => op.id)).toEqual(['op-builtin', 'op-local', 'op-remote']);
+      const [builtinOp, localOp, remoteOp] = contract.operations;
+      expect(builtinOp.executionType).toBe('builtin');
+      expect(builtinOp.implementation).toBeUndefined();
+      expect(localOp.executionType).toBe('local');
+      expect(localOp.implementation?.code).toBe('return {};');
+      expect(remoteOp.executionType).toBe('remote');
+      expect(remoteOp.implementation?.endpoint).toBe('https://api.example.com');
+      // Event bindings pointing at the dropped operation are stripped.
+      expect(contract.elements[0].eventBindings).toEqual([
+        { event: 'click', operationId: 'op-local' }
+      ]);
+      expect(console.warn).toHaveBeenCalled();
+    });
+
+    it('should convert legacy event triggers into event bindings', async () => {
+      mockLLMResponse(
+        contractJson({
+          elements: [
+            { id: 'btn', type: 'button', properties: {}, dataBindings: [], eventBindings: [] }
+          ],
+          operations: [
+            {
+              id: 'op-1',
+              operationName: 'todos.add',
+              executionType: 'builtin',
+              inputs: [],
+              outputs: [],
+              triggers: [{ type: 'event', parameters: { elementId: 'btn', eventType: 'click' } }]
+            }
+          ]
+        })
+      );
+
+      const contract = await builder.generateFromBlueprint(blueprint);
+
+      expect(contract.elements[0].eventBindings).toEqual([{ event: 'click', operationId: 'op-1' }]);
+      expect(contract.operations[0].triggers).toEqual([]);
     });
   });
 
   describe('validateContract', () => {
-    it('should validate complete contract successfully', () => {
-      const contract: Contract = {
-        name: 'test-contract',
-        version: '1.0.0',
-        elements: [
-          {
-            id: 'element1',
-            type: 'input',
-            properties: {},
-            dataBindings: [],
-            eventBindings: [],
-            children: []
-          }
-        ],
-        operations: [
-          {
-            id: 'operation1',
-            operationName: 'testOp',
-            inputs: [],
-            outputs: [],
-            triggers: []
-          }
-        ],
-        layout: { type: 'flex', properties: {} },
-        styling: { theme: 'default' },
-        metadata: {
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          version: '1.0.0'
+    const validContract: Contract = {
+      name: 'test-contract',
+      version: '1.0.0',
+      elements: [
+        {
+          id: 'element1',
+          type: 'input',
+          properties: {},
+          dataBindings: [],
+          eventBindings: [],
+          children: []
         }
-      };
+      ],
+      operations: [
+        {
+          id: 'operation1',
+          operationName: 'testOp',
+          inputs: [],
+          outputs: [],
+          triggers: []
+        }
+      ],
+      layout: { type: 'flex', properties: {} },
+      styling: { theme: 'default' },
+      metadata: {
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: '1.0.0'
+      }
+    };
 
-      const result = builder.validateContract(contract);
+    it('should validate complete contract successfully', () => {
+      const result = builder.validateContract(validContract);
 
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
 
+    it('should accept a contract model exposing toObject', () => {
+      const model = { toObject: () => validContract };
+
+      const result = builder.validateContract(model);
+
+      expect(result.isValid).toBe(true);
+    });
+
     it('should detect missing required fields', () => {
-      const contract: Contract = {
+      const result = builder.validateContract({
         name: '',
-        version: '',
         elements: [],
-        operations: [],
-        layout: { type: 'flex', properties: {} },
-        styling: { theme: 'default' },
-        metadata: {
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          version: '1.0.0'
-        }
-      };
-
-      const result = builder.validateContract(contract);
+        operations: []
+      });
 
       expect(result.isValid).toBe(false);
-      expect(result.errors.some(e => e.code === 'MISSING_NAME')).toBe(true);
-      expect(result.errors.some(e => e.code === 'MISSING_VERSION')).toBe(true);
-      expect(result.warnings.some(w => w.code === 'NO_ELEMENTS')).toBe(true);
+      expect(result.errors.some(e => e.path === 'name')).toBe(true);
+      expect(result.errors.some(e => e.path === 'elements')).toBe(true);
     });
 
-    it('should detect invalid element properties', () => {
+    it('should detect event bindings that reference unknown operations', () => {
       const contract: Contract = {
-        name: 'test-contract',
-        version: '1.0.0',
-        elements: [
-          {
-            id: '',
-            type: '',
-            properties: {},
-            dataBindings: [],
-            eventBindings: [],
-            children: []
-          }
-        ],
-        operations: [],
-        layout: { type: 'flex', properties: {} },
-        styling: { theme: 'default' },
-        metadata: {
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          version: '1.0.0'
-        }
-      };
-
-      const result = builder.validateContract(contract);
-
-      expect(result.isValid).toBe(false);
-      expect(result.errors.some(e => e.code === 'MISSING_ELEMENT_ID')).toBe(true);
-      expect(result.errors.some(e => e.code === 'MISSING_ELEMENT_TYPE')).toBe(true);
-    });
-
-    it('should detect invalid binding references', () => {
-      const contract: Contract = {
-        name: 'test-contract',
-        version: '1.0.0',
+        ...validContract,
         elements: [
           {
             id: 'element1',
-            type: 'input',
+            type: 'button',
             properties: {},
-            dataBindings: [
-              {
-                property: 'value',
-                source: 'operation' as const,
-                sourceId: 'nonexistent-operation'
-              }
-            ],
-            eventBindings: [
-              {
-                event: 'click',
-                operationId: 'nonexistent-operation'
-              }
-            ],
+            dataBindings: [],
+            eventBindings: [{ event: 'click', operationId: 'nonexistent-operation' }],
             children: []
           }
-        ],
-        operations: [
-          {
-            id: 'operation1',
-            operationName: 'testOp',
-            inputs: [
-              {
-                name: 'input1',
-                source: 'ui-element' as const,
-                sourceId: 'nonexistent-element'
-              }
-            ],
-            outputs: [
-              {
-                name: 'output1',
-                target: 'ui-element' as const,
-                targetId: 'nonexistent-element'
-              }
-            ],
-            triggers: []
-          }
-        ],
-        layout: { type: 'flex', properties: {} },
-        styling: { theme: 'default' },
-        metadata: {
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          version: '1.0.0'
-        }
+        ]
       };
 
       const result = builder.validateContract(contract);
 
       expect(result.isValid).toBe(false);
-      expect(result.errors.filter(e => e.code === 'INVALID_BINDING_REFERENCE')).toHaveLength(4);
+      const unknown = result.errors.filter(e => e.code === 'UNKNOWN_OPERATION');
+      expect(unknown).toHaveLength(1);
+      expect(unknown[0].message).toContain('nonexistent-operation');
     });
   });
 });

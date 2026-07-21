@@ -1,12 +1,19 @@
 /**
- * Component Renderer - Renders individual UI elements from contracts
- * Requirements: 3.1, 3.2, 9.1
+ * Component Renderer - Renders individual UI elements from contracts.
+ *
+ * Conventions the renderer implements:
+ * - input-like elements are auto-controlled: their value lives in state under
+ *   `element_${id}` and every keystroke writes it back;
+ * - a `list` element with children repeats them per entry of its bound
+ *   `items` array, exposing the entry to bindings with source 'item';
+ * - event bindings call operations with the current item as event context.
  */
 
 import React from 'react';
 import { UIElement, DataBinding, EventBinding } from '../../types/contract';
 import { ExperienceState } from '../../types/experience';
-// ExperienceStateManager and OperationExecutor imports removed as they're not used
+import { getValueAtPath } from '../../services/operations/registry';
+import type { EventContext } from './OperationExecutor';
 
 // Standard UI component registry
 const UI_COMPONENTS = {
@@ -20,30 +27,54 @@ const UI_COMPONENTS = {
   'link': LinkComponent
 };
 
-// ComponentRendererProps interface removed as it's not used
 // Supported intrinsic HTML tags for 1:1 contract rendering
 const INTRINSIC_TAGS = new Set([
   'div','span','p','button','input','form','ul','ol','li','img','a','label','section','header','footer','main','nav','article','aside','h1','h2','h3','h4','h5','h6','textarea','select','option'
 ]);
 
-export class ComponentRenderer {
-  // No constructor parameters needed as this class is stateless
+const INPUT_LIKE_TYPES = new Set(['input', 'textarea', 'select']);
 
+export interface ItemScope {
+  item: unknown;
+  index: number;
+}
+
+export interface RenderOptions {
+  /** Writes an element's current value into state (`element_${id}`). */
+  setElementValue?: (elementId: string, value: unknown) => void;
+  /** The list-item scope this element renders inside, if any. */
+  scope?: ItemScope;
+}
+
+export type OperationExecuteHandler = (
+  operationId: string,
+  eventContext: EventContext
+) => Promise<void>;
+
+export class ComponentRenderer {
   renderUIElement(
     element: UIElement,
     experienceState: ExperienceState,
-    onOperationExecute: (operationId: string, inputs: any[]) => Promise<void>
+    onOperationExecute: OperationExecuteHandler,
+    options: RenderOptions = {}
   ): React.ComponentType {
     return () => {
-      const resolvedProps = this.resolveDataBindings(element, experienceState);
-      const eventHandlers = this.createEventHandlers(element, onOperationExecute);
+      const resolvedProps = this.resolveDataBindings(element, experienceState, options.scope);
+      const eventHandlers = this.createEventHandlers(element, onOperationExecute, options.scope);
 
-      const finalProps = {
+      const finalProps: Record<string, any> = {
         ...element.properties,
         ...resolvedProps,
         ...eventHandlers,
         'data-element-id': element.id
       };
+
+      this.applyControlledInput(element, experienceState, finalProps, options);
+
+      // A list with children repeats them per item of the bound array.
+      if (element.type === 'list' && element.children && element.children.length > 0) {
+        return this.renderListTemplate(element, experienceState, onOperationExecute, options, finalProps);
+      }
 
       const ComponentType = UI_COMPONENTS[element.type as keyof typeof UI_COMPONENTS];
 
@@ -52,7 +83,7 @@ export class ComponentRenderer {
         return (
           <ComponentType key={element.id} {...finalProps}>
             {element.children && element.children.map(child => {
-              const ChildComponent = this.renderUIElement(child, experienceState, onOperationExecute);
+              const ChildComponent = this.renderUIElement(child, experienceState, onOperationExecute, options);
               return <ChildComponent key={child.id} />;
             })}
           </ComponentType>
@@ -63,7 +94,7 @@ export class ComponentRenderer {
       if (typeof element.type === 'string' && INTRINSIC_TAGS.has(element.type)) {
         const { content, text, children: _ignored, ...rest } = finalProps as any;
         const mappedChildren = (element.children || []).map(child => {
-          const ChildComponent = this.renderUIElement(child, experienceState, onOperationExecute);
+          const ChildComponent = this.renderUIElement(child, experienceState, onOperationExecute, options);
           return <ChildComponent key={child.id} />;
         });
         const children = [] as any[];
@@ -77,18 +108,95 @@ export class ComponentRenderer {
     };
   }
 
-  private resolveDataBindings(element: UIElement, experienceState: ExperienceState): Record<string, any> {
+  private renderListTemplate(
+    element: UIElement,
+    experienceState: ExperienceState,
+    onOperationExecute: OperationExecuteHandler,
+    options: RenderOptions,
+    finalProps: Record<string, any>
+  ): React.ReactElement {
+    const { items, children: _children, content: _content, text: _text, ...rest } = finalProps;
+    const array: unknown[] = Array.isArray(items) ? items : [];
+
+    return (
+      <ul key={element.id} {...rest}>
+        {array.map((item, index) => {
+          const scope: ItemScope = { item, index };
+          const record = item as Record<string, unknown> | null;
+          const key =
+            record && typeof record === 'object' && record.id !== undefined
+              ? String(record.id)
+              : String(index);
+          return (
+            <li key={key}>
+              {element.children!.map(child => {
+                const ChildComponent = this.renderUIElement(child, experienceState, onOperationExecute, {
+                  ...options,
+                  scope
+                });
+                return <ChildComponent key={child.id} />;
+              })}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
+  /**
+   * Injects controlled value/onChange for input-like elements so their
+   * current value always lives in state under `element_${id}`.
+   */
+  private applyControlledInput(
+    element: UIElement,
+    experienceState: ExperienceState,
+    finalProps: Record<string, any>,
+    options: RenderOptions
+  ): void {
+    if (!INPUT_LIKE_TYPES.has(element.type) || !options.setElementValue) {
+      return;
+    }
+
+    const setElementValue = options.setElementValue;
+    const stateValue = experienceState.data[`element_${element.id}`];
+    const isCheckbox = finalProps.type === 'checkbox';
+    const boundOnChange = finalProps.onChange as ((event: any) => void) | undefined;
+
+    if (isCheckbox) {
+      finalProps.checked = Boolean(stateValue);
+      delete finalProps.value;
+    } else {
+      finalProps.value = stateValue ?? element.properties?.defaultValue ?? '';
+      delete finalProps.defaultValue;
+    }
+
+    finalProps.onChange = (event: any) => {
+      const next = isCheckbox ? event?.target?.checked : event?.target?.value;
+      setElementValue(element.id, next);
+      boundOnChange?.(event);
+    };
+  }
+
+  private resolveDataBindings(
+    element: UIElement,
+    experienceState: ExperienceState,
+    scope?: ItemScope
+  ): Record<string, any> {
     const resolvedProps: Record<string, any> = {};
 
     element.dataBindings.forEach(binding => {
-      const value = this.resolveDataBinding(binding, experienceState);
+      const value = this.resolveDataBinding(binding, experienceState, scope);
       resolvedProps[binding.property] = value;
     });
 
     return resolvedProps;
   }
 
-  private resolveDataBinding(binding: DataBinding, experienceState: ExperienceState): any {
+  private resolveDataBinding(
+    binding: DataBinding,
+    experienceState: ExperienceState,
+    scope?: ItemScope
+  ): any {
     let value: any;
 
     switch (binding.source) {
@@ -100,6 +208,9 @@ export class ComponentRenderer {
         break;
       case 'constant':
         value = binding.sourceId;
+        break;
+      case 'item':
+        value = getValueAtPath(scope?.item, binding.sourceId);
         break;
       default:
         value = null;
@@ -123,7 +234,7 @@ export class ComponentRenderer {
         return value;
       case 'map':
         if (transform.parameters.mapping && typeof transform.parameters.mapping === 'object') {
-          return transform.parameters.mapping[value] || value;
+          return transform.parameters.mapping[value] ?? value;
         }
         return value;
       case 'filter':
@@ -148,14 +259,15 @@ export class ComponentRenderer {
 
   private createEventHandlers(
     element: UIElement,
-    onOperationExecute: (operationId: string, inputs: any[]) => Promise<void>
+    onOperationExecute: OperationExecuteHandler,
+    scope?: ItemScope
   ): Record<string, any> {
     const handlers: Record<string, any> = {};
 
     element.eventBindings.forEach(binding => {
       const handlerName = this.getEventHandlerName(binding.event);
       handlers[handlerName] = (event: any) => {
-        this.handleEvent(binding, event, onOperationExecute);
+        this.handleEvent(binding, event, onOperationExecute, scope);
       };
     });
 
@@ -179,39 +291,17 @@ export class ComponentRenderer {
   private async handleEvent(
     binding: EventBinding,
     event: any,
-    onOperationExecute: (operationId: string, inputs: any[]) => Promise<void>
+    onOperationExecute: OperationExecuteHandler,
+    scope?: ItemScope
   ): Promise<void> {
+    if (binding.event === 'submit' && typeof event?.preventDefault === 'function') {
+      event.preventDefault();
+    }
     try {
-      // Prepare inputs from event and parameters
-      const inputs = this.prepareOperationInputs(binding, event);
-      await onOperationExecute(binding.operationId, inputs);
+      await onOperationExecute(binding.operationId, { item: scope?.item });
     } catch (error) {
       console.error(`Error handling event ${binding.event} for operation ${binding.operationId}:`, error);
     }
-  }
-
-  private prepareOperationInputs(binding: EventBinding, event: any): any[] {
-    const inputs: any[] = [];
-
-    // Add event data if needed
-    if (binding.parameters?.includeEventData) {
-      inputs.push({
-        type: 'event',
-        value: event.target?.value || event,
-        target: event.target
-      });
-    }
-
-    // Add custom parameters
-    if (binding.parameters) {
-      Object.entries(binding.parameters).forEach(([key, value]) => {
-        if (key !== 'includeEventData') {
-          inputs.push({ name: key, value });
-        }
-      });
-    }
-
-    return inputs;
   }
 }
 
@@ -269,10 +359,10 @@ function LinkComponent({ href, children, ...props }: any) {
 
 function UnknownComponent({ element }: { element: UIElement }) {
   return (
-    <div 
-      style={{ 
-        border: '2px dashed #ccc', 
-        padding: '10px', 
+    <div
+      style={{
+        border: '2px dashed #ccc',
+        padding: '10px',
         margin: '5px',
         backgroundColor: '#f9f9f9'
       }}

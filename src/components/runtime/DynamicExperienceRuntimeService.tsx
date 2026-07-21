@@ -89,7 +89,7 @@ export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime
     }
   }
 
-  async executeOperation(operationId: string, inputs: any[]): Promise<any> {
+  async executeOperation(operationId: string, _inputs: any[]): Promise<any> {
     try {
       // Find the operation across all experiences
       let operationBinding = null;
@@ -108,14 +108,17 @@ export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime
         throw new Error(`Operation ${operationId} not found`);
       }
 
-      // Execute the operation
-      const result = await this.operationExecutor.executeOperation(operationBinding, inputs);
-      
-      // Update state with results
       const stateManager = this.stateManagers.get(experienceId);
-      if (stateManager) {
-        stateManager.updateStateFromOperationResult(operationId, result, operationBinding.outputs);
+      if (!stateManager) {
+        throw new Error(`State manager not found for experience ${experienceId}`);
       }
+
+      // Execute the operation; inputs resolve from the contract's input
+      // bindings against experience state (no event context on this path)
+      const result = await this.operationExecutor.executeOperation(operationBinding, {}, stateManager);
+
+      // Update state with results
+      stateManager.updateStateFromOperationResult(operationId, result, operationBinding.outputs);
 
       return result;
     } catch (error) {
@@ -218,7 +221,7 @@ export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime
     
     // Preserve data that still exists in the new state structure
     Object.keys(currentState.data).forEach(key => {
-      if (newState.data.hasOwnProperty(key)) {
+      if (Object.prototype.hasOwnProperty.call(newState.data, key)) {
         newState.data[key] = currentState.data[key];
       }
     });
@@ -255,7 +258,6 @@ export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime
   clearAllExperiences(): void {
     this.experiences.clear();
     this.stateManagers.clear();
-    this.operationExecutor.clearCache();
   }
 
   // Persistence integration methods
@@ -357,7 +359,9 @@ export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime
       // Emit cross-window update event so standalone windows can update
       try {
         await emit('experience-contract-updated', { experienceId, contract });
-      } catch (_) {}
+      } catch {
+        // Cross-window notification is best-effort
+      }
     } catch (error) {
       console.error(`Error updating experience ${experienceId}:`, error);
       throw error;

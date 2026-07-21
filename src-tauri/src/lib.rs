@@ -1,9 +1,13 @@
 use std::fs;
 use std::collections::HashMap;
-use tauri::{Manager, AppHandle, Emitter, menu::{Menu, MenuItem, PredefinedMenuItem}, tray::{TrayIconBuilder, TrayIconEvent}, webview::WebviewWindowBuilder};
+use tauri::{Manager, AppHandle, Emitter, menu::{Menu, MenuItem, PredefinedMenuItem}, tray::TrayIconBuilder, webview::WebviewWindowBuilder};
 use tauri::utils::config::WebviewUrl;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+mod llm;
+mod oauth;
+mod settings;
 
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -167,30 +171,78 @@ async fn execute_operation(request: OperationRequest) -> Result<OperationResult,
 }
 
 async fn execute_remote_operation(request: &OperationRequest) -> Result<Value, String> {
-    let endpoint = request.implementation.endpoint
+    let endpoint_template = request.implementation.endpoint
         .as_ref()
         .ok_or("Remote operation missing endpoint")?;
-    
-    let default_method = "POST".to_string();
+
     let method = request.implementation.method
-        .as_ref()
-        .unwrap_or(&default_method);
-    
-    // For now, return a mock response
-    // In a real implementation, this would use reqwest or similar HTTP client
-    let mock_response = serde_json::json!({
-        "success": true,
-        "message": format!("Remote operation {} executed", request.operation_name),
-        "endpoint": endpoint,
-        "method": method,
-        "inputs": request.inputs,
-        "timestamp": chrono::Utc::now().to_rfc3339()
-    });
-    
-    // Simulate network delay
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    
-    Ok(mock_response)
+        .clone()
+        .unwrap_or_else(|| "GET".to_string())
+        .to_uppercase();
+
+    // Substitute {name} placeholders from inputs; leftovers travel as query
+    // parameters (GET/DELETE) or as a JSON body.
+    let mut endpoint = endpoint_template.clone();
+    let mut remaining: HashMap<String, Value> = HashMap::new();
+    for (name, value) in &request.inputs {
+        let placeholder = format!("{{{}}}", name);
+        if endpoint.contains(&placeholder) {
+            let raw = match value {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            endpoint = endpoint.replace(&placeholder, &raw);
+        } else {
+            remaining.insert(name.clone(), value.clone());
+        }
+    }
+    if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
+        return Err(format!("Remote endpoint must be an http(s) URL: {}", endpoint));
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let mut req = match method.as_str() {
+        "GET" => client.get(&endpoint),
+        "POST" => client.post(&endpoint),
+        "PUT" => client.put(&endpoint),
+        "PATCH" => client.patch(&endpoint),
+        "DELETE" => client.delete(&endpoint),
+        other => return Err(format!("Unsupported HTTP method: {}", other)),
+    };
+    if let Some(headers) = &request.implementation.headers {
+        for (key, value) in headers {
+            req = req.header(key, value);
+        }
+    }
+    if method == "GET" || method == "DELETE" {
+        let query: Vec<(String, String)> = remaining
+            .iter()
+            .map(|(k, v)| (
+                k.clone(),
+                match v {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                },
+            ))
+            .collect();
+        if !query.is_empty() {
+            req = req.query(&query);
+        }
+    } else {
+        req = req.json(&remaining);
+    }
+
+    let response = req.send().await.map_err(|e| format!("Request failed: {}", e))?;
+    let status = response.status();
+    let text = response.text().await.map_err(|e| format!("Failed to read response: {}", e))?;
+    if !status.is_success() {
+        return Err(format!("HTTP {}: {}", status, text.chars().take(300).collect::<String>()));
+    }
+    Ok(serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({ "raw": text })))
 }
 
 async fn execute_local_operation(request: &OperationRequest) -> Result<Value, String> {
@@ -1112,6 +1164,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
+        .manage(oauth::PendingOauth::default())
         .setup(|app| {
             
             // Create tray menu
@@ -1167,8 +1220,15 @@ pub fn run() {
             duplicate_experience,
             update_experience,
             get_experience_versions,
-            restore_experience_version
-            ,open_experience_window
+            restore_experience_version,
+            open_experience_window,
+            llm::llm_chat,
+            settings::get_llm_settings,
+            settings::set_llm_settings,
+            settings::set_llm_credential,
+            settings::clear_llm_credential,
+            oauth::claude_oauth_start,
+            oauth::claude_oauth_finish
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

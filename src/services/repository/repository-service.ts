@@ -212,23 +212,26 @@ export class RepositoryService implements ComponentRepository {
   async registerComponent(manifest: ComponentManifest): Promise<void> {
     await this.ensureInitialized();
 
-    try {
-      // Validate manifest
-      this.validateManifest(manifest);
+    // Validate manifest
+    this.validateManifest(manifest);
 
-      // Save component manifest to storage
+    // Persist the manifest when storage is available; keep the in-memory
+    // index authoritative either way so discovery works outside Tauri.
+    try {
       const componentPath = `${this.componentsPath}/${manifest.id}-${manifest.version}.json`;
       await invoke('write_component_manifest', {
         path: componentPath,
         data: JSON.stringify(manifest, null, 2)
       });
-
-      // Update index
-      this.updateIndex(manifest);
-      await this.saveIndex();
-
     } catch (error) {
-      throw new Error(`Failed to register component: ${error}`);
+      console.warn(`Component ${manifest.id} registered in memory only:`, error);
+    }
+
+    this.updateIndex(manifest);
+    try {
+      await this.saveIndex();
+    } catch {
+      // In-memory index only; already warned above.
     }
   }
 

@@ -27,6 +27,13 @@ export class ExperienceStateManager {
     const initialLoading: Record<string, boolean> = {};
     const initialErrors: Record<string, Error> = {};
 
+    // Seed declared app state first so bindings resolve on first render
+    if (contract.initialState) {
+      Object.entries(contract.initialState).forEach(([key, value]) => {
+        initialData[key] = value;
+      });
+    }
+
     // Initialize operation states
     contract.operations.forEach(operation => {
       initialLoading[operation.id] = false;
@@ -115,12 +122,15 @@ export class ExperienceStateManager {
   }
 
   updateStateFromOperationResult(
-    operationId: string, 
-    result: any, 
+    operationId: string,
+    result: any,
     outputs: OutputBinding[]
   ): void {
     // Clear any existing errors for this operation
     this.clearError(operationId);
+
+    // Mirror the whole result where 'operation' data bindings read it
+    this.setData(`operation_${operationId}`, result);
 
     // Update state based on operation outputs
     outputs.forEach(output => {

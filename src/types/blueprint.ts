@@ -25,7 +25,7 @@ export interface OperationRequirement {
   purpose: string;
   inputs: string[];
   outputs: string[];
-  executionType: 'remote' | 'local' | 'repository';
+  executionType: 'builtin' | 'remote' | 'local' | 'repository';
 }
 
 export interface Ambiguity {

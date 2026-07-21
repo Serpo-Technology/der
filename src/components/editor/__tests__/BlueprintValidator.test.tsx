@@ -183,9 +183,10 @@ describe('BlueprintValidator', () => {
       expect(result.warnings.some(w => w.message === 'No operations specified - consider adding some functionality')).toBe(true);
     });
 
-    it('warns about ambiguities', () => {
-      const blueprint = { 
-        ...validBlueprint, 
+    it('warns about ambiguities when core content is missing', () => {
+      const blueprint = {
+        ...validBlueprint,
+        operations: [],
         ambiguities: [
           {
             id: 'amb1',
@@ -196,8 +197,25 @@ describe('BlueprintValidator', () => {
         ]
       };
       const result = validator.validate(blueprint);
-      
+
       expect(result.warnings.some(w => w.message === '1 ambiguities detected - consider resolving them')).toBe(true);
+    });
+
+    it('does not warn about ambiguities when elements and operations exist', () => {
+      const blueprint = {
+        ...validBlueprint,
+        ambiguities: [
+          {
+            id: 'amb1',
+            description: 'Unclear requirement',
+            options: ['Option A', 'Option B'],
+            question: 'Which option do you prefer?'
+          }
+        ]
+      };
+      const result = validator.validate(blueprint);
+
+      expect(result.warnings.some(w => w.code === 'UNRESOLVED_AMBIGUITIES')).toBe(false);
     });
 
     it('warns about duplicate capabilities', () => {

@@ -26,6 +26,7 @@ export class Contract implements IContractInterface {
   public layout: LayoutSpec;
   public styling: StyleSpec;
   public metadata: ContractMetadata;
+  public initialState?: Record<string, unknown>;
 
   constructor(data: Partial<IContractInterface> = {}) {
     this.name = data.name || '';
@@ -39,6 +40,7 @@ export class Contract implements IContractInterface {
       updatedAt: new Date(),
       version: '1.0.0'
     };
+    this.initialState = data.initialState;
   }
 
   /**
@@ -79,7 +81,8 @@ export class Contract implements IContractInterface {
       operations: data.operations || [],
       layout: data.layout,
       styling: data.styling,
-      metadata
+      metadata,
+      initialState: data.initialState
     });
   }
 
@@ -105,7 +108,8 @@ export class Contract implements IContractInterface {
         ...this.metadata,
         createdAt: this.metadata.createdAt,
         updatedAt: this.metadata.updatedAt
-      }
+      },
+      ...(this.initialState !== undefined ? { initialState: { ...this.initialState } } : {})
     };
   }
 

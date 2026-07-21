@@ -11,6 +11,8 @@ export interface Contract {
   layout: LayoutSpec;
   styling: StyleSpec;
   metadata: ContractMetadata;
+  /** Seed values for experience state, applied before operation placeholders. */
+  initialState?: Record<string, unknown>;
 }
 
 export interface UIElement {
@@ -28,9 +30,9 @@ export interface OperationBinding {
   inputs: InputBinding[];
   outputs: OutputBinding[];
   triggers: TriggerSpec[];
-  executionType?: 'remote' | 'local' | 'repository';
+  executionType?: 'builtin' | 'remote' | 'local' | 'repository';
   implementation?: {
-    type: 'remote' | 'local' | 'repository';
+    type: 'builtin' | 'remote' | 'local' | 'repository';
     endpoint?: string;
     method?: string;
     headers?: Record<string, string>;
@@ -41,7 +43,7 @@ export interface OperationBinding {
 
 export interface DataBinding {
   property: string;
-  source: 'operation' | 'state' | 'constant';
+  source: 'operation' | 'state' | 'constant' | 'item';
   sourceId: string;
   transform?: TransformFunction;
 }
@@ -54,7 +56,7 @@ export interface EventBinding {
 
 export interface InputBinding {
   name: string;
-  source: 'ui-element' | 'state' | 'constant';
+  source: 'ui-element' | 'state' | 'constant' | 'item';
   sourceId: string;
   transform?: TransformFunction;
 }

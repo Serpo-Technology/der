@@ -1,667 +1,261 @@
 /**
- * Contract Builder - Transforms blueprints into contracts
- * Requirements: 2.1, 2.2, 2.5, 2.6
+ * Contract Builder - generates a runnable Contract from a Blueprint with the
+ * LLM, constrained by the component catalog and validated against the
+ * contract schema (with one repair round).
  */
 
 import { Blueprint } from '../../types/blueprint';
-import { Contract, UIElement, OperationBinding, LayoutSpec, StyleSpec, ContractMetadata, InputBinding, OutputBinding, TriggerSpec } from '../../types/contract';
+import { Contract, OperationBinding, UIElement, ValidationResult } from '../../types/contract';
 import { ComponentRepository } from '../../types/repository';
-import { UIElementManifest, OperationManifest, ComponentCriteria } from '../../types/component';
-import { ValidationResult, ValidationError, ValidationWarning } from '../../types/contract';
+import { LLMClient, LLMMessage } from './llm-client';
+import { generateValidatedJson } from './llm-json';
+import { ContractSchema, normalizeContract, validateContractObject } from '../../schemas/contract';
+import {
+  BUILTIN_OPERATIONS,
+  ELEMENT_CATALOG,
+  INTRINSIC_ELEMENT_TYPES,
+  isKnownElementType,
+} from '../operations/registry';
+
+type ContractShape = typeof ContractSchema._output;
 
 export class ContractBuilder {
-  private repository: ComponentRepository;
-
-  constructor(repository: ComponentRepository) {
-    this.repository = repository;
-  }
+  constructor(
+    private repository: ComponentRepository,
+    private llmClient: LLMClient = new LLMClient()
+  ) {}
 
   async generateFromBlueprint(blueprint: Blueprint): Promise<Contract> {
+    const catalog = await this.renderCatalog();
+    const messages: LLMMessage[] = [
+      { role: 'system', content: buildContractSystemPrompt(catalog) },
+      {
+        role: 'user',
+        content: `Generate the contract for this blueprint:\n\n${JSON.stringify(
+          {
+            description: blueprint.description,
+            goal: blueprint.goal,
+            requiredCapabilities: blueprint.requiredCapabilities,
+            uiElements: blueprint.uiElements,
+            operations: blueprint.operations,
+          },
+          null,
+          2
+        )}`,
+      },
+    ];
+
+    const shape = await generateValidatedJson(this.llmClient, messages, ContractSchema, {
+      label: 'Contract',
+      maxTokens: 16000,
+    });
+
+    return this.postProcess(shape, blueprint);
+  }
+
+  validateContract(contract: unknown): ValidationResult {
+    const data =
+      contract && typeof contract === 'object' && 'toObject' in (contract as object)
+        ? (contract as { toObject(): unknown }).toObject()
+        : contract;
+    return validateContractObject(data);
+  }
+
+  private async renderCatalog(): Promise<string> {
+    const elementLines = Object.entries(ELEMENT_CATALOG).map(
+      ([type, spec]) =>
+        `- ${type}: ${spec.description}${
+          spec.properties.length ? ` Properties: ${spec.properties.join(', ')}.` : ''
+        }`
+    );
+
+    const operationLines = Object.values(BUILTIN_OPERATIONS).map((def) => {
+      const inputs = def.inputs.map((i) => `${i.name}: ${i.type}`).join(', ') || 'none';
+      const outputs = def.outputs.map((o) => `${o.name}: ${o.type}`).join(', ') || 'none';
+      return `- ${def.name} (inputs: ${inputs}; outputs: ${outputs}): ${def.description}`;
+    });
+
+    // Custom (non-builtin) operations registered in the repository, if any.
+    let customLines: string[] = [];
     try {
-      // Resolve UI elements from blueprint requirements
-      const resolvedUIElements = await this.resolveUIElements(blueprint);
-
-      // Resolve operations from blueprint requirements
-      const resolvedOperations = await this.resolveOperations(blueprint);
-
-      // Create operation bindings with data flow
-      const operationBindings = await this.createOperationBindings(blueprint, resolvedOperations, resolvedUIElements);
-
-      // Generate layout specification
-      const layout = this.generateLayout(resolvedUIElements);
-
-      // Generate styling specification
-      const styling = this.generateStyling(blueprint);
-
-      // Create contract metadata
-      const metadata = this.createMetadata(blueprint);
-
-      const contract: Contract = {
-        name: this.generateContractName(blueprint),
-        version: '1.0.0',
-        elements: resolvedUIElements,
-        operations: operationBindings,
-        layout,
-        styling,
-        metadata
-      };
-
-      // Ensure visible output even if blueprint resolution produced no elements
-      if (!contract.elements || contract.elements.length === 0) {
-        contract.elements = [
-          { id: 'title', type: 'text', properties: { content: 'Notes' }, dataBindings: [], eventBindings: [] },
-          { id: 'note-input', type: 'input', properties: { placeholder: 'Write a note…', value: '' }, dataBindings: [], eventBindings: [] },
-          { id: 'add-btn', type: 'button', properties: { text: 'Add' }, dataBindings: [], eventBindings: [] },
-          { id: 'notes-list', type: 'list', properties: { items: [] }, dataBindings: [], eventBindings: [] }
-        ];
-      }
-
-      // Validate the generated contract
-      const validation = this.validateContract(contract);
-      if (!validation.isValid) {
-        throw new Error(`Generated contract is invalid: ${validation.errors.map(e => e.message).join(', ')}`);
-      }
-
-      return contract;
-    } catch (error) {
-      throw new Error(`Failed to generate contract from blueprint: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  private async resolveUIElements(blueprint: Blueprint): Promise<UIElement[]> {
-    const elements: UIElement[] = [];
-
-    for (const [index, elementReq] of blueprint.uiElements.entries()) {
-      try {
-        // Query repository for matching UI elements
-        const criteria: ComponentCriteria = {
-          type: 'ui-element',
-          capabilities: elementReq.capabilities,
-          name: elementReq.type
-        };
-
-        const manifests = await this.repository.queryUIElements(criteria);
-
-        // Select the best matching manifest
-        const selectedManifest = this.selectBestUIElementManifest(manifests, elementReq);
-
-        if (!selectedManifest) {
-          // Create a fallback element if no manifest found
-          elements.push(this.createFallbackUIElement(elementReq, index));
-          continue;
-        }
-
-        // Create UI element from manifest
-        const element: UIElement = {
-          id: `element_${index}`,
-          type: selectedManifest.name,
-          properties: this.generateElementProperties(selectedManifest, elementReq),
-          dataBindings: [], // Will be populated when creating operation bindings
-          eventBindings: [], // Will be populated when creating operation bindings
-          children: []
-        };
-
-        elements.push(element);
-      } catch {
-        // Create fallback element on error
-        elements.push(this.createFallbackUIElement(elementReq, index));
-      }
+      const customOps = await this.repository.queryOperations({});
+      customLines = customOps
+        .filter((op) => !(op.name in BUILTIN_OPERATIONS))
+        .map((op) => {
+          const inputs = op.inputs.map((i) => `${i.name}: ${i.type}`).join(', ') || 'none';
+          const outputs = op.outputs.map((o) => `${o.name}: ${o.type}`).join(', ') || 'none';
+          return `- ${op.name} (executionType: ${op.executionType}; inputs: ${inputs}; outputs: ${outputs}): ${op.description}`;
+        });
+    } catch {
+      // Repository unavailable; the builtin catalog is enough to generate.
     }
 
-    return elements;
+    return [
+      'ELEMENT TYPES (use these; plain HTML tag names are also accepted):',
+      ...elementLines,
+      '',
+      'BUILTIN OPERATIONS (use the exact name with executionType "builtin"):',
+      ...operationLines,
+      ...(customLines.length ? ['', 'REGISTERED CUSTOM OPERATIONS:', ...customLines] : []),
+    ].join('\n');
   }
 
-  private async resolveOperations(blueprint: Blueprint): Promise<OperationManifest[]> {
-    const operations: OperationManifest[] = [];
+  private postProcess(shape: ContractShape, blueprint: Blueprint): Contract {
+    const warnings: string[] = [];
 
-    for (const operationReq of blueprint.operations) {
-      try {
-        // Query repository for matching operations
-        const criteria: ComponentCriteria = {
-          type: 'operation',
-          name: operationReq.name
-        };
+    // Unique ids across the element tree and operations.
+    const seenIds = new Set<string>();
+    const uniqueId = (id: string): string => {
+      let candidate = id;
+      let n = 2;
+      while (seenIds.has(candidate)) {
+        candidate = `${id}-${n++}`;
+      }
+      seenIds.add(candidate);
+      return candidate;
+    };
 
-        const manifests = await this.repository.queryOperations(criteria);
-
-        // Select the best matching manifest
-        const selectedManifest = this.selectBestOperationManifest(manifests, operationReq);
-
-        if (selectedManifest) {
-          operations.push(selectedManifest);
+    const fixElement = (element: UIElement): UIElement => {
+      const id = uniqueId(element.id);
+      if (id !== element.id) {
+        warnings.push(`Renamed duplicate element id "${element.id}" to "${id}"`);
+      }
+      let type = element.type;
+      if (!isKnownElementType(type)) {
+        if (INTRINSIC_ELEMENT_TYPES.has(type.toLowerCase())) {
+          type = type.toLowerCase();
         } else {
-          // Create a placeholder operation manifest
-          operations.push(this.createPlaceholderOperationManifest(operationReq));
+          warnings.push(`Unknown element type "${type}" rendered as container`);
+          type = 'container';
         }
-      } catch {
-        // Create placeholder operation on error
-        operations.push(this.createPlaceholderOperationManifest(operationReq));
       }
-    }
-
-    return operations;
-  }
-
-  private async createOperationBindings(
-    blueprint: Blueprint,
-    operations: OperationManifest[],
-    elements: UIElement[]
-  ): Promise<OperationBinding[]> {
-    const bindings: OperationBinding[] = [];
-
-    for (const [index, operation] of operations.entries()) {
-      const blueprintOp = blueprint.operations[index];
-
-      // Create input bindings from UI elements
-      const inputBindings = this.createInputBindings(operation, elements, blueprintOp);
-
-      // Create output bindings to UI elements
-      const outputBindings = this.createOutputBindings(operation, elements, blueprintOp);
-
-      // Create trigger specifications
-      const triggers = this.createTriggerSpecs(operation, elements);
-
-      const binding: OperationBinding = {
-        id: `operation_${index}`,
-        operationName: operation.name,
-        inputs: inputBindings,
-        outputs: outputBindings,
-        triggers
+      return {
+        ...element,
+        id,
+        type,
+        children: element.children?.map(fixElement),
       };
+    };
+    const elements = (shape.elements as UIElement[]).map(fixElement);
 
-      bindings.push(binding);
-
-      // Update UI elements with data and event bindings
-      this.updateElementBindings(elements, binding, operation);
-    }
-
-    return bindings;
-  }
-
-  private createInputBindings(operation: OperationManifest, elements: UIElement[], _blueprintOp: unknown): InputBinding[] {
-    const bindings: InputBinding[] = [];
-
-    for (const input of operation.inputs) {
-      // Find UI elements that can provide this input
-      const sourceElement = elements.find(el =>
-        this.canElementProvideInput(el, input.name, input.type)
-      );
-
-      if (sourceElement) {
-        bindings.push({
-          name: input.name,
-          source: 'ui-element',
-          sourceId: sourceElement.id,
-          transform: this.createInputTransform(input, sourceElement)
+    // Resolve each operation to a runnable execution type or drop it.
+    const dropped = new Set<string>();
+    const operations: OperationBinding[] = [];
+    for (const op of shape.operations as OperationBinding[]) {
+      const id = uniqueId(op.id);
+      if (BUILTIN_OPERATIONS[op.operationName]) {
+        operations.push({ ...op, id, executionType: 'builtin', implementation: undefined });
+      } else if (op.implementation?.code) {
+        operations.push({
+          ...op,
+          id,
+          executionType: 'local',
+          implementation: { ...op.implementation, type: 'local' },
+        });
+      } else if (op.implementation?.endpoint) {
+        operations.push({
+          ...op,
+          id,
+          executionType: 'remote',
+          implementation: { ...op.implementation, type: 'remote' },
         });
       } else {
-        // Use constant or state as fallback
-        bindings.push({
-          name: input.name,
-          source: 'constant',
-          sourceId: 'default',
-          transform: undefined
-        });
+        dropped.add(op.id);
+        warnings.push(
+          `Dropped operation "${op.operationName}" (${op.id}): not a builtin and no implementation given`
+        );
       }
     }
 
-    return bindings;
-  }
-
-  private createOutputBindings(operation: OperationManifest, elements: UIElement[], _blueprintOp: unknown): OutputBinding[] {
-    const bindings: OutputBinding[] = [];
-
-    for (const output of operation.outputs) {
-      // Find UI elements that can display this output
-      const targetElements = elements.filter(el =>
-        this.canElementDisplayOutput(el, output.name, output.type)
-      );
-
-      for (const targetElement of targetElements) {
-        bindings.push({
-          name: output.name,
-          target: 'ui-element',
-          targetId: targetElement.id,
-          property: this.getDisplayProperty(targetElement, output),
-          transform: this.createOutputTransform(output, targetElement)
-        });
-      }
-    }
-
-    return bindings;
-  }
-
-  private createTriggerSpecs(_operation: OperationManifest, elements: UIElement[]): TriggerSpec[] {
-    const triggers: TriggerSpec[] = [];
-
-    // Create event-based triggers for user interactions
-    const interactiveElements = elements.filter(el => this.isInteractiveElement(el));
-
-    for (const element of interactiveElements) {
-      triggers.push({
-        type: 'event',
-        condition: `element.${element.id}.interaction`,
-        parameters: {
-          elementId: element.id,
-          eventType: this.getDefaultEventType(element)
-        }
-      });
-    }
-
-    return triggers;
-  }
-
-  private updateElementBindings(elements: UIElement[], binding: OperationBinding, _operation: OperationManifest): void {
-    // Add data bindings to elements that receive operation outputs
-    for (const output of binding.outputs) {
-      if (output.target === 'ui-element') {
-        const element = elements.find(el => el.id === output.targetId);
-        if (element && output.property) {
-          element.dataBindings.push({
-            property: output.property,
-            source: 'operation',
-            sourceId: binding.id,
-            transform: output.transform
-          });
-        }
-      }
-    }
-
-    // Add event bindings to elements that trigger operations
-    for (const trigger of binding.triggers) {
-      if (trigger.type === 'event' && trigger.parameters?.elementId) {
-        const element = elements.find(el => el.id === trigger.parameters!.elementId);
-        if (element) {
-          element.eventBindings.push({
-            event: trigger.parameters!.eventType || 'click',
-            operationId: binding.id,
-            parameters: trigger.parameters
-          });
-        }
-      }
-    }
-  }
-
-  private generateLayout(_elements: UIElement[]): LayoutSpec {
-    // Generate a simple flex layout by default
-    return {
-      type: 'flex',
-      properties: {
-        direction: 'column',
-        gap: '16px',
-        padding: '24px',
-        alignItems: 'stretch'
-      }
-    };
-  }
-
-  private generateStyling(blueprint: Blueprint): StyleSpec {
-    // Determine theme from capabilities
-    const hasModernStyle = blueprint.requiredCapabilities.some(cap =>
-      cap.includes('modern') || cap.includes('minimal')
-    );
-
-    const hasDarkTheme = blueprint.requiredCapabilities.some(cap =>
-      cap.includes('dark')
-    );
-
-    return {
-      theme: hasDarkTheme ? 'dark' : hasModernStyle ? 'modern' : 'default',
-      customStyles: {}
-    };
-  }
-
-  private createMetadata(blueprint: Blueprint): ContractMetadata {
-    return {
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      version: '1.0.0',
-      description: blueprint.description,
-      tags: blueprint.requiredCapabilities
-    };
-  }
-
-  private generateContractName(blueprint: Blueprint): string {
-    // Generate name from goal
-    const words = blueprint.goal.toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
-      .split(/\s+/)
-      .filter(word => word.length > 0)
-      .slice(0, 3);
-
-    return words.join('-') || 'generated-experience';
-  }
-
-  validateContract(contract: Contract): ValidationResult {
-    const errors: ValidationError[] = [];
-    const warnings: ValidationWarning[] = [];
-
-    // Validate required fields
-    if (!contract.name || contract.name.trim().length === 0) {
-      errors.push({
-        path: 'name',
-        message: 'Contract must have a name',
-        code: 'MISSING_NAME'
-      });
-    }
-
-    if (!contract.version || contract.version.trim().length === 0) {
-      errors.push({
-        path: 'version',
-        message: 'Contract must have a version',
-        code: 'MISSING_VERSION'
-      });
-    }
-
-    // Validate elements
-    if (contract.elements.length === 0) {
-      warnings.push({
-        path: 'elements',
-        message: 'Contract has no UI elements',
-        code: 'NO_ELEMENTS'
-      });
-    }
-
-    contract.elements.forEach((element, index) => {
-      if (!element.id || element.id.trim().length === 0) {
-        errors.push({
-          path: `elements[${index}].id`,
-          message: 'UI element must have an ID',
-          code: 'MISSING_ELEMENT_ID'
-        });
-      }
-
-      if (!element.type || element.type.trim().length === 0) {
-        errors.push({
-          path: `elements[${index}].type`,
-          message: 'UI element must have a type',
-          code: 'MISSING_ELEMENT_TYPE'
-        });
-      }
+    // Strip event bindings that point at dropped operations.
+    const stripDropped = (element: UIElement): UIElement => ({
+      ...element,
+      eventBindings: element.eventBindings.filter((b) => !dropped.has(b.operationId)),
+      children: element.children?.map(stripDropped),
     });
 
-    // Validate operation bindings
-    contract.operations.forEach((operation, index) => {
-      if (!operation.id || operation.id.trim().length === 0) {
-        errors.push({
-          path: `operations[${index}].id`,
-          message: 'Operation binding must have an ID',
-          code: 'MISSING_OPERATION_ID'
-        });
-      }
-
-      if (!operation.operationName || operation.operationName.trim().length === 0) {
-        errors.push({
-          path: `operations[${index}].operationName`,
-          message: 'Operation binding must have an operation name',
-          code: 'MISSING_OPERATION_NAME'
-        });
-      }
-    });
-
-    // Validate binding references
-    this.validateBindingReferences(contract, errors);
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-      warnings
+    const now = new Date();
+    const contract: Contract = {
+      name: shape.name,
+      version: shape.version,
+      initialState: shape.initialState,
+      elements: dropped.size ? elements.map(stripDropped) : elements,
+      operations,
+      layout: shape.layout,
+      styling: shape.styling,
+      metadata: {
+        createdAt: shape.metadata?.createdAt ?? now,
+        updatedAt: now,
+        version: shape.metadata?.version ?? shape.version,
+        description: shape.metadata?.description ?? blueprint.goal,
+        tags: shape.metadata?.tags,
+        author: shape.metadata?.author,
+      },
     };
-  }
 
-  private validateBindingReferences(contract: Contract, errors: ValidationError[]): void {
-    const elementIds = new Set(contract.elements.map(el => el.id));
-    const operationIds = new Set(contract.operations.map(op => op.id));
-
-    // Check data binding references
-    contract.elements.forEach((element, elementIndex) => {
-      element.dataBindings.forEach((binding, bindingIndex) => {
-        if (binding.source === 'operation' && !operationIds.has(binding.sourceId)) {
-          errors.push({
-            path: `elements[${elementIndex}].dataBindings[${bindingIndex}].sourceId`,
-            message: `Data binding references non-existent operation: ${binding.sourceId}`,
-            code: 'INVALID_BINDING_REFERENCE'
-          });
-        }
-      });
-
-      element.eventBindings.forEach((binding, bindingIndex) => {
-        if (!operationIds.has(binding.operationId)) {
-          errors.push({
-            path: `elements[${elementIndex}].eventBindings[${bindingIndex}].operationId`,
-            message: `Event binding references non-existent operation: ${binding.operationId}`,
-            code: 'INVALID_BINDING_REFERENCE'
-          });
-        }
-      });
-    });
-
-    // Check operation binding references
-    contract.operations.forEach((operation, operationIndex) => {
-      operation.inputs.forEach((input, inputIndex) => {
-        if (input.source === 'ui-element' && !elementIds.has(input.sourceId)) {
-          errors.push({
-            path: `operations[${operationIndex}].inputs[${inputIndex}].sourceId`,
-            message: `Input binding references non-existent element: ${input.sourceId}`,
-            code: 'INVALID_BINDING_REFERENCE'
-          });
-        }
-      });
-
-      operation.outputs.forEach((output, outputIndex) => {
-        if (output.target === 'ui-element' && !elementIds.has(output.targetId)) {
-          errors.push({
-            path: `operations[${operationIndex}].outputs[${outputIndex}].targetId`,
-            message: `Output binding references non-existent element: ${output.targetId}`,
-            code: 'INVALID_BINDING_REFERENCE'
-          });
-        }
-      });
-    });
-  }
-
-  // Helper methods
-  private selectBestUIElementManifest(manifests: UIElementManifest[], requirement: any): UIElementManifest | null {
-    if (manifests.length === 0) return null;
-
-    // Score manifests based on capability match
-    const scored = manifests.map(manifest => ({
-      manifest,
-      score: this.scoreUIElementMatch(manifest, requirement)
-    }));
-
-    scored.sort((a, b) => b.score - a.score);
-    return scored[0].manifest;
-  }
-
-  private selectBestOperationManifest(manifests: OperationManifest[], requirement: any): OperationManifest | null {
-    if (manifests.length === 0) return null;
-
-    // Score manifests based on name and execution type match
-    const scored = manifests.map(manifest => ({
-      manifest,
-      score: this.scoreOperationMatch(manifest, requirement)
-    }));
-
-    scored.sort((a, b) => b.score - a.score);
-    return scored[0].manifest;
-  }
-
-  private scoreUIElementMatch(manifest: UIElementManifest, requirement: any): number {
-    let score = 0;
-
-    // Exact type match
-    if (manifest.name === requirement.type) score += 10;
-
-    // Capability matches
-    const matchingCapabilities = requirement.capabilities.filter((cap: string) =>
-      manifest.capabilities.includes(cap)
-    );
-    score += matchingCapabilities.length * 2;
-
-    return score;
-  }
-
-  private scoreOperationMatch(manifest: OperationManifest, requirement: any): number {
-    let score = 0;
-
-    // Exact name match
-    if (manifest.name === requirement.name) score += 10;
-
-    // Execution type match
-    if (manifest.executionType === requirement.executionType) score += 5;
-
-    return score;
-  }
-
-  private createFallbackUIElement(requirement: any, index: number): UIElement {
-    const normalized = ((requirement.type || 'div').toString().toLowerCase());
-    const type = normalized.includes('button') ? 'button'
-      : normalized.includes('input') ? 'input'
-      : normalized.includes('text') || normalized.includes('label') || normalized.includes('title') ? 'text'
-      : normalized.includes('list') || normalized.includes('items') ? 'list'
-      : normalized.includes('container') || normalized.includes('section') || normalized.includes('div') ? 'div'
-      : normalized;
-    const purpose = requirement.purpose || '';
-    const properties: Record<string, any> = {};
-
-    switch (type) {
-      case 'button':
-        properties.text = purpose || 'Button';
-        break;
-      case 'input':
-        properties.placeholder = purpose || 'Enter text…';
-        properties.value = '';
-        break;
-      case 'text':
-        properties.content = purpose || 'Text';
-        break;
-      case 'list':
-        properties.items = ['Example item'];
-        break;
-      default:
-        properties.style = { border: '1px dashed #ccc', padding: '8px' };
+    if (warnings.length) {
+      console.warn('Contract post-processing adjustments:', warnings);
     }
-
-    return {
-      id: `fallback_element_${index}`,
-      type,
-      properties,
-      dataBindings: [],
-      eventBindings: [],
-      children: []
-    };
+    return normalizeContract(contract);
   }
+}
 
-  private createPlaceholderOperationManifest(requirement: any): OperationManifest {
-    return {
-      id: `placeholder_${requirement.name}`,
-      name: requirement.name,
-      version: '1.0.0',
-      type: 'operation',
-      description: requirement.purpose || 'Placeholder operation',
-      capabilities: [],
-      dependencies: [],
-      schema: { type: 'object' },
-      inputs: requirement.inputs.map((input: string) => ({
-        name: input,
-        type: 'string',
-        required: false
-      })),
-      outputs: requirement.outputs.map((output: string) => ({
-        name: output,
-        type: 'string'
-      })),
-      executionType: requirement.executionType || 'local',
-      implementation: {
-        type: 'local',
-        code: `// Placeholder implementation for ${requirement.name}`
-      }
-    };
-  }
+function buildContractSystemPrompt(catalog: string): string {
+  return `You generate a Contract JSON that a runtime renders into a live interactive app. Return one JSON object only: no prose, no code fences.
 
-  private generateElementProperties(manifest: UIElementManifest, requirement: any): Record<string, any> {
-    const properties: Record<string, any> = {};
+CONTRACT SHAPE:
+{
+  "name": "kebab-case-name",
+  "version": "1.0.0",
+  "initialState": { "stateKey": <seed value> },
+  "elements": [ { "id", "type", "properties": {}, "dataBindings": [], "eventBindings": [], "children": [...] } ],
+  "operations": [ { "id", "operationName", "executionType", "inputs": [], "outputs": [], "triggers": [] } ],
+  "layout": { "type": "flex", "properties": { "flexDirection": "column", "gap": "12px", "padding": "16px" } },
+  "styling": { "theme": "default" }
+}
+Do not include a "metadata" field; it is added automatically. "triggers" must always be [].
 
-    // Add properties from requirement
-    if (requirement.properties) {
-      Object.assign(properties, requirement.properties);
-    }
+RUNTIME RULES (follow exactly):
+1. State is a flat map. Operations write it; display elements read it with dataBindings {"property", "source": "state", "sourceId": "<stateKey>"}. Seed every state key you read in "initialState".
+2. Inputs are auto-controlled. Give each input an id; NEVER bind its value. Operations read an input's current text with an InputBinding {"name": "<param>", "source": "ui-element", "sourceId": "<input element id>"}.
+3. Wire interactions only with eventBindings on elements: {"event": "click" | "change" | "submit", "operationId": "<operation id>"}.
+4. A "list" element repeats its children once per entry of the array bound to its "items" property. Inside those children, read fields of the current entry with source "item" and a dot-path sourceId (e.g. "title"; "" for the whole entry), including operation InputBindings {"source": "item", "sourceId": "id"}. Do not place "input" elements inside list children.
+5. Operation inputs may also use {"source": "state", "sourceId": "<stateKey>"} or {"source": "constant", "sourceId": "<literal string>"}. Outputs route results: {"name": "<output name>", "target": "state", "targetId": "<stateKey>"} or {"target": "ui-element", "targetId": "<element id>"} to set an element's value.
+6. executionType "builtin": use an exact builtin operation name from the catalog. Builtin todos.* operations manage the "todos" state array themselves.
+7. executionType "local": custom logic; set "implementation": {"type": "local", "code": "<JavaScript function body receiving (inputs, ctx), returning an object keyed by output names; ctx.getState(key)/ctx.setState(key, value) access state>"}.
+8. executionType "remote": HTTP call; set "implementation": {"type": "remote", "endpoint": "https://...", "method": "GET"|"POST", "headers": {}}. "{name}" placeholders in the endpoint are filled from same-named inputs; other inputs become query parameters (GET) or the JSON body.
 
-    // Add default properties based on manifest
-    if (manifest.schema.properties) {
-      for (const [key, prop] of Object.entries(manifest.schema.properties)) {
-        if (prop.default !== undefined && !(key in properties)) {
-          properties[key] = prop.default;
-        }
-      }
-    }
+${catalog}
 
-    return properties;
-  }
+EXAMPLE (todo app with add and toggle):
+{
+  "name": "todo-list",
+  "version": "1.0.0",
+  "initialState": { "todos": [] },
+  "elements": [
+    { "id": "title", "type": "text", "properties": { "content": "My Todos" }, "dataBindings": [], "eventBindings": [] },
+    { "id": "todo-input", "type": "input", "properties": { "placeholder": "What needs doing?" }, "dataBindings": [], "eventBindings": [] },
+    { "id": "add-btn", "type": "button", "properties": { "text": "Add" }, "dataBindings": [], "eventBindings": [ { "event": "click", "operationId": "op-add" } ] },
+    { "id": "todo-list", "type": "list", "properties": {},
+      "dataBindings": [ { "property": "items", "source": "state", "sourceId": "todos" } ],
+      "eventBindings": [],
+      "children": [
+        { "id": "row", "type": "container", "properties": {}, "dataBindings": [], "eventBindings": [], "children": [
+          { "id": "row-title", "type": "text", "properties": {}, "dataBindings": [ { "property": "content", "source": "item", "sourceId": "title" } ], "eventBindings": [] },
+          { "id": "row-toggle", "type": "button", "properties": { "text": "Done" }, "dataBindings": [], "eventBindings": [ { "event": "click", "operationId": "op-toggle" } ] }
+        ] }
+      ] }
+  ],
+  "operations": [
+    { "id": "op-add", "operationName": "todos.add", "executionType": "builtin",
+      "inputs": [ { "name": "title", "source": "ui-element", "sourceId": "todo-input" } ],
+      "outputs": [ { "name": "reset", "target": "ui-element", "targetId": "todo-input" } ], "triggers": [] },
+    { "id": "op-toggle", "operationName": "todos.toggle", "executionType": "builtin",
+      "inputs": [ { "name": "id", "source": "item", "sourceId": "id" } ], "outputs": [], "triggers": [] }
+  ],
+  "layout": { "type": "flex", "properties": { "flexDirection": "column", "gap": "12px", "padding": "16px" } },
+  "styling": { "theme": "default" }
+}
 
-  private canElementProvideInput(element: UIElement, inputName: string, inputType: string): boolean {
-    // Simple heuristic: input elements can provide text, buttons can provide clicks
-    if (element.type === 'input' && inputType === 'string') return true;
-    if (element.type === 'button' && inputName.includes('trigger')) return true;
-    if (element.type === 'select' && inputType === 'string') return true;
-    return false;
-  }
-
-  private canElementDisplayOutput(element: UIElement, _outputName: string, outputType: string): boolean {
-    // Simple heuristic: text elements can display strings, lists can display arrays
-    if (element.type === 'text' && outputType === 'string') return true;
-    if (element.type === 'list' && outputType === 'array') return true;
-    if (element.type === 'chart' && outputType === 'object') return true;
-    return false;
-  }
-
-  private getDisplayProperty(element: UIElement, _output: any): string {
-    // Return appropriate property name for displaying output
-    switch (element.type) {
-      case 'text': return 'content';
-      case 'list': return 'items';
-      case 'chart': return 'data';
-      case 'image': return 'src';
-      default: return 'value';
-    }
-  }
-
-  private isInteractiveElement(element: UIElement): boolean {
-    const interactiveTypes = ['button', 'input', 'select', 'checkbox', 'radio'];
-    return interactiveTypes.includes(element.type);
-  }
-
-  private getDefaultEventType(element: UIElement): string {
-    switch (element.type) {
-      case 'button': return 'click';
-      case 'input': return 'change';
-      case 'select': return 'change';
-      case 'checkbox': return 'change';
-      case 'radio': return 'change';
-      default: return 'click';
-    }
-  }
-
-  private createInputTransform(input: any, element: UIElement): any {
-    // Create simple transforms based on input/element types
-    if (input.type === 'number' && element.type === 'input') {
-      return {
-        type: 'parse-number',
-        parameters: {}
-      };
-    }
-    return undefined;
-  }
-
-  private createOutputTransform(output: any, element: UIElement): any {
-    // Create simple transforms based on output/element types
-    if (output.type === 'array' && element.type === 'text') {
-      return {
-        type: 'join-array',
-        parameters: { separator: ', ' }
-      };
-    }
-    return undefined;
-  }
+Design the smallest contract that fully satisfies the blueprint. Every eventBinding.operationId must match an operation id. Every state key read by a dataBinding must be seeded in initialState or written by an operation output or builtin.`;
 }

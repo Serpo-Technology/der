@@ -41,7 +41,7 @@ export class TauriStorageProvider implements StorageProvider {
       });
       
       return JSON.parse(jsonData);
-    } catch (error) {
+    } catch {
       // Return null if file doesn't exist or can't be read
       return null;
     }
@@ -78,7 +78,7 @@ export class TauriStorageProvider implements StorageProvider {
     try {
       const data = await this.load(key);
       return data !== null;
-    } catch (error) {
+    } catch {
       return false;
     }
   }

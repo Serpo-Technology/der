@@ -40,13 +40,16 @@ Rust code under `src-tauri/` is outside the ESLint/tsc setup; build it with `car
 
 ### Generation pipeline
 
-`AIInterpreterService` (`src/services/ai-interpreter/`) is the pipeline core:
-`NaturalLanguageParser` (calls `LLMClient`) produces a `ParsedIntent`; `BlueprintGenerator`
-turns that into a `Blueprint`; `ContractBuilder` resolves it against the component
-`RepositoryService` into a `Contract`. `DynamicExperienceRuntimeService.renderExperience()`
-then walks the contract's `elements` tree (`DynamicExperienceRenderer` -> `ComponentRenderer`)
-into a live React component, with `ExperienceStateManager` holding per-experience state and
-`OperationExecutor` running operations.
+`AIInterpreterService` (`src/services/ai-interpreter/`) is the pipeline core, and generation is
+LLM-first end to end: `NaturalLanguageParser.extractIntent` asks the model for intent JSON and
+`ContractBuilder.generateFromBlueprint` asks it for the full contract, each validated against the
+zod schemas in `src/schemas/` through `generateValidatedJson` (`llm-json.ts`), which runs one
+repair round feeding validation errors back before failing. The contract prompt embeds the
+component catalog (from `src/services/operations/registry.ts` plus repository custom ops) and the
+runtime conventions. Post-processing dedupes ids, maps unknown element types to `container`, and
+drops operations that are neither builtins nor carry a runnable implementation.
+`DynamicExperienceRenderer` -> `ComponentRenderer` then render the contract live, with
+`ExperienceStateManager` holding per-experience state and `OperationExecutor` running operations.
 
 ### Orchestration and singletons
 
@@ -59,11 +62,14 @@ survives a reload unless persisted.
 
 ### Frontend/backend boundary
 
-The frontend reaches Rust through `@tauri-apps/api` `invoke`. `src-tauri/src/lib.rs` registers
-roughly two dozen commands (storage, `execute_operation`, window/tray control) in its
-`invoke_handler`. Be aware that several are stubs: `remote` and `repository` operation execution
-return mock responses, and `local` operations only support a small allowlist
-(`file_read`, `file_write`, `system_info`). `query_repository` also returns mock components.
+The frontend reaches Rust through `@tauri-apps/api` `invoke`. `src-tauri/src/lib.rs` registers the
+commands (storage, `execute_operation`, window/tray control) plus three newer modules: `llm.rs`
+(the `llm_chat` command that performs all LLM HTTP via reqwest), `settings.rs` (LLM settings and
+credentials under `app_data_dir/settings/`, redacted reads), and `oauth.rs` (Claude subscription
+PKCE sign-in and token refresh). `execute_operation`'s `remote` branch performs real HTTP
+(`{name}` endpoint substitution, GET query / JSON body); the `local` and `repository` branches in
+Rust are legacy and unreachable from contracts (the TS executor handles those). Rust
+`query_repository` still returns mock components and is unused by the TS repository.
 
 ### Two persistence paths (gotcha)
 
@@ -92,31 +98,50 @@ IPC boundaries. Services constantly convert between the two, so a value may be e
 object or a model instance depending on where it came from. Calling model methods like
 `.toObject()` on a plain interface object (or vice versa) is a common source of runtime errors.
 
-### LLM client
+### LLM providers
 
-`LLMClient` (`src/services/ai-interpreter/llm-client.ts`) supports `openai`, `anthropic`,
-`gemini`, and `local` providers. The active generation path (`IntegratedExperienceService`) is
-pinned to Gemini `gemini-2.0-flash`; `MainInterface` separately builds a `local`-provider client
-that backs manual validation and contract regeneration steps.
+`LLMClient` (`src/services/ai-interpreter/llm-client.ts`) is a thin wrapper over the Tauri
+`llm_chat` command; provider, model, and credentials resolve on the Rust side from stored
+settings, so the webview never holds secrets and CORS does not apply. Providers:
+`claude-subscription` (OAuth bearer + auto-refresh; sign-in lives in the Settings view),
+`anthropic` (API key), `deepseek`, `gemini`, `openai`, and `local` (OpenAI-compatible base URL).
+Anthropic requests never send sampling parameters (modern Claude models reject them). Settings UI:
+`src/components/settings/SettingsView.tsx`; TS wrappers: `src/services/settings/llm-settings.ts`.
+
+### Runtime conventions
+
+One flat state map with three namespaces: plain app-state keys (e.g. `todos`), `element_${id}`
+for element values (inputs are auto-controlled and write there on change), and
+`operation_${opId}` mirrors of operation results. Contracts may carry `initialState`.
+`OperationExecutor` dispatches strictly on `executionType`: `builtin` runs real functions from
+`src/services/operations/registry.ts` (todos.* own the `todos` array via ctx), `local` runs
+`implementation.code` as a `(inputs, ctx)` function body, `remote` goes through Rust HTTP.
+Input bindings resolve declaratively (`ui-element`/`state`/`constant`/`item`); list elements
+repeat their children per bound item with an `item` binding scope, and event handlers pass the
+clicked item to the executor. `normalizeContract` (`src/schemas/contract.ts`) converts legacy
+`triggers` into event bindings before rendering.
 
 ### Component repository
 
-`RepositoryService` plus `registerBuiltins()` (`src/services/repository/builtins.ts`) seed the
-built-in UI elements (`button`, `text`, `input`, `container`, `list`) and operations
-(`math.add`, `http.get`, `todos.add`, `todos.toggle`) that `ContractBuilder` resolves against.
-`MainInterface` seeds these on mount.
+The shared `repositoryService` singleton is seeded once at startup in `App.tsx` via
+`registerBuiltins()` (`src/services/repository/builtins.ts`): UI elements (`button`, `text`,
+`input`, `container`, `list`) plus operation manifests derived from the builtin registry
+(`math.add`, `http.get`, `todos.add`, `todos.toggle`, `todos.remove`). Registration falls back to
+the in-memory index outside Tauri instead of throwing.
 
 ## Conventions and gotchas
 
 - Imports are relative throughout. The `@/`, `@/types`, `@/interfaces` aliases exist in
   `vite.config.ts` and `tsconfig.json` but are unused; match the surrounding relative style.
-- Linting is deliberately lenient: `npm run lint` passes with up to 150 warnings, and
-  `no-explicit-any` plus the react-refresh rule are warnings. Unused vars are errors unless
-  prefixed with `_`. Do not treat a clean lint run as zero warnings.
+- Linting is deliberately lenient: `npm run lint` allows up to 350 warnings (a ratchet just above
+  the legacy `no-explicit-any` count; lower it as warnings get fixed), and `no-explicit-any` plus
+  the react-refresh rule are warnings. Unused vars/args/caught errors are errors unless prefixed
+  with `_`. Do not treat a clean lint run as zero warnings.
 - `tsconfig.json` excludes all `__tests__`/`test`/`tests` dirs, so type errors in test files do
   not fail `npm run build`. Run `npm run test` to check them.
 - The global test setup (`src/test/setup.ts`) only registers `@testing-library/jest-dom`. There
   is no global Tauri or SQLite mock, so any test exercising `invoke` or `Database` must stub them
-  itself.
+  itself. For pipeline tests, `src/test/llm-mocks.ts` provides canned intent/contract JSON and a
+  `routeLlmChat` router for mocking the `llm_chat` command.
 - Tests use Vitest + React Testing Library under jsdom, colocated in `__tests__/` next to source;
   broader integration/acceptance/performance suites live in `src/__tests__/`.

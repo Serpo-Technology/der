@@ -1,102 +1,80 @@
 /**
  * End-to-End Workflow Integration Test
- * Tests the complete workflow from natural language to rendered experience
- * Requirements: All requirements integration
+ * Tests the complete workflow from natural language to rendered experience.
+ * Generation is LLM-backed: the Tauri `llm_chat` command is mocked and routed
+ * through the shared llm-mocks fixtures.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { IntegratedExperienceService } from '../../services/IntegratedExperienceService';
 import { Blueprint } from '../../models/blueprint';
 import { Contract } from '../../models/contract';
+import { SAMPLE_TODO_CONTRACT } from '../../test/llm-mocks';
+import { installInvokeMock, invokeMock } from '../support/tauri-invoke-mock';
 
-// Mock the LLM client to avoid external API calls
-vi.mock('../../services/ai-interpreter/llm-client', () => ({
-  LLMClient: vi.fn().mockImplementation(() => ({
-    sendMessage: vi.fn().mockResolvedValue({
-      content: JSON.stringify({
-        goal: "Create a simple todo list application",
-        requiredCapabilities: ["task-management", "ui-interaction"],
-        uiElements: [
-          {
-            type: "input",
-            purpose: "Add new tasks",
-            capabilities: ["text-input", "validation"]
-          },
-          {
-            type: "button",
-            purpose: "Submit new task",
-            capabilities: ["click-handler"]
-          },
-          {
-            type: "list",
-            purpose: "Display tasks",
-            capabilities: ["data-display", "item-selection"]
-          }
-        ],
-        operations: [
-          {
-            name: "addTask",
-            purpose: "Add a new task to the list",
-            inputs: ["taskText"],
-            outputs: ["taskId"],
-            executionType: "local"
-          },
-          {
-            name: "completeTask",
-            purpose: "Mark a task as completed",
-            inputs: ["taskId"],
-            outputs: ["success"],
-            executionType: "local"
-          }
-        ],
-        ambiguities: []
-      })
-    })
-  }))
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+}));
+
+// The SQL plugin is an external package, so its internal import of the Tauri
+// core module bypasses the mock above; stub the database handle directly.
+vi.mock('@tauri-apps/plugin-sql', () => ({
+  default: {
+    load: vi.fn(async () => ({
+      execute: vi.fn(async () => ({ rowsAffected: 1, lastInsertId: 1 })),
+      select: vi.fn(async () => []),
+      close: vi.fn(async () => true),
+    })),
+  },
 }));
 
 describe('End-to-End Workflow Integration', () => {
   let integratedService: IntegratedExperienceService;
 
   beforeEach(() => {
+    installInvokeMock();
     integratedService = new IntegratedExperienceService();
   });
 
   describe('Natural Language to Rendered Experience', () => {
     it('should complete the full workflow from natural language input to rendered experience', async () => {
-      // Test input
-      const naturalLanguageInput = "Create a todo list app where users can add tasks, mark them as complete, and delete them";
+      const naturalLanguageInput =
+        'Create a todo list app where users can add tasks and mark them as complete';
 
-      // Execute the complete workflow
       const result = await integratedService.createExperienceFromNaturalLanguage(
         naturalLanguageInput,
         {
           preserveEdits: true,
           autoSave: true,
-          enableRealTimeUpdates: true
+          enableRealTimeUpdates: true,
         }
       );
 
-      // Verify the result structure
+      // Result structure
       expect(result).toHaveProperty('experienceId');
       expect(result).toHaveProperty('blueprint');
       expect(result).toHaveProperty('contract');
       expect(result).toHaveProperty('experience');
       expect(result).toHaveProperty('renderComponent');
 
-      // Verify experience ID is generated
       expect(result.experienceId).toMatch(/^exp-\d+-[a-z0-9]+$/);
 
-      // Verify blueprint is created
+      // Blueprint comes from the mocked intent extraction
       expect(result.blueprint).toBeInstanceOf(Blueprint);
-      expect(result.blueprint.intent).toBe("Create a simple todo list application");
+      expect(result.blueprint.goal).toBe('Create a todo list app');
+      expect(result.blueprint.uiElements).toHaveLength(3);
 
-      // Verify contract is generated
+      // Contract comes from the mocked contract generation
       expect(result.contract).toBeInstanceOf(Contract);
-      expect(result.contract.elements).toHaveLength(3); // input, button, list
-      expect(result.contract.operations).toHaveLength(2); // addTask, completeTask
+      expect(result.contract.elements).toHaveLength(SAMPLE_TODO_CONTRACT.elements.length);
+      expect(result.contract.operations).toHaveLength(SAMPLE_TODO_CONTRACT.operations.length);
+      expect(result.contract.operations.map((op) => op.operationName)).toEqual([
+        'todos.add',
+        'todos.toggle',
+      ]);
+      expect(result.contract.initialState).toEqual({ todos: [] });
 
-      // Verify experience object
+      // Experience object
       expect(result.experience.id).toBe(result.experienceId);
       expect(result.experience.contract).toBe(result.contract);
       expect(result.experience.state).toHaveProperty('data');
@@ -104,64 +82,95 @@ describe('End-to-End Workflow Integration', () => {
       expect(result.experience.state).toHaveProperty('errors');
       expect(result.experience.state.lastUpdated).toBeInstanceOf(Date);
 
-      // Verify React component is created
+      // React component
       expect(result.renderComponent).toBeTypeOf('function');
     });
 
+    it('should route intent and contract generation through the llm_chat command', async () => {
+      await integratedService.createExperienceFromNaturalLanguage(
+        'Create a todo list app for daily planning'
+      );
+
+      const llmCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === 'llm_chat');
+      // One call for intent extraction and one for contract generation
+      expect(llmCalls.length).toBe(2);
+      const systems = llmCalls.map(([, args]) => {
+        const messages = (args as any)?.request?.messages ?? [];
+        return messages.find((m: any) => m.role === 'system')?.content ?? '';
+      });
+      expect(systems.some((s: string) => s.includes('structured intent'))).toBe(true);
+      expect(systems.some((s: string) => s.includes('Contract JSON'))).toBe(true);
+    });
+
     it('should handle workflow with edit preservation', async () => {
-      const input = "Build a simple calculator with basic arithmetic operations";
+      const input = 'Build a simple task tracker with basic operations';
 
       const result = await integratedService.createExperienceFromNaturalLanguage(input, {
-        preserveEdits: true
+        preserveEdits: true,
       });
 
-      // Verify editor is initialized
       const editHistory = await integratedService.getEditHistory(result.experienceId);
       expect(Array.isArray(editHistory)).toBe(true);
     });
 
     it('should handle workflow with auto-save enabled', async () => {
-      const input = "Create a contact manager with search functionality";
+      const input = 'Create a todo manager with search functionality';
 
       const result = await integratedService.createExperienceFromNaturalLanguage(input, {
-        autoSave: true
+        autoSave: true,
       });
 
-      // Verify the experience was created successfully
       expect(result.experienceId).toBeDefined();
       expect(result.experience).toBeDefined();
+      // Auto-save persists through the Tauri save_experience command
+      const saveCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === 'save_experience');
+      expect(saveCalls.length).toBeGreaterThan(0);
     });
 
     it('should handle errors gracefully in the workflow', async () => {
-      // Mock an error in the AI interpreter
       const mockError = new Error('AI service unavailable');
-      vi.spyOn(integratedService['aiInterpreter'], 'parseNaturalLanguage')
-        .mockRejectedValueOnce(mockError);
+      vi.spyOn(integratedService['aiInterpreter'], 'parseNaturalLanguage').mockRejectedValueOnce(
+        mockError
+      );
 
       await expect(
-        integratedService.createExperienceFromNaturalLanguage("Invalid input")
+        integratedService.createExperienceFromNaturalLanguage('Invalid input')
       ).rejects.toThrow('Failed to create experience: AI service unavailable');
+    });
+
+    it('should surface LLM failures as workflow errors', async () => {
+      installInvokeMock({
+        onCommand: (cmd) => {
+          if (cmd === 'llm_chat') {
+            throw new Error('model backend unreachable');
+          }
+          return undefined;
+        },
+      });
+
+      await expect(
+        integratedService.createExperienceFromNaturalLanguage('Create a todo list app')
+      ).rejects.toThrow('Failed to create experience');
     });
   });
 
   describe('Experience State Management', () => {
     it('should manage experience state throughout the workflow', async () => {
-      const input = "Create a weather dashboard";
+      const input = 'Create a todo dashboard';
       const result = await integratedService.createExperienceFromNaturalLanguage(input);
 
-      // Get initial state
+      // Runtime state seeds from contract.initialState
       const initialState = await integratedService.getExperienceState(result.experienceId);
       expect(initialState).toBeDefined();
       expect(initialState?.lastUpdated).toBeInstanceOf(Date);
+      expect(initialState?.data.todos).toEqual([]);
 
-      // Update state
       await integratedService.updateExperienceState(result.experienceId, {
-        data: { weather: 'sunny' }
+        data: { todos: [{ id: '1', title: 'done deal', completed: true }] },
       });
 
-      // Verify state update
       const updatedState = await integratedService.getExperienceState(result.experienceId);
-      expect(updatedState?.data).toHaveProperty('weather', 'sunny');
+      expect(updatedState?.data.todos).toHaveLength(1);
     });
   });
 
@@ -181,17 +190,14 @@ describe('End-to-End Workflow Integration', () => {
 
   describe('Resource Cleanup', () => {
     it('should clean up experience resources properly', async () => {
-      const input = "Create a note-taking app";
+      const input = 'Create a note-taking app';
       const result = await integratedService.createExperienceFromNaturalLanguage(input);
 
-      // Verify experience exists
       const state = await integratedService.getExperienceState(result.experienceId);
       expect(state).toBeDefined();
 
-      // Clean up
       await integratedService.cleanupExperience(result.experienceId);
 
-      // Verify cleanup
       const stateAfterCleanup = await integratedService.getExperienceState(result.experienceId);
       expect(stateAfterCleanup).toBeNull();
     });

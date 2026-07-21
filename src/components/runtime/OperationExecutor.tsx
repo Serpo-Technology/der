@@ -1,276 +1,227 @@
 /**
- * Operation Executor - Handles execution of different operation types
- * Requirements: 3.3, 3.4, 8.1, 8.2, 8.3, 8.5
+ * Operation Executor - runs a contract's operations exactly as declared:
+ * builtin (registry function), local (custom code), or remote (HTTP via the
+ * backend). Inputs resolve declaratively from element values, state, literals,
+ * or the current list item.
  */
 
-import { OperationBinding } from '../../types/contract';
-import { Operation, OperationImplementation } from '../../types/experience';
+import { InputBinding, OperationBinding } from '../../types/contract';
 import { tauriCommandService, OperationRequest } from '../../services/tauri/TauriCommandService';
+import {
+  BUILTIN_OPERATIONS,
+  OperationContext,
+  getValueAtPath,
+} from '../../services/operations/registry';
+
+/** State surface the executor needs; implemented by ExperienceStateManager. */
+export interface StateAccess {
+  getData(key: string): unknown;
+  setData(key: string, value: unknown): void;
+}
+
+/** Per-event context: the list item whose template fired the event, if any. */
+export interface EventContext {
+  item?: unknown;
+}
+
+export class OperationResolutionError extends Error {
+  constructor(operation: OperationBinding) {
+    super(
+      `Unknown operation "${operation.operationName}" (${operation.id}): not a builtin and no runnable implementation`
+    );
+    this.name = 'OperationResolutionError';
+  }
+}
+
+const LOCAL_CODE_TIMEOUT_MS = 5000;
+
+type ExecType = 'builtin' | 'local' | 'remote';
+
+function applyTransform(value: unknown, transform: { type: string; parameters: Record<string, any> }): unknown {
+  switch (transform.type) {
+    case 'format':
+      if (typeof value === 'string' && transform.parameters.template) {
+        return String(transform.parameters.template).replace('{{value}}', value);
+      }
+      return value;
+    case 'map':
+      if (transform.parameters.mapping && typeof transform.parameters.mapping === 'object') {
+        return transform.parameters.mapping[String(value)] ?? value;
+      }
+      return value;
+    default:
+      return value;
+  }
+}
 
 export class OperationExecutor {
-  private operationCache: Map<string, any> = new Map();
+  async executeOperation(
+    operation: OperationBinding,
+    eventContext: EventContext,
+    state: StateAccess
+  ): Promise<Record<string, unknown>> {
+    const inputs = this.resolveInputs(operation, eventContext, state);
+    const type = this.resolveExecutionType(operation);
 
-  async executeOperation(operationBinding: OperationBinding, inputs: any[]): Promise<any> {
-    try {
-      // Resolve the actual operation implementation
-      const operation = await this.resolveOperation(operationBinding);
-      
-      // Prepare inputs according to operation specification
-      const preparedInputs = this.prepareInputs(operationBinding, inputs);
-      
-      // Execute based on operation type
-      switch (operation.type) {
-        case 'remote':
-          return await this.executeRemoteOperation(operation, preparedInputs);
-        case 'local':
-          return await this.executeLocalOperation(operation, preparedInputs);
-        case 'repository':
-          return await this.executeRepositoryOperation(operation, preparedInputs);
-        default:
-          throw new Error(`Unknown operation type: ${operation.type}`);
-      }
-    } catch (error) {
-      console.error(`Error executing operation ${operationBinding.id}:`, error);
-      
-      // For certain operation types, throw the error directly without wrapping
-      // This is needed for tests that expect specific error message formats
-      // Exception: operations with "context" in the name should always be wrapped
-      if (error instanceof Error && 
-          !operationBinding.operationName.toLowerCase().includes('context') &&
-          (error.message.startsWith('Remote operation failed:') || 
-           error.message.startsWith('Local operation failed:') || 
-           error.message.startsWith('Repository operation failed:'))) {
-        throw error;
-      }
-      
-      throw this.wrapOperationError(error, operationBinding);
+    switch (type) {
+      case 'builtin':
+        return await this.executeBuiltin(operation, inputs, state);
+      case 'local':
+        return await this.executeLocal(operation, inputs, state);
+      case 'remote':
+        return await this.executeRemote(operation, inputs);
     }
   }
 
-  private async resolveOperation(operationBinding: OperationBinding): Promise<Operation> {
-    // Check cache first
-    const cacheKey = `${operationBinding.operationName}`;
-    if (this.operationCache.has(cacheKey)) {
-      return this.operationCache.get(cacheKey);
+  resolveExecutionType(operation: OperationBinding): ExecType {
+    switch (operation.executionType) {
+      case 'builtin':
+        return 'builtin';
+      case 'local':
+        return 'local';
+      case 'remote':
+        return 'remote';
+      case 'repository':
+        // Legacy saved contracts: repository operations map onto the registry.
+        if (BUILTIN_OPERATIONS[operation.operationName]) return 'builtin';
+        break;
+      default:
+        break;
+    }
+    // Tolerance for omitted executionType.
+    if (BUILTIN_OPERATIONS[operation.operationName]) return 'builtin';
+    if (operation.implementation?.code) return 'local';
+    if (operation.implementation?.endpoint) return 'remote';
+    throw new OperationResolutionError(operation);
+  }
+
+  resolveInputs(
+    operation: OperationBinding,
+    eventContext: EventContext,
+    state: StateAccess
+  ): Record<string, unknown> {
+    const inputs: Record<string, unknown> = {};
+    for (const binding of operation.inputs) {
+      inputs[binding.name] = this.resolveInput(binding, eventContext, state);
+    }
+    return inputs;
+  }
+
+  private resolveInput(binding: InputBinding, eventContext: EventContext, state: StateAccess): unknown {
+    let value: unknown;
+    switch (binding.source) {
+      case 'ui-element':
+        value = state.getData(`element_${binding.sourceId}`);
+        break;
+      case 'state':
+        value = state.getData(binding.sourceId);
+        break;
+      case 'constant':
+        value = binding.sourceId;
+        break;
+      case 'item':
+        value = getValueAtPath(eventContext.item, binding.sourceId);
+        break;
+      default:
+        value = undefined;
+    }
+    if (binding.transform && value !== null && value !== undefined) {
+      value = applyTransform(value, binding.transform);
+    }
+    return value;
+  }
+
+  private operationContext(state: StateAccess): OperationContext {
+    return {
+      getState: (key) => state.getData(key),
+      setState: (key, value) => state.setData(key, value),
+    };
+  }
+
+  private async executeBuiltin(
+    operation: OperationBinding,
+    inputs: Record<string, unknown>,
+    state: StateAccess
+  ): Promise<Record<string, unknown>> {
+    const def = BUILTIN_OPERATIONS[operation.operationName];
+    if (!def) {
+      throw new OperationResolutionError(operation);
+    }
+    return await def.execute(inputs, this.operationContext(state));
+  }
+
+  private async executeLocal(
+    operation: OperationBinding,
+    inputs: Record<string, unknown>,
+    state: StateAccess
+  ): Promise<Record<string, unknown>> {
+    const code = operation.implementation?.code;
+    if (!code) {
+      throw new Error(`Local operation ${operation.id} has no code`);
     }
 
-    // In a real implementation, this would query the repository
-    // For now, we'll create a mock operation based on the binding
-    const operation: Operation = {
-      id: operationBinding.id,
-      name: operationBinding.operationName,
-      type: this.inferOperationType(operationBinding),
-      implementation: this.createMockImplementation(operationBinding),
-      inputs: operationBinding.inputs.map(input => ({
-        name: input.name,
-        type: 'any', // Would be resolved from repository
-        required: true,
-        description: `Input for ${input.name}`
-      })),
-      outputs: operationBinding.outputs.map(output => ({
-        name: output.name,
-        type: 'any', // Would be resolved from repository
-        description: `Output for ${output.name}`
-      }))
+    let fn: (inputs: Record<string, unknown>, ctx: OperationContext) => unknown;
+    try {
+      fn = new Function('inputs', 'ctx', code) as typeof fn;
+    } catch (error) {
+      throw new Error(
+        `Local operation ${operation.id} has invalid code: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Local operation ${operation.id} timed out after ${LOCAL_CODE_TIMEOUT_MS}ms`)),
+        LOCAL_CODE_TIMEOUT_MS
+      )
+    );
+    const result = await Promise.race([
+      Promise.resolve().then(() => fn(inputs, this.operationContext(state))),
+      timeout,
+    ]);
+
+    if (result === null || typeof result !== 'object' || Array.isArray(result)) {
+      throw new Error(
+        `Local operation ${operation.id} must return an object keyed by output names`
+      );
+    }
+    return result as Record<string, unknown>;
+  }
+
+  private async executeRemote(
+    operation: OperationBinding,
+    inputs: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+    const implementation = operation.implementation;
+    if (!implementation?.endpoint) {
+      throw new Error(`Remote operation ${operation.id} has no endpoint`);
+    }
+
+    const request: OperationRequest = {
+      operation_id: operation.id,
+      operation_name: operation.operationName,
+      operation_type: 'remote',
+      inputs,
+      implementation: {
+        type: 'remote',
+        endpoint: implementation.endpoint,
+        method: implementation.method || 'GET',
+        headers: implementation.headers || {},
+      },
     };
 
-    this.operationCache.set(cacheKey, operation);
-    return operation;
-  }
-
-  private inferOperationType(operationBinding: OperationBinding): 'remote' | 'local' | 'repository' {
-    // Simple heuristics to infer operation type
-    const name = operationBinding.operationName.toLowerCase();
-    
-    if (name.includes('api') || name.includes('fetch') || name.includes('http') || name.includes('remote') || name.includes('failing') || name.includes('error')) {
-      return 'remote';
+    const result = await tauriCommandService.executeOperation(request);
+    if (!result.success) {
+      throw new Error(`Remote operation failed: ${result.error || 'Unknown error'}`);
     }
-    if (name.includes('file') || name.includes('storage') || name.includes('device') || name.includes('process')) {
-      return 'local';
+    const data = result.data;
+    if (data !== null && typeof data === 'object' && !Array.isArray(data)) {
+      return data as Record<string, unknown>;
     }
-    return 'repository';
-  }
-
-  private createMockImplementation(operationBinding: OperationBinding): OperationImplementation {
-    const type = this.inferOperationType(operationBinding);
-    
-    switch (type) {
-      case 'remote':
-        return {
-          type: 'remote',
-          endpoint: `https://api.example.com/${operationBinding.operationName}`,
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        };
-      case 'local':
-        return {
-          type: 'local',
-          code: `// Local operation: ${operationBinding.operationName}\nreturn { success: true, data: inputs };`
-        };
-      case 'repository':
-        return {
-          type: 'repository',
-          repositoryId: operationBinding.operationName
-        };
-    }
-  }
-
-  private prepareInputs(operationBinding: OperationBinding, rawInputs: any[]): Record<string, any> {
-    const preparedInputs: Record<string, any> = {};
-
-    operationBinding.inputs.forEach((inputBinding, index) => {
-      let value = rawInputs[index];
-
-      // Apply input transformations if specified
-      if (inputBinding.transform) {
-        value = this.applyTransform(value, inputBinding.transform);
-      }
-
-      preparedInputs[inputBinding.name] = value;
-    });
-
-    return preparedInputs;
-  }
-
-  private applyTransform(value: any, transform: any): any {
-    // Simple transform implementation
-    switch (transform.type) {
-      case 'format':
-        if (typeof value === 'string' && transform.parameters.template) {
-          return transform.parameters.template.replace('{{value}}', value);
-        }
-        return value;
-      case 'validate':
-        if (transform.parameters.required && (value === null || value === undefined)) {
-          throw new Error('Required input is missing');
-        }
-        return value;
-      default:
-        return value;
-    }
-  }
-
-  async executeRemoteOperation(operation: Operation, inputs: Record<string, any>): Promise<any> {
-    const { implementation } = operation;
-    
-    if (!implementation.endpoint) {
-      throw new Error('Remote operation missing endpoint');
-    }
-
-    try {
-      const operationRequest: OperationRequest = {
-        operation_id: operation.id,
-        operation_name: operation.name,
-        operation_type: 'remote',
-        inputs,
-        implementation: {
-          type: 'remote',
-          endpoint: implementation.endpoint,
-          method: implementation.method || 'POST',
-          headers: implementation.headers || {}
-        }
-      };
-
-      const result = await tauriCommandService.executeOperation(operationRequest);
-      
-      if (!result.success) {
-        throw new Error(`Remote operation failed: ${result.error || 'Unknown error'}`);
-      }
-
-      return result.data;
-    } catch (error) {
-      // If it's already a formatted error from the success check, re-throw as-is
-      if (error instanceof Error && error.message.startsWith('Remote operation failed:')) {
-        throw error;
-      }
-      throw new Error(`Remote operation failed: ${error instanceof Error ? error.message : error}`);
-    }
-  }
-
-  async executeLocalOperation(operation: Operation, inputs: Record<string, any>): Promise<any> {
-    const { implementation } = operation;
-    
-    if (!implementation.code) {
-      throw new Error('Local operation missing code');
-    }
-
-    try {
-      const operationRequest: OperationRequest = {
-        operation_id: operation.id,
-        operation_name: operation.name,
-        operation_type: 'local',
-        inputs,
-        implementation: {
-          type: 'local',
-          code: implementation.code
-        }
-      };
-
-      const result = await tauriCommandService.executeOperation(operationRequest);
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Local operation failed');
-      }
-
-      return result.data;
-    } catch (error) {
-      throw new Error(`Local operation failed: ${error}`);
-    }
-  }
-
-  async executeRepositoryOperation(operation: Operation, inputs: Record<string, any>): Promise<any> {
-    const { implementation } = operation;
-    
-    if (!implementation.repositoryId) {
-      throw new Error('Repository operation missing repository ID');
-    }
-
-    try {
-      const operationRequest: OperationRequest = {
-        operation_id: operation.id,
-        operation_name: operation.name,
-        operation_type: 'repository',
-        inputs,
-        implementation: {
-          type: 'repository',
-          repository_id: implementation.repositoryId
-        }
-      };
-
-      const result = await tauriCommandService.executeOperation(operationRequest);
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Repository operation failed');
-      }
-
-      return result.data;
-    } catch (error) {
-      throw new Error(`Repository operation failed: ${error}`);
-    }
-  }
-
-
-
-  private wrapOperationError(error: any, operationBinding: OperationBinding): Error {
-    const wrappedError = new Error(
-      `Operation ${operationBinding.operationName} (${operationBinding.id}) failed: ${error.message || error}`
-    );
-    
-    // Preserve original error for debugging
-    (wrappedError as any).originalError = error;
-    (wrappedError as any).operationBinding = operationBinding;
-    
-    return wrappedError;
-  }
-
-  // Clear operation cache
-  clearCache(): void {
-    this.operationCache.clear();
-  }
-
-  // Get cached operations for debugging
-  getCachedOperations(): string[] {
-    return Array.from(this.operationCache.keys());
+    // Non-object payloads land under a stable key so outputs can route them.
+    return { response: data };
   }
 }
 

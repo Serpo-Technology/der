@@ -1,0 +1,124 @@
+.settings-view {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  text-align: left;
+}
+
+.settings-view h2 {
+  margin-bottom: 16px;
+}
+
+.settings-section {
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.settings-section h3 {
+  margin: 0 0 12px 0;
+  font-size: 1rem;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.settings-field span {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.settings-field input,
+.settings-field select,
+.settings-inline input {
+  padding: 8px 10px;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.settings-inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.settings-inline input {
+  flex: 1;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.settings-actions button,
+.settings-inline button {
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #ccc);
+  cursor: pointer;
+}
+
+.settings-actions button.primary {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+
+.settings-actions button:disabled,
+.settings-inline button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.settings-hint {
+  font-size: 0.85rem;
+  opacity: 0.85;
+  margin: 4px 0;
+  word-break: break-all;
+}
+
+.settings-hint code {
+  font-size: 0.8rem;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #3b82f6;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 8px;
+  font-size: 0.85rem;
+  text-decoration: underline;
+}
+
+.settings-signin {
+  margin-top: 12px;
+}
+
+.settings-details {
+  margin-top: 12px;
+  font-size: 0.9rem;
+}
+
+.settings-details summary {
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.settings-status {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.1);
+  font-size: 0.9rem;
+  word-break: break-word;
+}

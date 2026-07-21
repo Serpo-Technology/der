@@ -3,8 +3,9 @@
  * This service wires together all components for seamless user workflows
  */
 
+import type React from 'react';
 import { AIInterpreterService } from './ai-interpreter';
-import { RepositoryService } from './repository/repository-service';
+import { RepositoryService, repositoryService } from './repository/repository-service';
 import { DynamicExperienceRuntimeService } from '../components/runtime/DynamicExperienceRuntimeService';
 import { ExperienceEditorService } from './edit-preservation/ExperienceEditorService';
 import { SharingService } from './persistence/SharingService';
@@ -47,17 +48,12 @@ export class IntegratedExperienceService {
   private persistence: PersistenceService;
 
   constructor() {
-    this.repository = new RepositoryService();
-    
-    // Initialize AI Interpreter with repository access
-    const llmConfig = {
-      provider: 'gemini' as const,
-      apiKey: import.meta.env.VITE_GEMINI_API_KEY,
-      model: 'gemini-2.0-flash',
-      temperature: 0.7
-    };
-    this.aiInterpreter = new AIInterpreterService(llmConfig, this.repository);
-    
+    // Shared singleton so generation sees the seeded component catalog.
+    this.repository = repositoryService;
+
+    // Provider, model, and credentials come from the stored settings.
+    this.aiInterpreter = new AIInterpreterService(this.repository);
+
     this.runtime = new DynamicExperienceRuntimeService();
     this.editor = new ExperienceEditorService();
     this.sharing = new SharingService();
@@ -161,7 +157,7 @@ export class IntegratedExperienceService {
         success: true,
         updatedContract
       };
-    } catch (error) {
+    } catch {
       const fallbackContract = await this.editor.getCurrentContract(experienceId);
       return {
         success: false,

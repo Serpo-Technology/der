@@ -51,7 +51,7 @@ export interface Operation {
 }
 
 export interface OperationImplementation {
-  type: 'remote' | 'local' | 'repository';
+  type: 'builtin' | 'remote' | 'local' | 'repository';
   endpoint?: string;
   method?: string;
   headers?: Record<string, string>;

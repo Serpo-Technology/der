@@ -71,7 +71,7 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
       
       try {
         shareableContract = JSON.parse(importData);
-      } catch (parseError) {
+      } catch {
         throw new Error('Invalid JSON format. Please check your data.');
       }
 

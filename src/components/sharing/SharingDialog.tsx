@@ -86,7 +86,7 @@ export const SharingDialog: React.FC<SharingDialogProps> = ({
     try {
       await navigator.clipboard.writeText(exportedData);
       onSuccess?.('Copied to clipboard!');
-    } catch (error) {
+    } catch {
       onError?.('Failed to copy to clipboard');
     }
   }, [exportedData, onSuccess, onError]);

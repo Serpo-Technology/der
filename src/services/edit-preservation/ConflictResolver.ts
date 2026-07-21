@@ -345,7 +345,7 @@ export class ConflictResolver implements IConflictResolver {
    * Gets a value at a specific path in an object
    */
   private getValueAtPath(obj: any, path: string): any {
-    const parts = path.split(/[.\[\]]+/).filter(Boolean);
+    const parts = path.split(/[.[\]]+/).filter(Boolean);
     let current = obj;
     
     for (const part of parts) {
@@ -362,7 +362,7 @@ export class ConflictResolver implements IConflictResolver {
    * Sets a value at a specific path in an object
    */
   private setValueAtPath(obj: any, path: string, value: any): void {
-    const parts = path.split(/[.\[\]]+/).filter(Boolean);
+    const parts = path.split(/[.[\]]+/).filter(Boolean);
     let current = obj;
     
     for (let i = 0; i < parts.length - 1; i++) {

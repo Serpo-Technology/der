@@ -1,13 +1,13 @@
 import type { RepositoryService } from './repository-service';
 import type { UIElementManifest, OperationManifest } from '../../types/component';
+import { BUILTIN_OPERATIONS } from '../operations/registry';
 
 /**
- * Registers a minimal set of built-in UI elements and operations
- * sufficient to compose example prompts and enable LLM-guided construction.
+ * Registers the built-in UI elements and operations. Operation manifests are
+ * derived from the builtin registry, which is the single source of truth for
+ * their behavior. Idempotent: re-registration overwrites the index entries.
  */
 export async function registerBuiltins(repository: RepositoryService): Promise<void> {
-  const existing = await repository.listComponents();
-  if (existing.length > 0) return;
 
   const uiElements: UIElementManifest[] = [
     {
@@ -115,67 +115,29 @@ export async function registerBuiltins(repository: RepositoryService): Promise<v
     }
   ];
 
-  const operations: OperationManifest[] = [
-    {
-      id: 'op-math-add',
-      name: 'math.add',
-      version: '1.0.0',
-      type: 'operation',
-      description: 'Adds two numbers',
-      capabilities: ['math'],
-      dependencies: [],
-      schema: { type: 'object', properties: {} },
-      inputs: [
-        { name: 'a', type: 'number', required: true },
-        { name: 'b', type: 'number', required: true }
-      ],
-      outputs: [ { name: 'result', type: 'number' } ],
-      executionType: 'local',
-      implementation: { type: 'local', code: 'const { a, b } = inputs; return { result: Number(a) + Number(b) };' }
-    },
-    {
-      id: 'op-http-get',
-      name: 'http.get',
-      version: '1.0.0',
-      type: 'operation',
-      description: 'Performs an HTTP GET request',
-      capabilities: ['http', 'remote'],
-      dependencies: [],
-      schema: { type: 'object', properties: {} },
-      inputs: [ { name: 'url', type: 'string', required: true } ],
-      outputs: [ { name: 'response', type: 'object' } ],
-      executionType: 'remote',
-      implementation: { type: 'remote', endpoint: 'https://example.com/api/proxy', method: 'POST', headers: { 'Content-Type': 'application/json' } }
-    },
-    {
-      id: 'op-todos-add',
-      name: 'todos.add',
-      version: '1.0.0',
-      type: 'operation',
-      description: 'Adds a todo item',
-      capabilities: ['local'],
-      dependencies: [],
-      schema: { type: 'object', properties: {} },
-      inputs: [ { name: 'title', type: 'string', required: true } ],
-      outputs: [ { name: 'todo', type: 'object' } ],
-      executionType: 'local',
-      implementation: { type: 'local', code: 'return { todo: { id: Date.now(), title: inputs.title, completed: false } };' }
-    },
-    {
-      id: 'op-todos-toggle',
-      name: 'todos.toggle',
-      version: '1.0.0',
-      type: 'operation',
-      description: 'Toggles a todo',
-      capabilities: ['local'],
-      dependencies: [],
-      schema: { type: 'object', properties: {} },
-      inputs: [ { name: 'id', type: 'number', required: true }, { name: 'completed', type: 'boolean', required: true } ],
-      outputs: [ { name: 'todo', type: 'object' } ],
-      executionType: 'local',
-      implementation: { type: 'local', code: 'return { todo: { id: inputs.id, completed: !!inputs.completed } };' }
-    }
-  ];
+  const operations: OperationManifest[] = Object.values(BUILTIN_OPERATIONS).map((def) => ({
+    id: `op-${def.name.replace(/\./g, '-')}`,
+    name: def.name,
+    version: '1.0.0',
+    type: 'operation',
+    description: def.description,
+    capabilities: ['builtin'],
+    dependencies: [],
+    schema: { type: 'object', properties: {} },
+    inputs: def.inputs.map((input) => ({
+      name: input.name,
+      type: input.type,
+      required: input.required ?? false,
+      description: input.description
+    })),
+    outputs: def.outputs.map((output) => ({
+      name: output.name,
+      type: output.type,
+      description: output.description
+    })),
+    executionType: 'builtin',
+    implementation: { type: 'builtin' }
+  }));
 
   for (const el of uiElements) {
     await repository.registerComponent(el);

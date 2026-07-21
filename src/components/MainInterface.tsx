@@ -14,6 +14,7 @@ import { DynamicExperienceRenderer } from './runtime/DynamicExperienceRenderer';
 // Import persistence components
 import { BookmarkManager } from './bookmarks';
 import { SharingDialog, ImportDialog } from './sharing';
+import { SettingsView } from './settings/SettingsView';
 
 // Import types
 import { Blueprint } from '../types/blueprint';
@@ -26,15 +27,14 @@ import { NaturalLanguageParser } from '../services/ai-interpreter/natural-langua
 import { BlueprintGenerator } from '../services/ai-interpreter/blueprint-generator';
 import { ContractBuilder } from '../services/ai-interpreter/contract-builder';
 import { LLMClient } from '../services/ai-interpreter/llm-client';
-import { RepositoryService } from '../services/repository/repository-service';
-import { registerBuiltins } from '../services/repository/builtins';
+import { repositoryService } from '../services/repository/repository-service';
 // import { persistenceService } from '../services/persistence';
 import { integratedExperienceService } from '../services/IntegratedExperienceService';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
 // Navigation modes
-type ViewMode = 'create' | 'blueprint' | 'contract' | 'preview' | 'bookmarks' | 'import';
+type ViewMode = 'create' | 'blueprint' | 'contract' | 'preview' | 'bookmarks' | 'import' | 'settings';
 
 interface MainInterfaceState {
   currentMode: ViewMode;
@@ -72,33 +72,18 @@ export const MainInterface: React.FC = () => {
     currentExperienceBookmarked: false
   });
 
-  // Initialize services
+  // Initialize services (provider and model come from the stored settings;
+  // the shared repository singleton is seeded at app startup)
   const services = useMemo(() => {
-    const llmClient = new LLMClient({
-      provider: 'local',
-      model: 'gpt-3.5-turbo',
-      temperature: 0.7
-    });
-    const repositoryService = new RepositoryService();
-    
+    const llmClient = new LLMClient();
+
     return {
       naturalLanguageParser: new NaturalLanguageParser(llmClient),
       blueprintGenerator: new BlueprintGenerator(),
-      contractBuilder: new ContractBuilder(repositoryService),
+      contractBuilder: new ContractBuilder(repositoryService, llmClient),
       repositoryService
     };
   }, []);
-
-  // Seed built-in components once
-  useEffect(() => {
-    (async () => {
-      try {
-        await registerBuiltins(services.repositoryService as RepositoryService);
-      } catch (e) {
-        console.warn('Failed to register built-ins', e);
-      }
-    })();
-  }, [services.repositoryService]);
 
   // Load bookmarked experiences
   const loadBookmarkedExperiences = useCallback(async () => {
@@ -280,13 +265,15 @@ export const MainInterface: React.FC = () => {
   // Handle bookmark creation using integrated service
   const handleBookmarkExperience = useCallback(async () => {
     if (!state.contract) return;
+    if (!state.currentExperienceId) {
+      setState(prev => ({ ...prev, error: 'Generate or load an experience before bookmarking.' }));
+      return;
+    }
 
     setState(prev => ({ ...prev, isProcessing: true, error: null }));
     try {
-      const experienceId = `exp-${Date.now()}`;
-      
       await integratedExperienceService.bookmarkExperience(
-        experienceId,
+        state.currentExperienceId,
         'current-user', // TODO: Get from auth service
         {
           personalNote: 'Created from natural language',
@@ -295,10 +282,10 @@ export const MainInterface: React.FC = () => {
         }
       );
 
-      setState(prev => ({ 
-        ...prev, 
+      setState(prev => ({
+        ...prev,
         currentExperienceBookmarked: true,
-        isProcessing: false 
+        isProcessing: false
       }));
       await loadBookmarkedExperiences();
     } catch (error) {
@@ -308,7 +295,7 @@ export const MainInterface: React.FC = () => {
         isProcessing: false
       }));
     }
-  }, [state.contract, loadBookmarkedExperiences]);
+  }, [state.contract, state.currentExperienceId, loadBookmarkedExperiences]);
 
   // Handle sharing dialog
   const handleShowSharingDialog = useCallback(() => {
@@ -423,6 +410,12 @@ export const MainInterface: React.FC = () => {
           Import
         </button>
         <button
+          className={`nav-button ${state.currentMode === 'settings' ? 'active' : ''}`}
+          onClick={() => handleModeChange('settings')}
+        >
+          Settings
+        </button>
+        <button
           className="nav-button reset"
           onClick={handleReset}
           title="Start over"
@@ -481,6 +474,7 @@ export const MainInterface: React.FC = () => {
         {state.currentMode === 'preview' && state.contract && (
           <PreviewView
             contract={state.contract}
+            experienceId={state.currentExperienceId || 'preview'}
             onStateChange={handleExperienceStateChange}
             onError={handleExperienceError}
             onBookmark={handleBookmarkExperience}
@@ -527,6 +521,10 @@ export const MainInterface: React.FC = () => {
             onError={handleError}
           />
         )}
+
+        {state.currentMode === 'settings' && (
+          <SettingsView onError={handleError} />
+        )}
       </main>
 
       {/* Status Bar */}
@@ -545,9 +543,9 @@ export const MainInterface: React.FC = () => {
       </footer>
 
       {/* Sharing Dialog */}
-      {state.contract && (
+      {state.contract && state.currentExperienceId && (
         <SharingDialog
-          experienceId={`exp-${Date.now()}`}
+          experienceId={state.currentExperienceId}
           experienceName={state.contract.name || 'Unnamed Experience'}
           isOpen={state.showSharingDialog}
           onClose={handleCloseSharingDialog}
@@ -712,6 +710,7 @@ const ContractView: React.FC<ContractViewProps> = ({
 // Preview View Component
 interface PreviewViewProps {
   contract: ContractClass;
+  experienceId: string;
   onStateChange: (state: ExperienceState) => void;
   onError: (error: Error) => void;
   onBookmark?: () => void;
@@ -723,6 +722,7 @@ interface PreviewViewProps {
 
 const PreviewView: React.FC<PreviewViewProps> = ({
   contract,
+  experienceId,
   onStateChange,
   onError,
   onBookmark,
@@ -737,7 +737,9 @@ const PreviewView: React.FC<PreviewViewProps> = ({
       try {
         // Invoke and ignore return type
         (onOpenWindow as () => unknown)();
-      } catch (_) {}
+      } catch {
+        // Opening the standalone window is best-effort
+      }
     }
     // run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -786,7 +788,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
       <div className="preview-container">
         <DynamicExperienceRenderer
           contract={contract}
-          experienceId="preview"
+          experienceId={experienceId}
           onStateChange={onStateChange}
           onError={onError}
         />

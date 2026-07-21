@@ -1,19 +1,32 @@
 /**
  * Integration Tests: Blueprint to Experience Pipeline
- * Tests the complete flow from natural language input to rendered experience
+ * Exercises the LLM-backed generation pipeline directly: natural language to
+ * blueprint (intent extraction), blueprint to contract (contract generation),
+ * and contract to runtime experience. All model calls go through the mocked
+ * Tauri `llm_chat` command.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AIInterpreterService } from '../../services/ai-interpreter';
 import { RepositoryService } from '../../services/repository/repository-service';
+import { registerBuiltins } from '../../services/repository/builtins';
 import { DynamicExperienceRuntimeService } from '../../components/runtime/DynamicExperienceRuntimeService';
 import { Blueprint } from '../../models/blueprint';
-import { Contract } from '../../models/contract';
-import type { UIElementManifest, OperationManifest } from '../../types/component';
+import { SAMPLE_INTENT, SAMPLE_TODO_CONTRACT, routeLlmChat } from '../../test/llm-mocks';
+import { installInvokeMock, invokeMock } from '../support/tauri-invoke-mock';
 
-// Mock external dependencies
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn()
+  invoke: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/plugin-sql', () => ({
+  default: {
+    load: vi.fn(async () => ({
+      execute: vi.fn(async () => ({ rowsAffected: 1, lastInsertId: 1 })),
+      select: vi.fn(async () => []),
+      close: vi.fn(async () => true),
+    })),
+  },
 }));
 
 describe('Blueprint to Experience Pipeline Integration', () => {
@@ -21,332 +34,217 @@ describe('Blueprint to Experience Pipeline Integration', () => {
   let repository: RepositoryService;
   let runtime: DynamicExperienceRuntimeService;
 
-  const mockButtonComponent: UIElementManifest = {
-    id: 'button',
-    name: 'Button',
-    version: '1.0.0',
-    type: 'ui-element',
-    description: 'A clickable button component',
-    capabilities: ['clickable', 'styled'],
-    dependencies: [],
-    schema: {
-      type: 'object',
-      properties: {
-        text: { type: 'string' },
-        onClick: { type: 'function' }
-      }
-    },
-    inputs: [
-      { name: 'text', type: 'string', required: true },
-      { name: 'disabled', type: 'boolean', required: false }
-    ],
-    outputs: [
-      { name: 'onClick', type: 'event' }
-    ],
-    renderFunction: 'renderButton',
-    styleSchema: {
-      type: 'object',
-      properties: {
-        backgroundColor: { type: 'string' },
-        color: { type: 'string' }
-      }
-    }
-  };
-
-  const mockApiComponent: OperationManifest = {
-    id: 'api-call',
-    name: 'API Call',
-    version: '1.0.0',
-    type: 'operation',
-    description: 'Makes HTTP API calls',
-    capabilities: ['http', 'async'],
-    dependencies: [],
-    schema: {
-      type: 'object',
-      properties: {
-        url: { type: 'string' },
-        method: { type: 'string' }
-      }
-    },
-    inputs: [
-      { name: 'url', type: 'string', required: true },
-      { name: 'method', type: 'string', required: false }
-    ],
-    outputs: [
-      { name: 'response', type: 'object' }
-    ],
-    executionType: 'remote',
-    implementation: {
-      type: 'remote',
-      endpoint: 'https://api.example.com',
-      method: 'GET'
-    }
-  };
-
   beforeEach(async () => {
-    // Initialize services
+    installInvokeMock();
     repository = new RepositoryService();
-    
-    // Create mock LLM config
-    const mockLLMConfig = {
-      provider: 'local' as const,
-      model: 'test-model',
-      temperature: 0.7,
-      baseUrl: 'http://localhost:11434' // Mock Ollama URL
-    };
-    
-    aiInterpreter = new AIInterpreterService(mockLLMConfig, repository);
+    // Storage is unavailable under the mock; registration must still succeed
+    // through the in-memory index.
+    await registerBuiltins(repository);
+    aiInterpreter = new AIInterpreterService(repository);
     runtime = new DynamicExperienceRuntimeService();
+  });
 
-    // Mock repository with test components
-    vi.spyOn(repository, 'queryUIElements').mockResolvedValue([mockButtonComponent as any]);
-    vi.spyOn(repository, 'queryOperations').mockResolvedValue([mockApiComponent as any]);
-    vi.spyOn(repository, 'getComponent').mockImplementation(async (id: string) => {
-      if (id === 'button') return mockButtonComponent;
-      if (id === 'api-call') return mockApiComponent;
-      return null;
+  describe('Repository builtins', () => {
+    it('registers builtin operations with executionType builtin even without storage', async () => {
+      const operations = await repository.queryOperations({});
+      const names = operations.map((op) => op.name);
+
+      expect(names).toEqual(
+        expect.arrayContaining(['todos.add', 'todos.toggle', 'todos.remove', 'math.add', 'http.get'])
+      );
+      operations.forEach((op) => {
+        expect(op.executionType).toBe('builtin');
+      });
     });
 
-    // Mock fetch for LLM calls
-    global.fetch = vi.fn().mockImplementation((_url: string, options?: any) => {
-      const body = options?.body ? JSON.parse(options.body) : {};
-      const allMessages = body.messages || [];
-      const userMessage = allMessages.find((m: any) => m.role === 'user')?.content || '';
-      
-      // Return a proper LLM response
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({
-          choices: [{
-            message: {
-              content: JSON.stringify({
-                goal: "Create a form with submit functionality",
-                intent: userMessage.includes('form') ? 'form creation' : 'general creation',
-                confidence: 0.9,
-                feedback: null,
-                requiredCapabilities: ["form-input", "form-submission"],
-                uiElements: [
-                  {
-                    type: "input",
-                    purpose: "Input field",
-                    capabilities: ["form-input"],
-                    properties: {
-                      label: "Input",
-                      placeholder: "Enter value"
-                    }
-                  },
-                  {
-                    type: "button",
-                    purpose: "Submit button",
-                    capabilities: ["clickable"],
-                    properties: {
-                      text: "Submit"
-                    }
-                  }
-                ],
-                operations: [
-                  {
-                    name: "submit-form",
-                    purpose: "Submit form data",
-                    inputs: ["input"],
-                    outputs: ["success"],
-                    executionType: "remote"
-                  }
-                ],
-                ambiguities: []
-              })
-            }
-          }]
-        })
-      });
+    it('registers builtin UI elements alongside operations', async () => {
+      const uiElements = await repository.queryUIElements({});
+      const names = uiElements.map((el) => el.name);
+
+      expect(names).toEqual(
+        expect.arrayContaining(['button', 'input', 'text', 'container', 'list'])
+      );
     });
   });
 
   describe('Complete Pipeline Flow', () => {
-    it('should process natural language input to rendered experience', async () => {
-      const naturalLanguageInput = 'Create a simple form with a submit button that sends data to an API';
+    it('should process natural language input to a rendered experience', async () => {
+      const naturalLanguageInput = 'Create a todo list app where I can add and complete tasks';
 
-      // Step 1: Parse natural language to blueprint
+      // Natural language to blueprint
       const blueprint = await aiInterpreter.parseNaturalLanguage(naturalLanguageInput);
-      
+
       expect(blueprint).toBeInstanceOf(Blueprint);
-      expect((blueprint as any).intent).toContain('form');
-      expect(blueprint.requiredCapabilities).toContain('clickable');
-      expect(blueprint.requiredCapabilities).toContain('http');
+      expect(blueprint.goal).toBe(SAMPLE_INTENT.goal);
+      expect(blueprint.requiredCapabilities).toEqual(
+        expect.arrayContaining(['data-entry', 'list-display'])
+      );
+      expect(blueprint.uiElements.map((el) => el.type)).toEqual(['input', 'button', 'list']);
 
-      // Step 2: Generate contract from blueprint
+      // Blueprint to contract (LLM-driven, constrained by the catalog)
       const contract = await aiInterpreter.generateContract(blueprint);
-      
-      expect(contract).toBeInstanceOf(Contract);
-      expect(contract.elements).toHaveLength(1);
-      expect(contract.elements[0].type).toBe('button');
-      expect(contract.operations).toHaveLength(1);
-      expect(contract.operations[0].operationName).toBe('api-call');
 
-      // Step 3: Render experience from contract
-      const renderedExperience = await runtime.renderExperience(contract);
-      
-      expect(renderedExperience).toBeDefined();
-    });
-
-    it('should handle complex multi-component experiences', async () => {
-      const complexInput = 'Build a dashboard with multiple charts, filters, and real-time data updates';
-
-      // Mock additional components for complex scenario
-      const mockChartComponent: UIElementManifest = {
-        id: 'chart',
-        name: 'Chart',
-        version: '1.0.0',
-        type: 'ui-element',
-        description: 'Data visualization chart',
-        capabilities: ['visualization', 'data-binding'],
-        dependencies: [],
-        schema: {
-          type: 'object',
-          properties: {
-            data: { type: 'array' },
-            type: { type: 'string' }
-          }
-        },
-        inputs: [
-          { name: 'data', type: 'array', required: true },
-          { name: 'chartType', type: 'string', required: true }
-        ],
-        outputs: [],
-        renderFunction: 'renderChart',
-        styleSchema: {
-          type: 'object',
-          properties: {
-            width: { type: 'string' },
-            height: { type: 'string' }
-          }
-        }
-      };
-
-      vi.spyOn(repository, 'queryUIElements').mockResolvedValue([
-        mockButtonComponent as any,
-        mockChartComponent as any
+      expect(contract.name).toBe('todo-list');
+      expect(contract.initialState).toEqual({ todos: [] });
+      expect(contract.elements.map((el) => el.id)).toEqual([
+        'title',
+        'todo-input',
+        'add-btn',
+        'todo-list',
       ]);
-
-      const blueprint = await aiInterpreter.parseNaturalLanguage(complexInput);
-      const contract = await aiInterpreter.generateContract(blueprint);
-      
-      expect(contract.elements.length).toBeGreaterThan(1);
-      expect(contract.operations.length).toBeGreaterThan(0);
-      
-      // Should have proper data bindings between components
-      const chartElement = contract.elements.find(el => el.type === 'chart');
-      expect(chartElement?.dataBindings).toBeDefined();
-      expect(chartElement?.dataBindings.length).toBeGreaterThan(0);
-    });
-
-    it('should preserve user edits during regeneration', async () => {
-      const initialInput = 'Create a simple button';
-      const modifiedInput = 'Create a simple button with red background';
-
-      // Generate initial experience
-      const initialBlueprint = await aiInterpreter.parseNaturalLanguage(initialInput);
-      const initialContract = await aiInterpreter.generateContract(initialBlueprint);
-      
-      // Simulate user edit - create a new contract with user edits
-      const userEditedContract = new Contract({
-        name: initialContract.name,
-        version: initialContract.version,
-        elements: initialContract.elements.map(el => ({
-          ...el,
-          properties: {
-            ...el.properties,
-            customUserProperty: 'user-added-value'
-          }
-        })),
-        operations: initialContract.operations,
-        layout: initialContract.layout,
-        styling: initialContract.styling,
-        metadata: initialContract.metadata
+      expect(contract.operations).toHaveLength(2);
+      contract.operations.forEach((op) => {
+        expect(op.executionType).toBe('builtin');
       });
 
-      // Regenerate with preservation
-      const modifiedBlueprint = await aiInterpreter.parseNaturalLanguage(modifiedInput);
-      const regeneratedContract = await aiInterpreter.generateContractWithPreservation(
-        modifiedBlueprint,
-        userEditedContract
-      );
+      // Wiring: the add button fires the add operation, which reads the input
+      const addButton = contract.elements.find((el) => el.id === 'add-btn');
+      expect(addButton?.eventBindings).toEqual([{ event: 'click', operationId: 'op-add' }]);
+      const addOperation = contract.operations.find((op) => op.id === 'op-add');
+      expect(addOperation?.inputs).toEqual([
+        { name: 'title', source: 'ui-element', sourceId: 'todo-input' },
+      ]);
 
-      // Should preserve user edits while applying new changes
-      expect(regeneratedContract.elements[0].properties.customUserProperty).toBe('user-added-value');
-      expect(regeneratedContract.elements[0].properties.backgroundColor).toBe('red');
+      // The list repeats its children per entry of the bound todos state
+      const list = contract.elements.find((el) => el.id === 'todo-list');
+      expect(list?.dataBindings).toEqual([
+        { property: 'items', source: 'state', sourceId: 'todos' },
+      ]);
+      expect(list?.children?.length).toBeGreaterThan(0);
+
+      // Contract to runtime experience
+      const component = await runtime.renderExperience(contract, 'pipeline-exp');
+      expect(component).toBeTypeOf('function');
+
+      // Runtime state seeds from contract.initialState plus operation mirrors
+      const state = runtime.getExperienceState('pipeline-exp');
+      expect(state?.data.todos).toEqual([]);
+      expect(state?.data).toHaveProperty('operation_op-add_reset', null);
+      expect(state?.loading['op-add']).toBe(false);
+    });
+
+    it('should produce a contract that passes contract validation', async () => {
+      const blueprint = await aiInterpreter.parseNaturalLanguage('Create a todo list app');
+      const contract = await aiInterpreter.generateContract(blueprint);
+
+      const { ContractBuilder } = await import('../../services/ai-interpreter');
+      const builder = new ContractBuilder(repository);
+      const validation = builder.validateContract(contract);
+
+      expect(validation.errors).toEqual([]);
+      expect(validation.isValid).toBe(true);
+    });
+
+    it('should apply user edits on top of the generated contract', async () => {
+      const blueprint = await aiInterpreter.parseNaturalLanguage('Create a todo list app');
+
+      const contract = await aiInterpreter.generateContract(blueprint, {
+        elementEdits: {
+          'add-btn': { properties: { text: 'Save task' } },
+        },
+        operationEdits: {},
+        layoutEdits: { properties: { gap: '24px' } },
+        styleEdits: { theme: 'dark' },
+      } as any);
+
+      const addButton = contract.elements.find((el) => el.id === 'add-btn');
+      expect(addButton?.properties.text).toBe('Save task');
+      expect(contract.layout.properties.gap).toBe('24px');
+      expect(contract.styling.theme).toBe('dark');
     });
   });
 
   describe('Error Handling and Recovery', () => {
-    it('should handle missing components gracefully', async () => {
-      // Mock repository to return empty results
-      vi.spyOn(repository, 'queryUIElements').mockResolvedValue([]);
-      vi.spyOn(repository, 'queryOperations').mockResolvedValue([]);
+    it('should reject empty descriptions before calling the model', async () => {
+      await expect(aiInterpreter.parseNaturalLanguage('')).rejects.toThrow('Invalid description');
+      const llmCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === 'llm_chat');
+      expect(llmCalls).toHaveLength(0);
+    });
 
-      const input = 'Create a complex widget that requires unavailable components';
-      
-      const blueprint = await aiInterpreter.parseNaturalLanguage(input);
-      
-      // Should still generate a contract with fallback components
-      const contract = await aiInterpreter.generateContract(blueprint);
+    it('should surface LLM failures as parse errors', async () => {
+      installInvokeMock({
+        onCommand: (cmd) => {
+          if (cmd === 'llm_chat') {
+            throw new Error('model backend unreachable');
+          }
+          return undefined;
+        },
+      });
+
+      await expect(
+        aiInterpreter.parseNaturalLanguage('Create a todo list app')
+      ).rejects.toThrow('Failed to parse description');
+    });
+
+    it('should recover from malformed model output through the repair round', async () => {
+      let intentCalls = 0;
+      installInvokeMock({
+        onCommand: (cmd, args) => {
+          if (cmd !== 'llm_chat') {
+            return undefined;
+          }
+          const messages = args?.request?.messages ?? [];
+          const system = messages.find((m: any) => m.role === 'system')?.content ?? '';
+          if (system.includes('Contract JSON')) {
+            return undefined; // contract generation uses the shared fixture
+          }
+          intentCalls += 1;
+          if (intentCalls === 1) {
+            return { content: 'this is not json at all', provider: 'mock', model: 'mock' };
+          }
+          return routeLlmChat(args);
+        },
+      });
+
+      const blueprint = await aiInterpreter.parseNaturalLanguage('Create a todo list app');
+
+      expect(intentCalls).toBe(2);
+      expect(blueprint.goal).toBe(SAMPLE_INTENT.goal);
+    });
+
+    it('should generate a contract even when the repository catalog is empty', async () => {
+      const emptyRepository = new RepositoryService();
+      const interpreter = new AIInterpreterService(emptyRepository);
+
+      const blueprint = await interpreter.parseNaturalLanguage('Create a todo list app');
+      const contract = await interpreter.generateContract(blueprint);
+
       expect(contract).toBeDefined();
-      expect(contract.elements).toBeDefined();
+      expect(contract.elements).toHaveLength(SAMPLE_TODO_CONTRACT.elements.length);
     });
 
     it('should recover from runtime errors during rendering', async () => {
-      const input = 'Create a simple button';
-      const blueprint = await aiInterpreter.parseNaturalLanguage(input);
+      const blueprint = await aiInterpreter.parseNaturalLanguage('Create a todo list app');
       const contract = await aiInterpreter.generateContract(blueprint);
 
-      // Mock runtime error
       vi.spyOn(runtime, 'renderExperience').mockRejectedValueOnce(new Error('Rendering failed'));
-
-      // Should handle error gracefully
       await expect(runtime.renderExperience(contract)).rejects.toThrow('Rendering failed');
-      
-      // Should be able to retry successfully
-      vi.spyOn(runtime, 'renderExperience').mockResolvedValueOnce(() => null as any);
 
+      vi.spyOn(runtime, 'renderExperience').mockResolvedValueOnce(() => null as any);
       const result = await runtime.renderExperience(contract);
       expect(result).toBeDefined();
     });
   });
 
-  describe('Performance and Optimization', () => {
-    it('should complete pipeline within acceptable time limits', async () => {
-      const startTime = Date.now();
-      
-      const input = 'Create a dashboard with multiple components';
-      const blueprint = await aiInterpreter.parseNaturalLanguage(input);
-      const contract = await aiInterpreter.generateContract(blueprint);
-      await runtime.renderExperience(contract);
-      
-      const endTime = Date.now();
-      const duration = endTime - startTime;
-      
-      // Should complete within 5 seconds for integration test
-      expect(duration).toBeLessThan(5000);
-    });
-
+  describe('Concurrency', () => {
     it('should handle concurrent pipeline executions', async () => {
       const inputs = [
-        'Create a simple form',
-        'Build a data table',
-        'Make a chart widget'
+        'Create a personal todo list',
+        'Build a task board for the team',
+        'Make a shopping checklist',
       ];
 
-      const promises = inputs.map(async (input, _index) => {
-        const blueprint = await aiInterpreter.parseNaturalLanguage(input);
-        const contract = await aiInterpreter.generateContract(blueprint);
-        return runtime.renderExperience(contract);
-      });
+      const results = await Promise.all(
+        inputs.map(async (input, index) => {
+          const blueprint = await aiInterpreter.parseNaturalLanguage(input);
+          const contract = await aiInterpreter.generateContract(blueprint);
+          return runtime.renderExperience(contract, `concurrent-${index}`);
+        })
+      );
 
-      const results = await Promise.all(promises);
-      
       expect(results).toHaveLength(3);
-      results.forEach((result, _index) => {
-        expect(result).toBeDefined();
+      results.forEach((component) => {
+        expect(component).toBeTypeOf('function');
       });
     });
   });

@@ -7,7 +7,7 @@ import { AIInterpreter } from '../../interfaces/ai-interpreter';
 import { Blueprint, Question, Answer } from '../../types/blueprint';
 import { Contract, ContractEdits } from '../../types/contract';
 import { ComponentRepository } from '../../types/repository';
-import { LLMClient, LLMConfig } from './llm-client';
+import { LLMClient } from './llm-client';
 import { NaturalLanguageParser } from './natural-language-parser';
 import { BlueprintGenerator } from './blueprint-generator';
 import { ContractBuilder } from './contract-builder';
@@ -20,13 +20,8 @@ export class AIInterpreterService implements AIInterpreter {
   private repository: ComponentRepository;
   private editPreservation: EditPreservationSystem;
 
-  constructor(llmConfig: LLMConfig, repository: ComponentRepository) {
-    // Default to Gemini when API key is provided and provider omitted
-    const resolvedConfig: LLMConfig = {
-      ...llmConfig,
-      provider: (llmConfig.provider as any) || 'gemini'
-    };
-    this.llmClient = new LLMClient(resolvedConfig);
+  constructor(repository: ComponentRepository, llmClient: LLMClient = new LLMClient()) {
+    this.llmClient = llmClient;
     this.parser = new NaturalLanguageParser(this.llmClient);
     this.generator = new BlueprintGenerator();
     this.repository = repository;
@@ -114,7 +109,7 @@ export class AIInterpreterService implements AIInterpreter {
   async generateContract(blueprint: Blueprint, userEdits?: ContractEdits): Promise<Contract> {
     try {
       // Create contract builder with repository access
-      const contractBuilder = new ContractBuilder(this.repository);
+      const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
       
       // Generate contract from blueprint
       let contract = await contractBuilder.generateFromBlueprint(blueprint);
@@ -158,7 +153,7 @@ export class AIInterpreterService implements AIInterpreter {
   async regenerateWithConflictDetection(blueprint: Blueprint, existingContract: Contract, sections: string[]): Promise<{ contract: Contract; conflicts: EditConflict[] }> {
     try {
       // Generate new contract from blueprint
-      const contractBuilder = new ContractBuilder(this.repository);
+      const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
       const newContract = await contractBuilder.generateFromBlueprint(blueprint);
       
       // Preserve user edits and detect conflicts
@@ -184,7 +179,7 @@ export class AIInterpreterService implements AIInterpreter {
   async regenerateWithPreservation(blueprint: Blueprint, existingContract: Contract, sections: string[]): Promise<Contract> {
     try {
       // Generate new contract from blueprint
-      const contractBuilder = new ContractBuilder(this.repository);
+      const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
       const newContract = await contractBuilder.generateFromBlueprint(blueprint);
       
       // Preserve user edits and detect conflicts

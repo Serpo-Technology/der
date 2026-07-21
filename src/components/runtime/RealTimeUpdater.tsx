@@ -37,7 +37,7 @@ export class RealTimeUpdater {
   private runtimeService: DynamicExperienceRuntimeService;
   private updateQueue: UpdateQueueItem[] = [];
   private isProcessing = false;
-  private updateTimer: NodeJS.Timeout | null = null;
+  private updateTimer: ReturnType<typeof setInterval> | null = null;
   private options: Required<RealTimeUpdateOptions>;
 
   constructor(

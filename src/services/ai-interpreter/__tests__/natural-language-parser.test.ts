@@ -119,14 +119,52 @@ describe('NaturalLanguageParser', () => {
       expect(result.requiredCapabilities).toContain('arithmetic');
     });
 
-    it('should handle malformed JSON responses', async () => {
-      const mockResponse = {
+    it('should request JSON mode from the LLM client', async () => {
+      vi.mocked(mockLLMClient.sendMessage).mockResolvedValue({
+        content: JSON.stringify({ goal: 'Create an app' })
+      });
+
+      await parser.extractIntent('Create an app');
+
+      expect(mockLLMClient.sendMessage).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ jsonMode: true })
+      );
+    });
+
+    it('should recover when the repair round returns valid JSON', async () => {
+      vi.mocked(mockLLMClient.sendMessage)
+        .mockResolvedValueOnce({ content: 'This is not valid JSON' })
+        .mockResolvedValueOnce({ content: JSON.stringify({ goal: 'Create an app' }) });
+
+      const result = await parser.extractIntent('Create an app');
+
+      expect(result.goal).toBe('Create an app');
+      expect(mockLLMClient.sendMessage).toHaveBeenCalledTimes(2);
+      const repairMessages = vi.mocked(mockLLMClient.sendMessage).mock.calls[1][0];
+      const repairRequest = repairMessages[repairMessages.length - 1];
+      expect(repairRequest.role).toBe('user');
+      expect(repairRequest.content).toContain('previous response had problems');
+    });
+
+    it('should fail when the repair round is also malformed', async () => {
+      vi.mocked(mockLLMClient.sendMessage).mockResolvedValue({
         content: 'This is not valid JSON'
-      };
+      });
 
-      vi.mocked(mockLLMClient.sendMessage).mockResolvedValue(mockResponse);
+      await expect(parser.extractIntent('Create an app')).rejects.toThrow('Failed to extract intent');
+      expect(mockLLMClient.sendMessage).toHaveBeenCalledTimes(2);
+    });
 
-      await expect(parser.extractIntent('Create an app')).rejects.toThrow('No JSON found in LLM response');
+    it('should fail when the response never satisfies the intent schema', async () => {
+      // goal is required with at least one character; two schema misses exhaust
+      // the single repair round.
+      vi.mocked(mockLLMClient.sendMessage).mockResolvedValue({
+        content: JSON.stringify({ goal: '' })
+      });
+
+      await expect(parser.extractIntent('Create an app')).rejects.toThrow('Failed to extract intent');
+      expect(mockLLMClient.sendMessage).toHaveBeenCalledTimes(2);
     });
 
     it('should normalize incomplete responses', async () => {
