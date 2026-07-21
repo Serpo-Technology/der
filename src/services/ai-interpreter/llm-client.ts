@@ -29,7 +29,7 @@ export interface LLMResponse {
 export class LLMClient {
   private config: LLMConfig = {
     provider: 'gemini',
-    apiKey: "REDACTED_GEMINI_KEY",
+    apiKey: import.meta.env.VITE_GEMINI_API_KEY,
     model: 'gemini-2.0-flash',
     temperature: 0.7,
     maxTokens: 2000,
@@ -152,7 +152,7 @@ export class LLMClient {
 
   private async sendGeminiMessage(messages: LLMMessage[]): Promise<LLMResponse> {
     const apiKey = this.config.apiKey;
-    if (!apiKey) throw new Error('Gemini API key is required');
+    if (!apiKey) throw new Error('Gemini API key is required. Set VITE_GEMINI_API_KEY in your environment.');
 
     // Map our chat messages to Gemini contents format
     const contents = messages.map((m) => ({

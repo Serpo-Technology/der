@@ -52,7 +52,7 @@ export class IntegratedExperienceService {
     // Initialize AI Interpreter with repository access
     const llmConfig = {
       provider: 'gemini' as const,
-      apiKey: 'REDACTED_GEMINI_KEY',
+      apiKey: import.meta.env.VITE_GEMINI_API_KEY,
       model: 'gemini-2.0-flash',
       temperature: 0.7
     };
