@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
+import './BlueprintEditor.css';
 import { Blueprint, UserModification } from '../../types/blueprint';
 import { ValidationResult } from '../../types/contract';
 import { BlueprintValidatorComponent, BlueprintValidator } from './BlueprintValidator';

@@ -496,3 +496,28 @@
   overflow-x: auto;
   margin: 0;
 }
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .blueprint-editor { background: #0f1115; border-color: #2a2f3a; }
+  .editor-header { background: #151821; border-bottom-color: #2a2f3a; }
+  .editor-header h2 { color: #e6e6e6; }
+  .mode-toggle,
+  .preview-toggle { background: #0f1115; color: #e6e6e6; border-color: #2f3643; }
+  .mode-toggle:hover,
+  .preview-toggle:hover { background: #181c25; border-color: #465063; }
+  .preview-panel { background: #121621; border-left-color: #2a2f3a; }
+  .form-section label { color: #e6e6e6; }
+  .form-section input,
+  .form-section textarea { background: #0f1115; border-color: #2f3643; color: #e6e6e6; }
+  .capability-item { background: #1a2030; color: #e6e6e6; }
+  .json-editor-header { background: #151821; border-bottom-color: #2a2f3a; }
+  .json-editor-header h4 { color: #e6e6e6; }
+  .json-editor-controls button { background: #0f1115; color: #e6e6e6; border-color: #2f3643; }
+  .json-editor-controls button:hover:not(:disabled) { background: #181c25; }
+  .json-editor-content { background: transparent; }
+  .json-textarea { background: #0b0e14; color: #e6e6e6; border-color: #2f3643; }
+  .json-error { background: rgba(229, 62, 62, 0.15); color: #ff8484; border-top-color: rgba(229, 62, 62, 0.3); }
+  .schema-help h5 { color: #e6e6e6; }
+  .schema-help pre { background: #0b0e14; border-color: #2a2f3a; }
+}

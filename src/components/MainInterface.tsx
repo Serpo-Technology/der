@@ -27,6 +27,7 @@ import { BlueprintGenerator } from '../services/ai-interpreter/blueprint-generat
 import { ContractBuilder } from '../services/ai-interpreter/contract-builder';
 import { LLMClient } from '../services/ai-interpreter/llm-client';
 import { RepositoryService } from '../services/repository/repository-service';
+import { registerBuiltins } from '../services/repository/builtins';
 // import { persistenceService } from '../services/persistence';
 import { integratedExperienceService } from '../services/IntegratedExperienceService';
 import { invoke } from '@tauri-apps/api/core';
@@ -87,6 +88,17 @@ export const MainInterface: React.FC = () => {
       repositoryService
     };
   }, []);
+
+  // Seed built-in components once
+  useEffect(() => {
+    (async () => {
+      try {
+        await registerBuiltins(services.repositoryService as RepositoryService);
+      } catch (e) {
+        console.warn('Failed to register built-ins', e);
+      }
+    })();
+  }, [services.repositoryService]);
 
   // Load bookmarked experiences
   const loadBookmarkedExperiences = useCallback(async () => {
@@ -477,13 +489,33 @@ export const MainInterface: React.FC = () => {
             isProcessing={state.isProcessing}
             onOpenWindow={async () => {
               try {
-                await invoke('open_experience_window', {
+                const payload = {
                   experienceId: state.currentExperienceId || `exp-${Date.now()}`,
-                  contract: state.contract,
-                  title: state.contract.name || 'Experience'
-                });
+                  contract: state.contract!.toObject(),
+                  title: (state.contract && state.contract.name) || 'Experience'
+                };
+                // Prefer Tauri window if available
+                const hasTauri = typeof (window as any).__TAURI__ !== 'undefined';
+                if (hasTauri) {
+                  console.log('Invoking Tauri open_experience_window with', payload);
+                  await invoke('open_experience_window', payload);
+                  console.log('Tauri open_experience_window success');
+                } else {
+                  // Browser fallback for debugging
+                  const win = window.open('', '_blank', 'noopener,noreferrer');
+                  if (!win) {
+                    throw new Error('Popup blocked. Enable popups for this site.');
+                  }
+                  const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${payload.title}</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;margin:0;padding:16px;background:#0b0e14;color:#e6e6e6} pre{white-space:pre-wrap;word-break:break-word;background:#121621;border:1px solid #2a2f3a;border-radius:8px;padding:12px}</style></head><body><h2>Experience (Debug Window)</h2><p>This is a debug view because Tauri is not available.</p><h3>Contract JSON</h3><pre>${
+                    JSON.stringify(payload.contract, null, 2)
+                  }</pre></body></html>`;
+                  win.document.open();
+                  win.document.write(html);
+                  win.document.close();
+                }
               } catch (e) {
                 console.error('Failed to open window', e);
+                setState(prev => ({ ...prev, error: e instanceof Error ? e.message : 'Failed to open window' }));
               }
             }}
           />
@@ -699,6 +731,17 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   isBookmarked = false,
   isProcessing = false
 }) => {
+  React.useEffect(() => {
+    // Auto-open experience in a new window for debugging when preview mounts
+    if (onOpenWindow) {
+      try {
+        // Invoke and ignore return type
+        (onOpenWindow as () => unknown)();
+      } catch (_) {}
+    }
+    // run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <div className="preview-view">
       <div className="preview-header">

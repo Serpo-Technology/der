@@ -138,7 +138,11 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
       data-contract-name={contract.name}
       data-testid="dynamic-experience-container"
     >
-      {renderUIElements(contract.elements)}
+      {(!contract.elements || contract.elements.length === 0) ? (
+        <div style={{ color: '#6c757d', fontStyle: 'italic' }}>No elements to render</div>
+      ) : (
+        renderUIElements(contract.elements)
+      )}
     </div>
   );
 };

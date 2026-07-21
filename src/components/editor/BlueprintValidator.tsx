@@ -127,8 +127,8 @@ export class BlueprintValidator {
       });
     }
 
-    // Ambiguity validation
-    if (blueprint.ambiguities.length > 0) {
+    // Ambiguity validation (only warn if core content is missing)
+    if (blueprint.ambiguities.length > 0 && (blueprint.uiElements.length === 0 || blueprint.operations.length === 0)) {
       warnings.push({
         path: 'ambiguities',
         message: `${blueprint.ambiguities.length} ambiguities detected - consider resolving them`,

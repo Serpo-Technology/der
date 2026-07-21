@@ -578,6 +578,25 @@
     align-self: flex-start;
   }
 }
+
+/* Dark mode tweaks for contrast */
+@media (prefers-color-scheme: dark) {
+  .main-interface { background: #0f1115; }
+  .main-navigation { background: #0b0e14; border-bottom-color: #1e2430; }
+  .nav-button { color: #9aa4b2; }
+  .nav-button:hover:not(:disabled) { color: #e6e6e6; background: #121621; }
+  .nav-button.active { color: #9bb1ff; border-bottom-color: #6c8cff; background: #121621; }
+  .main-footer { background: #0b0e14; border-top-color: #1e2430; }
+  .status-info span { background: #121621; color: #9aa4b2; }
+  .create-header h2, .blueprint-header h2, .contract-header h2, .preview-title h2 { color: #e6e6e6; }
+  .create-header p, .preview-title p { color: #9aa4b2; }
+  .input-section, .examples-section, .preview-container, .bookmarks-view .empty-bookmarks, .experience-card { background: #0b0e14; box-shadow: none; }
+  .natural-language-input { background: #0f1115; color: #e6e6e6; border-color: #2a2f3a; }
+  .example-prompt { background: #0f1115; border-color: #2a2f3a; color: #e6e6e6; }
+  .example-prompt:hover:not(:disabled) { background: #182036; border-color: #6c8cff; color: #eaf0ff; }
+  .generate-button.primary { background: #6c8cff; }
+  .generate-button.primary:hover:not(:disabled) { background: #5b79e3; box-shadow: 0 4px 12px rgba(108, 140, 255, 0.25); }
+}
 /* Preview View Styles */
 .preview-view {
   display: flex;

@@ -28,6 +28,15 @@ export interface OperationBinding {
   inputs: InputBinding[];
   outputs: OutputBinding[];
   triggers: TriggerSpec[];
+  executionType?: 'remote' | 'local' | 'repository';
+  implementation?: {
+    type: 'remote' | 'local' | 'repository';
+    endpoint?: string;
+    method?: string;
+    headers?: Record<string, string>;
+    code?: string;
+    repositoryId?: string;
+  };
 }
 
 export interface DataBinding {

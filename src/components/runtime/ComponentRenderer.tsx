@@ -21,6 +21,10 @@ const UI_COMPONENTS = {
 };
 
 // ComponentRendererProps interface removed as it's not used
+// Supported intrinsic HTML tags for 1:1 contract rendering
+const INTRINSIC_TAGS = new Set([
+  'div','span','p','button','input','form','ul','ol','li','img','a','label','section','header','footer','main','nav','article','aside','h1','h2','h3','h4','h5','h6','textarea','select','option'
+]);
 
 export class ComponentRenderer {
   // No constructor parameters needed as this class is stateless
@@ -33,12 +37,6 @@ export class ComponentRenderer {
     return () => {
       const resolvedProps = this.resolveDataBindings(element, experienceState);
       const eventHandlers = this.createEventHandlers(element, onOperationExecute);
-      
-      const ComponentType = UI_COMPONENTS[element.type as keyof typeof UI_COMPONENTS];
-      
-      if (!ComponentType) {
-        return <UnknownComponent element={element} />;
-      }
 
       const finalProps = {
         ...element.properties,
@@ -47,14 +45,35 @@ export class ComponentRenderer {
         'data-element-id': element.id
       };
 
-      return (
-        <ComponentType key={element.id} {...finalProps}>
-          {element.children && element.children.map(child => {
-            const ChildComponent = this.renderUIElement(child, experienceState, onOperationExecute);
-            return <ChildComponent key={child.id} />;
-          })}
-        </ComponentType>
-      );
+      const ComponentType = UI_COMPONENTS[element.type as keyof typeof UI_COMPONENTS];
+
+      // If known component type
+      if (ComponentType) {
+        return (
+          <ComponentType key={element.id} {...finalProps}>
+            {element.children && element.children.map(child => {
+              const ChildComponent = this.renderUIElement(child, experienceState, onOperationExecute);
+              return <ChildComponent key={child.id} />;
+            })}
+          </ComponentType>
+        );
+      }
+
+      // If intrinsic HTML element (supported lowercase tag), render directly
+      if (typeof element.type === 'string' && INTRINSIC_TAGS.has(element.type)) {
+        const { content, text, children: _ignored, ...rest } = finalProps as any;
+        const mappedChildren = (element.children || []).map(child => {
+          const ChildComponent = this.renderUIElement(child, experienceState, onOperationExecute);
+          return <ChildComponent key={child.id} />;
+        });
+        const children = [] as any[];
+        if (content || text) children.push(content ?? text);
+        children.push(...mappedChildren);
+        return React.createElement(element.type, { key: element.id, ...rest }, children.length > 0 ? children : undefined);
+      }
+
+      // Unknown custom component type fallback
+      return <UnknownComponent element={element} />;
     };
   }
 
@@ -205,8 +224,9 @@ function InputComponent({ ...props }: any) {
   return <input {...props} />;
 }
 
-function TextComponent({ children, text, ...props }: any) {
-  return <span {...props}>{children || text}</span>;
+function TextComponent({ children, text, content, ...props }: any) {
+  const display = children || content || text;
+  return <span {...props}>{display}</span>;
 }
 
 function ContainerComponent({ children, ...props }: any) {
@@ -219,6 +239,15 @@ function ListComponent({ items, renderItem, children, ...props }: any) {
       <ul {...props}>
         {items.map((item: any, index: number) => (
           <li key={index}>{renderItem(item, index)}</li>
+        ))}
+      </ul>
+    );
+  }
+  if (Array.isArray(items)) {
+    return (
+      <ul {...props}>
+        {items.map((item: any, index: number) => (
+          <li key={index}>{typeof item === 'object' ? JSON.stringify(item) : String(item)}</li>
         ))}
       </ul>
     );

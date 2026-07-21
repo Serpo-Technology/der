@@ -7,6 +7,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Blueprint } from '../../types/blueprint';
 import { Contract } from '../../types/contract';
 import { validateSchema, BLUEPRINT_SCHEMA, CONTRACT_SCHEMA } from '../../utils/validation';
+import './JsonEditor.css';
 
 interface JsonEditorProps {
   value: Blueprint | Contract;
@@ -107,7 +108,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       )}
 
       <div className="json-editor-help">
-        <details>
+        <details open>
           <summary>Schema Help</summary>
           <div className="schema-help">
             {schema === 'blueprint' ? (
