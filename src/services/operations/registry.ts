@@ -125,6 +125,18 @@ export interface TodoItem {
   completed: boolean;
 }
 
+/**
+ * Operations contributed by installed signed parts. Populated by
+ * FragmentsService; executed in the Rust wasm host. Same manifest shape as
+ * builtins so the catalog, validation, and executor treat them uniformly.
+ */
+export const FRAGMENT_OPERATIONS: Record<string, BuiltinOperationDef> = {};
+
+/** Resolves an operation part by name: builtin first, then installed parts. */
+export function getOperationDef(name: string): BuiltinOperationDef | undefined {
+  return BUILTIN_OPERATIONS[name] ?? FRAGMENT_OPERATIONS[name];
+}
+
 export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
   'state.set': {
     name: 'state.set',

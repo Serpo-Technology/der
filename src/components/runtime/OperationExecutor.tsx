@@ -8,9 +8,9 @@
 import { InputBinding, OperationBinding } from '../../types/contract';
 import { tauriCommandService, OperationRequest } from '../../services/tauri/TauriCommandService';
 import {
-  BUILTIN_OPERATIONS,
   OperationContext,
   assembleStructured,
+  getOperationDef,
   getValueAtPath,
 } from '../../services/operations/registry';
 import { applyBindingTransforms } from '../../services/operations/transforms';
@@ -68,13 +68,13 @@ export class OperationExecutor {
         return 'remote';
       case 'repository':
         // Legacy saved contracts: repository operations map onto the registry.
-        if (BUILTIN_OPERATIONS[operation.operationName]) return 'builtin';
+        if (getOperationDef(operation.operationName)) return 'builtin';
         break;
       default:
         break;
     }
     // Tolerance for omitted executionType.
-    if (BUILTIN_OPERATIONS[operation.operationName]) return 'builtin';
+    if (getOperationDef(operation.operationName)) return 'builtin';
     if (operation.implementation?.code) return 'local';
     if (operation.implementation?.endpoint) return 'remote';
     throw new OperationResolutionError(operation);
@@ -90,7 +90,7 @@ export class OperationExecutor {
       inputs[binding.name] = this.resolveInput(binding, eventContext, state);
     }
     // Group item./set. style inputs into objects for structured builtins.
-    const def = BUILTIN_OPERATIONS[operation.operationName];
+    const def = getOperationDef(operation.operationName);
     return assembleStructured(inputs, def?.structuredPrefixes);
   }
 
@@ -127,7 +127,7 @@ export class OperationExecutor {
     inputs: Record<string, unknown>,
     state: StateAccess
   ): Promise<Record<string, unknown>> {
-    const def = BUILTIN_OPERATIONS[operation.operationName];
+    const def = getOperationDef(operation.operationName);
     if (!def) {
       throw new OperationResolutionError(operation);
     }

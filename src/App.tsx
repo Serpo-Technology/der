@@ -8,15 +8,20 @@ import type { Contract as ContractType, ValidationWarning } from "./types/contra
 import { ExperienceEditBar } from "./components/runtime/ExperienceEditBar";
 import { integratedExperienceService } from "./services/IntegratedExperienceService";
 import { persistenceService } from "./services/persistence";
+import { fragmentsService } from "./services/fragments/FragmentsService";
 import { repositoryService } from "./services/repository/repository-service";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { registerBuiltins } from "./services/repository/builtins";
 
 function App() {
-  // Seed the shared component catalog once at startup.
+  // Seed the shared component catalog once at startup. Installed parts load
+  // in every window: experience windows execute their operations too.
   useEffect(() => {
     registerBuiltins(repositoryService).catch((error) =>
       console.warn("Failed to register built-in components", error)
+    );
+    fragmentsService.init().catch((error) =>
+      console.warn("Failed to load installed parts", error)
     );
   }, []);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

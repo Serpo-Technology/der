@@ -1,0 +1,83 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.stats-summary",
+  "name": "Statistics",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Summary statistics and percentiles for lists of numbers.",
+  "namespace": "stats",
+  "capabilities": [],
+  "wasmSha256": "e4a63ad9461e053f5b9c927e372a9de7088ced6f5109f2f4bc68fd493c07deba",
+  "createdAt": "2026-07-22T20:19:14Z",
+  "operations": [
+    {
+      "name": "stats.summary",
+      "description": "Computes count, sum, mean, min, and max over a list of numbers.",
+      "inputs": [
+        {
+          "name": "values",
+          "type": "array",
+          "required": true,
+          "description": "Array of numbers; entries that are not numbers are skipped"
+        }
+      ],
+      "outputs": [
+        { "name": "count", "type": "number", "description": "How many numbers were read" },
+        { "name": "sum", "type": "number", "description": "Total of the numbers" },
+        { "name": "mean", "type": "number", "description": "Average of the numbers" },
+        { "name": "min", "type": "number", "description": "Smallest number" },
+        { "name": "max", "type": "number", "description": "Largest number" }
+      ],
+      "howto": "Bind values from a state key that already holds an array of numbers, seeded in initialState or written by other operations. No transform extracts one field from every item of an array, so when list items are objects, keep the numeric series in its own state key. Route each output you need to a state key with an output binding and bind text elements to those keys. An empty list returns zeros instead of an error.",
+      "example": {
+        "id": "op-score-summary",
+        "operationName": "stats.summary",
+        "executionType": "builtin",
+        "inputs": [
+          { "name": "values", "source": "state", "sourceId": "scores" }
+        ],
+        "outputs": [
+          { "name": "mean", "target": "state", "targetId": "average" },
+          { "name": "count", "target": "state", "targetId": "entries" }
+        ],
+        "triggers": []
+      }
+    },
+    {
+      "name": "stats.percentile",
+      "description": "Computes the p-th percentile of a list of numbers with linear interpolation.",
+      "inputs": [
+        {
+          "name": "values",
+          "type": "array",
+          "required": true,
+          "description": "Array of numbers; entries that are not numbers are skipped"
+        },
+        {
+          "name": "p",
+          "type": "number",
+          "required": true,
+          "description": "Percentile rank between 0 and 100"
+        }
+      ],
+      "outputs": [
+        { "name": "value", "type": "number", "description": "The interpolated percentile value" }
+      ],
+      "howto": "Bind values the same way as stats.summary. Bind p as a constant with a typed numeric value, for example value 95 for the 95th percentile. The operation sorts the numbers and interpolates linearly between the two closest ranks, so p 50 is the median. Route the value output to a state key. An empty list is an error, and p outside 0 to 100 is an error.",
+      "example": {
+        "id": "op-score-p95",
+        "operationName": "stats.percentile",
+        "executionType": "builtin",
+        "inputs": [
+          { "name": "values", "source": "state", "sourceId": "scores" },
+          { "name": "p", "source": "constant", "sourceId": "95", "value": 95 }
+        ],
+        "outputs": [
+          { "name": "value", "target": "state", "targetId": "p95" }
+        ],
+        "triggers": []
+      }
+    }
+  ]
+}

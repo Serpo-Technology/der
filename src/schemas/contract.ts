@@ -15,7 +15,7 @@ import type {
   ValidationResult,
   ValidationWarning,
 } from '../types/contract';
-import { BUILTIN_OPERATIONS, ELEMENT_MANIFESTS } from '../services/operations/registry';
+import { ELEMENT_MANIFESTS, getOperationDef } from '../services/operations/registry';
 import { TRANSFORMS } from '../services/operations/transforms';
 
 export const TransformFunctionSchema = z.object({
@@ -328,7 +328,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
   // Operations against manifests.
   contract.operations.forEach((op, opIndex) => {
     const opPath = `operations.${opIndex}`;
-    const def = BUILTIN_OPERATIONS[op.operationName];
+    const def = getOperationDef(op.operationName);
     const isBuiltinName = Boolean(def);
     const hasEndpoint = Boolean(op.implementation?.endpoint);
     const hasCode = Boolean(op.implementation?.code);

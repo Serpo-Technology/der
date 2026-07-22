@@ -5,6 +5,7 @@ use tauri::utils::config::WebviewUrl;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod fragments;
 mod llm;
 mod oauth;
 mod settings;
@@ -253,41 +254,6 @@ async fn execute_local_operation(request: &OperationRequest) -> Result<Value, St
     // For security, we'll execute a limited set of predefined local operations
     // In a real implementation, this might use a sandboxed JavaScript engine
     let result = match request.operation_name.as_str() {
-        "file_read" => {
-            if let Some(path) = request.inputs.get("path") {
-                if let Some(path_str) = path.as_str() {
-                    match fs::read_to_string(path_str) {
-                        Ok(content) => serde_json::json!({
-                            "success": true,
-                            "content": content,
-                            "path": path_str
-                        }),
-                        Err(e) => return Err(format!("Failed to read file: {}", e)),
-                    }
-                } else {
-                    return Err("Invalid path parameter".to_string());
-                }
-            } else {
-                return Err("Missing path parameter".to_string());
-            }
-        },
-        "file_write" => {
-            let path = request.inputs.get("path")
-                .and_then(|p| p.as_str())
-                .ok_or("Missing or invalid path parameter")?;
-            let content = request.inputs.get("content")
-                .and_then(|c| c.as_str())
-                .ok_or("Missing or invalid content parameter")?;
-            
-            match fs::write(path, content) {
-                Ok(_) => serde_json::json!({
-                    "success": true,
-                    "message": "File written successfully",
-                    "path": path
-                }),
-                Err(e) => return Err(format!("Failed to write file: {}", e)),
-            }
-        },
         "system_info" => {
             serde_json::json!({
                 "success": true,
@@ -1248,6 +1214,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(oauth::PendingOauth::default())
+        .manage(fragments::FragmentsState::new())
         .setup(|app| {
             
             // Create tray menu
@@ -1306,6 +1273,12 @@ pub fn run() {
             restore_experience_version,
             open_experience_window,
             refresh_tray_menu,
+            fragments::stage_fragment,
+            fragments::commit_fragment,
+            fragments::remove_fragment,
+            fragments::replace_publisher_key,
+            fragments::list_fragments,
+            fragments::execute_fragment,
             llm::llm_chat,
             settings::get_llm_settings,
             settings::set_llm_settings,

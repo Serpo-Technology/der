@@ -16,6 +16,7 @@ import { ExperienceEditBar } from './runtime/ExperienceEditBar';
 import { BookmarkManager } from './bookmarks';
 import { SharingDialog, ImportDialog } from './sharing';
 import { SettingsView } from './settings/SettingsView';
+import { PartsView } from './parts/PartsView';
 
 // Import types
 import { Blueprint } from '../types/blueprint';
@@ -36,7 +37,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
 // Navigation modes
-type ViewMode = 'create' | 'blueprint' | 'contract' | 'preview' | 'bookmarks' | 'import' | 'settings';
+type ViewMode = 'create' | 'blueprint' | 'contract' | 'preview' | 'bookmarks' | 'import' | 'parts' | 'settings';
 
 interface MainInterfaceState {
   currentMode: ViewMode;
@@ -455,6 +456,12 @@ export const MainInterface: React.FC = () => {
           Import
         </button>
         <button
+          className={`nav-button ${state.currentMode === 'parts' ? 'active' : ''}`}
+          onClick={() => handleModeChange('parts')}
+        >
+          Parts
+        </button>
+        <button
           className={`nav-button ${state.currentMode === 'settings' ? 'active' : ''}`}
           onClick={() => handleModeChange('settings')}
         >
@@ -569,6 +576,10 @@ export const MainInterface: React.FC = () => {
             onLoadExperience={handleLoadExperience}
             onError={handleError}
           />
+        )}
+
+        {state.currentMode === 'parts' && (
+          <PartsView onError={handleError} />
         )}
 
         {state.currentMode === 'settings' && (

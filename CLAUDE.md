@@ -139,6 +139,21 @@ optional transform pipelines). Manifest knobs map to `type-knob-value` CSS class
 elements repeat children per bound item with an `item` binding scope and support an `emptyText`
 knob. `normalizeContract` converts legacy `triggers` into event bindings before rendering.
 
+### Wasm fragment parts
+
+Installed signed parts extend the operation vocabulary: a `.derpart` bundle (verbatim-signed
+manifest + base64 wasm; Ed25519 over `DERPART-SIG-V1\0 || manifest bytes`) is verified and
+executed by the hardened wasmtime host in `src-tauri/src/fragments.rs` (zero imports allowed,
+fuel + epoch deadline + memory limiter, fresh instance per call, `der_alloc`/`der_run` JSON ABI).
+Trust is pinned on first install in `app_data_dir/fragments/trust.json` (publisher key
+fingerprints, namespace claims; key changes hard-block). `FragmentsService`
+(`src/services/fragments/`) publishes installed operations into `FRAGMENT_OPERATIONS`; all
+operation lookups go through `getOperationDef()` (builtins win collisions), so the prompt
+catalog, `checkAgainstManifests`, and the executor treat part operations exactly like builtins
+(the model still emits `executionType: "builtin"`). Demo part + signing tool live in
+`fragments/` as standalone crates (NOT src-tauri workspace members); the committed signed bundle
+keeps `cargo test` hermetic; rebuilding needs `rustup target add wasm32-unknown-unknown`.
+
 ### Component repository
 
 The shared `repositoryService` singleton is seeded once at startup in `App.tsx` via

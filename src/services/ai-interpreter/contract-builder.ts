@@ -28,7 +28,9 @@ import type { ContractShape } from '../../schemas/contract';
 import {
   BUILTIN_OPERATIONS,
   ELEMENT_MANIFESTS,
+  FRAGMENT_OPERATIONS,
   INTRINSIC_ELEMENT_TYPES,
+  getOperationDef,
   isKnownElementType,
 } from '../operations/registry';
 import { TRANSFORMS } from '../operations/transforms';
@@ -256,12 +258,24 @@ export class ContractBuilder {
       return `- ${def.name}${params ? ` {${params}}` : ''}: ${def.description}`;
     });
 
+    const fragmentLines = Object.values(FRAGMENT_OPERATIONS).flatMap((def) => {
+      const inputs =
+        def.inputs
+          .map((spec) => `${spec.name}${spec.required ? '' : '?'}: ${spec.type}`)
+          .join(', ') || 'none';
+      const outputs = def.outputs.map((spec) => `${spec.name}: ${spec.type}`).join(', ') || 'none';
+      const lines = [`- ${def.name} (inputs: ${inputs}; outputs: ${outputs}): ${def.description}`];
+      if (def.howto) lines.push(`  howto: ${def.howto}`);
+      if (def.example) lines.push(`  example: ${JSON.stringify(def.example)}`);
+      return lines;
+    });
+
     // Custom (non-builtin) operations registered in the repository, if any.
     let customLines: string[] = [];
     try {
       const customOps = await this.repository.queryOperations({});
       customLines = customOps
-        .filter((op) => !(op.name in BUILTIN_OPERATIONS))
+        .filter((op) => !getOperationDef(op.name))
         .map((op) => {
           const inputs = op.inputs.map((i) => `${i.name}: ${i.type}`).join(', ') || 'none';
           const outputs = op.outputs.map((o) => `${o.name}: ${o.type}`).join(', ') || 'none';
@@ -280,6 +294,9 @@ export class ContractBuilder {
       '',
       'TRANSFORMS (compose into "transforms" pipelines; applied in order):',
       ...transformLines,
+      ...(fragmentLines.length
+        ? ['', 'INSTALLED PART OPERATIONS (use the exact name with executionType "builtin"):', ...fragmentLines]
+        : []),
       ...(customLines.length ? ['', 'REGISTERED CUSTOM OPERATIONS:', ...customLines] : []),
     ].join('\n');
   }
@@ -325,7 +342,7 @@ export class ContractBuilder {
     // Resolve execution types (unknown names were already repaired or errored).
     const operations: OperationBinding[] = (shape.operations as OperationBinding[]).map((op) => {
       const id = uniqueId(op.id);
-      if (BUILTIN_OPERATIONS[op.operationName]) {
+      if (getOperationDef(op.operationName)) {
         return { ...op, id, executionType: 'builtin', implementation: undefined };
       }
       if (op.implementation?.endpoint) {

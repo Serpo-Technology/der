@@ -23,3 +23,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Wasm parts: signing secrets and build output stay local
+fragments/keys/*.key
+fragments/*/target/
+# Signed bundles under fragments/dist stay tracked (the bare dist rule above matches it)
+!fragments/dist/
