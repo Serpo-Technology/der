@@ -1,11 +1,11 @@
 /**
  * Blueprint Generator Tests
- * Requirements: 1.1, 1.2, 1.4
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { BlueprintGenerator } from '../blueprint-generator';
-import { ParsedIntent, Answer } from '../../../types/blueprint';
+import { Answer } from '../../../types/blueprint';
+import { SAMPLE_TODO_CONTRACT } from '../../../test/llm-mocks';
 
 describe('BlueprintGenerator', () => {
   let generator: BlueprintGenerator;
@@ -14,81 +14,51 @@ describe('BlueprintGenerator', () => {
     generator = new BlueprintGenerator();
   });
 
-  describe('generateFromIntent', () => {
-    it('should generate blueprint from parsed intent', () => {
-      const intent: ParsedIntent = {
-        goal: 'Create a todo list application',
-        requiredCapabilities: ['task-management', 'data-persistence'],
-        uiElements: [
-          {
-            type: 'input',
-            purpose: 'Add new tasks',
-            capabilities: ['text-input']
-          }
-        ],
-        operations: [
-          {
-            name: 'addTask',
-            purpose: 'Add a new task',
-            inputs: ['taskText'],
-            outputs: ['taskId'],
-            executionType: 'local'
-          }
-        ],
-        ambiguities: [
-          {
-            id: 'ui_style',
-            description: 'UI style preference',
-            options: ['modern', 'classic'],
-            question: 'What style do you prefer?'
-          }
-        ]
-      };
+  describe('deriveFromComposition', () => {
+    const spec = {
+      goal: 'Create a todo list app',
+      assumptions: ['Todos are local'],
+      openQuestions: ['Should completed todos auto-archive?']
+    };
 
-      const blueprint = generator.generateFromIntent(intent);
+    it('projects elements, operations, and goal from the composed result', () => {
+      const blueprint = generator.deriveFromComposition(
+        spec,
+        SAMPLE_TODO_CONTRACT as any,
+        'a todo app'
+      );
 
-      expect(blueprint.goal).toBe(intent.goal);
-      expect(blueprint.requiredCapabilities).toEqual(intent.requiredCapabilities);
-      expect(blueprint.uiElements).toEqual(intent.uiElements);
-      expect(blueprint.operations).toEqual(intent.operations);
-      expect(blueprint.ambiguities).toEqual(intent.ambiguities);
+      expect(blueprint.goal).toBe('Create a todo list app');
+      expect(blueprint.description).toBe('a todo app');
+      // Nested list children are included in the projection.
+      expect(blueprint.uiElements.map((e) => e.type)).toEqual([
+        'text',
+        'input',
+        'button',
+        'list',
+        'text',
+        'button'
+      ]);
+      expect(blueprint.uiElements[0].purpose).toBe('My Todos');
+      expect(blueprint.operations.map((o) => o.name)).toEqual(['todos.add', 'todos.toggle']);
+      expect(blueprint.operations[0].inputs).toEqual(['title']);
+      expect(blueprint.operations[0].outputs).toEqual(['reset']);
+      expect(blueprint.requiredCapabilities).toContain('list');
+      expect(blueprint.requiredCapabilities).toContain('todos.add');
       expect(blueprint.userModifications).toEqual([]);
-      expect(blueprint.description).toContain('Create a todo list application');
     });
 
-    it('should remove duplicate capabilities', () => {
-      const intent: ParsedIntent = {
-        goal: 'Test app',
-        requiredCapabilities: ['capability1', 'capability2', 'capability1'],
-        uiElements: [],
-        operations: [],
-        ambiguities: []
-      };
+    it('turns open questions into ambiguities and falls back to the description as goal', () => {
+      const blueprint = generator.deriveFromComposition(
+        { goal: '', assumptions: [], openQuestions: ['One or many lists?'] },
+        SAMPLE_TODO_CONTRACT as any,
+        'a todo app'
+      );
 
-      const blueprint = generator.generateFromIntent(intent);
-
-      expect(blueprint.requiredCapabilities).toEqual(['capability1', 'capability2']);
-    });
-
-    it('should generate comprehensive description', () => {
-      const intent: ParsedIntent = {
-        goal: 'Create a data dashboard',
-        requiredCapabilities: ['data-visualization', 'real-time-updates'],
-        uiElements: [
-          { type: 'chart', purpose: 'Display metrics', capabilities: ['visualization'] }
-        ],
-        operations: [
-          { name: 'fetchData', purpose: 'Get data', inputs: [], outputs: ['data'], executionType: 'remote' }
-        ],
-        ambiguities: []
-      };
-
-      const blueprint = generator.generateFromIntent(intent);
-
-      expect(blueprint.description).toContain('Create a data dashboard');
-      expect(blueprint.description).toContain('chart');
-      expect(blueprint.description).toContain('fetchData');
-      expect(blueprint.description).toContain('data-visualization');
+      expect(blueprint.goal).toBe('a todo app');
+      expect(blueprint.ambiguities).toHaveLength(1);
+      expect(blueprint.ambiguities[0].question).toBe('One or many lists?');
+      expect(blueprint.ambiguities[0].options).toEqual([]);
     });
   });
 

@@ -3,29 +3,11 @@
  *
  * The real pipeline routes every model call through the Tauri `llm_chat`
  * command; tests route that command to canned JSON here. `routeLlmChat`
- * dispatches on the system prompt: intent extraction returns
- * SAMPLE_INTENT, contract generation returns SAMPLE_TODO_CONTRACT.
+ * dispatches on the mode marker in the system prompt (system blocks plus any
+ * inline system messages): CREATE MODE returns SAMPLE_COMPOSED, EDIT MODE
+ * returns SAMPLE_EDITED_CONTRACT, and the blueprint leg returns
+ * SAMPLE_TODO_CONTRACT.
  */
-
-export const SAMPLE_INTENT = {
-  goal: 'Create a todo list app',
-  requiredCapabilities: ['data-entry', 'list-display'],
-  uiElements: [
-    { type: 'input', purpose: 'Enter a todo', capabilities: ['data-entry'] },
-    { type: 'button', purpose: 'Add the todo', capabilities: ['action'] },
-    { type: 'list', purpose: 'Show todos', capabilities: ['list-display'] },
-  ],
-  operations: [
-    {
-      name: 'todos.add',
-      purpose: 'Add a todo',
-      inputs: ['title'],
-      outputs: ['todos'],
-      executionType: 'builtin',
-    },
-  ],
-  ambiguities: [],
-};
 
 export const SAMPLE_TODO_CONTRACT = {
   name: 'todo-list',
@@ -99,21 +81,16 @@ export const SAMPLE_TODO_CONTRACT = {
   styling: { theme: 'default' },
 };
 
-interface LlmChatArgs {
-  request?: {
-    messages?: Array<{ role: string; content: string }>;
-  };
-}
+/** The single-call creation response: spec header plus the contract. */
+export const SAMPLE_COMPOSED = {
+  spec: {
+    goal: 'Create a todo list app',
+    assumptions: ['Todos are kept only on this device'],
+    openQuestions: [],
+  },
+  contract: SAMPLE_TODO_CONTRACT,
+};
 
-/**
- * Returns the canned `llm_chat` response for a mocked invoke call. Use inside
- * a `vi.mock('@tauri-apps/api/core')` factory or `mockImplementation`:
- *
- *   invoke.mockImplementation(async (cmd, args) => {
- *     if (cmd === 'llm_chat') return routeLlmChat(args);
- *     return {};
- *   });
- */
 /**
  * The todo contract after an edit: same ids, plus a caption showing how many
  * items are left. Returned for edit-leg requests so tests can drive the loop.
@@ -143,16 +120,36 @@ export const SAMPLE_EDITED_CONTRACT = {
   ]
 };
 
+interface LlmChatArgs {
+  request?: {
+    messages?: Array<{ role: string; content: string }>;
+    systemBlocks?: Array<{ text: string; cache?: boolean }>;
+  };
+}
+
+/**
+ * Returns the canned `llm_chat` response for a mocked invoke call. Use inside
+ * a `vi.mock('@tauri-apps/api/core')` factory or `mockImplementation`:
+ *
+ *   invoke.mockImplementation(async (cmd, args) => {
+ *     if (cmd === 'llm_chat') return routeLlmChat(args);
+ *     return {};
+ *   });
+ */
 export function routeLlmChat(args: unknown): { content: string; provider: string; model: string } {
-  const messages = (args as LlmChatArgs)?.request?.messages ?? [];
-  const system = messages.find((m) => m.role === 'system')?.content ?? '';
+  const request = (args as LlmChatArgs)?.request ?? {};
+  const messages = request.messages ?? [];
+  const system = [
+    ...(request.systemBlocks ?? []).map((block) => block.text),
+    ...messages.filter((m) => m.role === 'system').map((m) => m.content),
+  ].join('\n');
   const user = messages.find((m) => m.role === 'user')?.content ?? '';
   const isEdit = system.includes('EDIT MODE') || user.includes('Current contract:');
-  const isContract = system.includes('Contract JSON');
+  const isCompose = system.includes('CREATE MODE');
   const payload = isEdit
     ? SAMPLE_EDITED_CONTRACT
-    : isContract
-      ? SAMPLE_TODO_CONTRACT
-      : SAMPLE_INTENT;
+    : isCompose
+      ? SAMPLE_COMPOSED
+      : SAMPLE_TODO_CONTRACT;
   return { content: JSON.stringify(payload), provider: 'mock', model: 'mock' };
 }

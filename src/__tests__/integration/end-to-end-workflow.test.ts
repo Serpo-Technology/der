@@ -50,10 +50,12 @@ describe('End-to-End Workflow Integration', () => {
 
       expect(result.experienceId).toMatch(/^exp-\d+-[a-z0-9]+$/);
 
-      // Blueprint comes from the mocked intent extraction
+      // Blueprint is projected from the composed result
       expect(result.blueprint).toBeInstanceOf(Blueprint);
       expect(result.blueprint.goal).toBe('Create a todo list app');
-      expect(result.blueprint.uiElements).toHaveLength(3);
+      expect(result.blueprint.uiElements.map((el: any) => el.type)).toContain('list');
+      // The spec's assumptions surface as informational warnings
+      expect(result.warnings?.some((w) => w.code === 'SPEC_ASSUMPTION')).toBe(true);
 
       // Contract comes from the mocked contract generation
       expect(result.contract).toBeInstanceOf(Contract);
@@ -77,20 +79,23 @@ describe('End-to-End Workflow Integration', () => {
       expect(result.renderComponent).toBeTypeOf('function');
     });
 
-    it('should route intent and contract generation through the llm_chat command', async () => {
+    it('should create the experience with a single llm_chat call', async () => {
       await integratedService.createExperienceFromNaturalLanguage(
         'Create a todo list app for daily planning'
       );
 
       const llmCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === 'llm_chat');
-      // One call for intent extraction and one for contract generation
-      expect(llmCalls.length).toBe(2);
-      const systems = llmCalls.map(([, args]) => {
-        const messages = (args as any)?.request?.messages ?? [];
-        return messages.find((m: any) => m.role === 'system')?.content ?? '';
-      });
-      expect(systems.some((s: string) => s.includes('structured intent'))).toBe(true);
-      expect(systems.some((s: string) => s.includes('Contract JSON'))).toBe(true);
+      expect(llmCalls.length).toBe(1);
+      const [, args] = llmCalls[0];
+      const blocks = ((args as any)?.request?.systemBlocks ?? []) as Array<{
+        text: string;
+        cache?: boolean;
+      }>;
+      expect(blocks).toHaveLength(2);
+      // Static base prompt is the cached prefix; the mode section follows.
+      expect(blocks[0].cache).toBe(true);
+      expect(blocks[0].text).toContain('Contract JSON');
+      expect(blocks[1].text).toContain('CREATE MODE');
     });
 
     it('should handle workflow with edit preservation', async () => {
@@ -120,9 +125,7 @@ describe('End-to-End Workflow Integration', () => {
 
     it('should handle errors gracefully in the workflow', async () => {
       const mockError = new Error('AI service unavailable');
-      vi.spyOn(integratedService['aiInterpreter'], 'parseNaturalLanguage').mockRejectedValueOnce(
-        mockError
-      );
+      vi.spyOn(integratedService['aiInterpreter'], 'compose').mockRejectedValueOnce(mockError);
 
       await expect(
         integratedService.createExperienceFromNaturalLanguage('Invalid input')

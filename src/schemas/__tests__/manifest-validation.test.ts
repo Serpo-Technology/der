@@ -7,7 +7,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ContractSchema, LlmContractSchema, checkAgainstManifests } from '../contract';
+import {
+  ComposedResponseSchema,
+  ContractSchema,
+  LlmContractSchema,
+  checkAgainstManifests,
+} from '../contract';
 import type { ContractShape } from '../contract';
 
 function checkContract(raw: Record<string, unknown>) {
@@ -266,7 +271,7 @@ describe('checkAgainstManifests degradations', () => {
     expect(contract.elements[0].dataBindings[0].transforms?.map((t) => t.type)).toEqual(['count']);
   });
 
-  it('seeds a state key read through an items binding with an empty array', () => {
+  it('silently seeds a state key read through an items binding with an empty array', () => {
     const { contract, result } = checkContract(
       rawContract({
         elements: [
@@ -279,9 +284,9 @@ describe('checkAgainstManifests degradations', () => {
       })
     );
 
+    // The empty-array seed is the normal omitted-seed case, so no warning.
     expect(result.errors).toHaveLength(0);
-    expect(result.warnings).toHaveLength(1);
-    expect(result.warnings[0].path).toBe('initialState.rows');
+    expect(result.warnings).toHaveLength(0);
     expect(contract.initialState?.rows).toEqual([]);
   });
 
@@ -441,6 +446,45 @@ describe('checkAgainstManifests degradations', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.warnings).toHaveLength(0);
+  });
+});
+
+describe('ComposedResponseSchema', () => {
+  it('parses a composed response and defaults a missing spec', () => {
+    const parsed = ComposedResponseSchema.parse({ contract: rawContract() });
+
+    expect(parsed.spec).toEqual({ goal: '', assumptions: [], openQuestions: [] });
+    expect(parsed.contract.name).toBe('manifest-check');
+    // Omitted optional fields materialize as schema defaults.
+    expect(parsed.contract.operations).toEqual([]);
+    expect(parsed.contract.elements[0].dataBindings).toBeDefined();
+  });
+
+  it('rejects code inside the nested contract exactly like LlmContractSchema', () => {
+    const composed = {
+      spec: { goal: 'x' },
+      contract: rawContract({
+        operations: [
+          {
+            id: 'op-code',
+            operationName: 'custom.compute',
+            implementation: {
+              type: 'remote',
+              endpoint: 'https://api.example.com/run',
+              code: 'return 1;'
+            }
+          }
+        ]
+      })
+    };
+
+    const parsed = ComposedResponseSchema.safeParse(composed);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(
+        parsed.error.issues.some((issue) => issue.path.join('.').startsWith('contract.operations.0'))
+      ).toBe(true);
+    }
   });
 });
 

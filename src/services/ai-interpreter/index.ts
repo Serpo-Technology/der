@@ -1,65 +1,57 @@
 /**
- * AI Interpreter Service - Main orchestrator for blueprint generation
- * Requirements: 1.1, 1.2, 1.4, 5.2, 10.4, 10.5
+ * AI Interpreter Service - orchestrates the single-call composition pipeline
+ * (description -> contract + spec -> projected blueprint) and contract edits.
  */
 
 import { AIInterpreter } from '../../interfaces/ai-interpreter';
-import { Blueprint, Question, Answer } from '../../types/blueprint';
+import { Blueprint, ComposedSpec, Question, Answer } from '../../types/blueprint';
 import { Contract, ContractEdits, ValidationWarning } from '../../types/contract';
 import { ComponentRepository } from '../../types/repository';
 import { LLMClient } from './llm-client';
-import { NaturalLanguageParser } from './natural-language-parser';
 import { BlueprintGenerator } from './blueprint-generator';
 import { ContractBuilder } from './contract-builder';
 import { EditPreservationSystem, EditConflict, ConflictResolution } from './edit-preservation';
 
+export interface ComposedExperience {
+  blueprint: Blueprint;
+  contract: Contract;
+  spec: ComposedSpec;
+  warnings: ValidationWarning[];
+}
+
 export class AIInterpreterService implements AIInterpreter {
   private llmClient: LLMClient;
   private lastContractWarnings: ValidationWarning[] = [];
-  private parser: NaturalLanguageParser;
   private generator: BlueprintGenerator;
   private repository: ComponentRepository;
   private editPreservation: EditPreservationSystem;
 
   constructor(repository: ComponentRepository, llmClient: LLMClient = new LLMClient()) {
     this.llmClient = llmClient;
-    this.parser = new NaturalLanguageParser(this.llmClient);
     this.generator = new BlueprintGenerator();
     this.repository = repository;
     this.editPreservation = new EditPreservationSystem();
   }
 
-  async parseDescription(description: string): Promise<Blueprint> {
-    // Validate the input description
-    const validationResult = this.parser.validateDescription(description);
-    if (!validationResult.isValid) {
-      throw new Error(`Invalid description: ${validationResult.errors.map(e => e.message).join(', ')}`);
+  /**
+   * Creates a contract from a natural-language description in one model call
+   * and projects the reviewable blueprint from the result.
+   */
+  async compose(description: string): Promise<ComposedExperience> {
+    if (!description || description.trim().length === 0) {
+      throw new Error('Invalid description: Description cannot be empty');
     }
 
     try {
-      // Extract intent from natural language
-      const intent = await this.parser.extractIntent(description);
-      
-      // Generate blueprint from intent
-      const blueprint = this.generator.generateFromIntent(intent);
-      
-      // Validate the generated blueprint
-      const blueprintValidation = this.generator.validateBlueprint(blueprint);
-      if (!blueprintValidation.isValid) {
-        throw new Error(`Generated blueprint is invalid: ${blueprintValidation.errors.map(e => e.message).join(', ')}`);
-      }
+      const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
+      const { contract, spec } = await contractBuilder.composeFromDescription(description);
+      this.lastContractWarnings = contractBuilder.getLastWarnings();
 
-      return blueprint;
+      const blueprint = this.generator.deriveFromComposition(spec, contract, description);
+      return { blueprint, contract, spec, warnings: this.lastContractWarnings };
     } catch (error) {
-      throw new Error(`Failed to parse description: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Failed to compose experience: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }
-
-  /**
-   * Alias for parseDescription to match test expectations
-   */
-  async parseNaturalLanguage(description: string): Promise<Blueprint> {
-    return this.parseDescription(description);
   }
 
   /**
@@ -80,8 +72,13 @@ export class AIInterpreterService implements AIInterpreter {
 
   async generateQuestions(blueprint: Blueprint): Promise<Question[]> {
     // Extract questions from ambiguities in the blueprint
-    const questions = this.parser.identifyAmbiguities(blueprint);
-    
+    const questions: Question[] = (blueprint.ambiguities ?? []).map((ambiguity) => ({
+      id: ambiguity.id,
+      text: ambiguity.question,
+      type: ambiguity.options.length > 0 ? 'choice' : 'text',
+      options: ambiguity.options.length > 0 ? ambiguity.options : undefined,
+    }));
+
     // If no ambiguities were detected, we might want to generate additional clarifying questions
     if (questions.length === 0 && blueprint.requiredCapabilities.length === 0) {
       // Generate some default questions to help clarify the user's intent
@@ -319,7 +316,6 @@ export class AIInterpreterService implements AIInterpreter {
 // Export types and classes
 export { LLMClient } from './llm-client';
 export type { LLMConfig } from './llm-client';
-export { NaturalLanguageParser } from './natural-language-parser';
 export { BlueprintGenerator } from './blueprint-generator';
 export { ContractBuilder } from './contract-builder';
 export { EditPreservationSystem } from './edit-preservation';

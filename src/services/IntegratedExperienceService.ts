@@ -65,32 +65,32 @@ export class IntegratedExperienceService {
   }
 
   /**
-   * Complete workflow: Natural language -> Blueprint -> Contract -> Experience
+   * Complete workflow: one composed model call returns the contract plus its
+   * spec header; the blueprint shown in the tabs is projected from that
+   * result, and the spec's assumptions and open questions surface as
+   * informational warnings.
    */
   async createExperienceFromNaturalLanguage(
     input: string,
     options: IntegratedWorkflowOptions = {}
   ): Promise<ExperienceCreationResult> {
     try {
-      // Step 1: Parse natural language to blueprint
-      const blueprintData = await this.aiInterpreter.parseNaturalLanguage(input);
-      const blueprint = BlueprintModel.fromObject(blueprintData);
-      
-      // Step 2: Generate contract from blueprint
-      const contractData = await this.aiInterpreter.generateContract(blueprintData);
-      const contract = ContractModel.fromObject(contractData);
-      
-      // Step 3: Create experience ID and initialize editor if needed
+      // Step 1: Compose contract + spec in a single call; project the blueprint
+      const composed = await this.aiInterpreter.compose(input);
+      const blueprint = BlueprintModel.fromObject(composed.blueprint);
+      const contract = ContractModel.fromObject(composed.contract);
+
+      // Step 2: Create experience ID and initialize editor if needed
       const experienceId = this.generateExperienceId();
-      
+
       if (options.preserveEdits) {
         await this.editor.initializeExperience(experienceId, contract);
       }
-      
-      // Step 4: Render experience
+
+      // Step 3: Render experience
       const renderComponent = await this.runtime.renderExperience(contract, experienceId);
-      
-      // Step 5: Create experience object
+
+      // Step 4: Create experience object
       const experience: Experience = {
         id: experienceId,
         contract,
@@ -104,10 +104,24 @@ export class IntegratedExperienceService {
         operations: new Map()
       };
 
-      // Step 6: Auto-save if enabled
+      // Step 5: Auto-save if enabled
       if (options.autoSave) {
         await this.persistence.saveExperience(experience);
       }
+
+      const warnings: ValidationWarning[] = [
+        ...composed.warnings,
+        ...composed.spec.assumptions.map((assumption) => ({
+          path: 'spec',
+          message: `Assumed: ${assumption}`,
+          code: 'SPEC_ASSUMPTION'
+        })),
+        ...composed.spec.openQuestions.map((question) => ({
+          path: 'spec',
+          message: `Open question: ${question}`,
+          code: 'SPEC_QUESTION'
+        }))
+      ];
 
       return {
         experienceId,
@@ -115,7 +129,7 @@ export class IntegratedExperienceService {
         contract,
         experience,
         renderComponent,
-        warnings: this.aiInterpreter.getLastContractWarnings()
+        warnings
       };
     } catch (error) {
       throw new Error(`Failed to create experience: ${error instanceof Error ? error.message : 'Unknown error'}`);

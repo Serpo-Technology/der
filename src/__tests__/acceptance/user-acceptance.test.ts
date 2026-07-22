@@ -21,27 +21,25 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 
-// Intent fixture for a deliberately underspecified request. Operations stay
-// empty so the fixture is valid for the blueprint validators.
-const AMBIGUOUS_INTENT = {
-  goal: 'Create a dashboard',
-  requiredCapabilities: [],
-  uiElements: [{ type: 'container', purpose: 'Dashboard body', capabilities: [] }],
-  operations: [],
-  ambiguities: [
-    {
-      id: 'data_source',
-      description: 'The data source is unspecified',
-      options: ['Static sample data', 'Live HTTP API'],
-      question: 'What data should the dashboard show?',
-    },
-  ],
+// Composed fixture for a deliberately underspecified request: the spec's
+// open questions become the blueprint's ambiguities.
+const AMBIGUOUS_COMPOSED = {
+  spec: {
+    goal: 'Create a dashboard',
+    assumptions: [],
+    openQuestions: ['What data should the dashboard show?'],
+  },
+  contract: {
+    name: 'dashboard',
+    version: '1.0.0',
+    elements: [{ id: 'body', type: 'container', properties: {} }],
+    operations: [],
+  },
 };
 
-function isIntentCall(args: any): boolean {
-  const messages = args?.request?.messages ?? [];
-  const system = messages.find((m: any) => m.role === 'system')?.content ?? '';
-  return !system.includes('Contract JSON');
+function isComposeCall(args: any): boolean {
+  const blocks = args?.request?.systemBlocks ?? [];
+  return blocks.some((block: any) => String(block.text).includes('CREATE MODE'));
 }
 
 describe('User Acceptance Tests', () => {
@@ -67,8 +65,7 @@ describe('User Acceptance Tests', () => {
     it('As a user, I want to describe what I need in plain English and get a working experience', async () => {
       const userInput = 'I need a todo list where I can enter tasks and add them to a list';
 
-      const blueprint = await aiInterpreter.parseNaturalLanguage(userInput);
-      const contract = await aiInterpreter.generateContract(blueprint);
+      const { blueprint, contract } = await aiInterpreter.compose(userInput);
       const component = await runtime.renderExperience(contract, 'acceptance-todo');
 
       expect(blueprint.goal).toBe('Create a todo list app');
@@ -96,9 +93,9 @@ describe('User Acceptance Tests', () => {
     it('As a user, I want the system to ask clarifying questions when my request is ambiguous', async () => {
       installInvokeMock({
         onCommand: (cmd, args) => {
-          if (cmd === 'llm_chat' && isIntentCall(args)) {
+          if (cmd === 'llm_chat' && isComposeCall(args)) {
             return {
-              content: JSON.stringify(AMBIGUOUS_INTENT),
+              content: JSON.stringify(AMBIGUOUS_COMPOSED),
               provider: 'mock',
               model: 'mock',
             };
@@ -107,18 +104,17 @@ describe('User Acceptance Tests', () => {
         },
       });
 
-      const blueprint = await aiInterpreter.parseNaturalLanguage('Create a dashboard');
+      const { blueprint } = await aiInterpreter.compose('Create a dashboard');
 
       expect(blueprint.ambiguities).toHaveLength(1);
 
       const clarifications = await aiInterpreter.generateClarifyingQuestions(blueprint);
       expect(clarifications).toHaveLength(1);
       expect(clarifications[0].question).toMatch(/what data/i);
-      expect(clarifications[0].options).toEqual(['Static sample data', 'Live HTTP API']);
 
       const questions = await aiInterpreter.generateQuestions(blueprint);
       expect(questions[0].text).toMatch(/what data/i);
-      expect(questions[0].type).toBe('choice');
+      expect(questions[0].type).toBe('text');
     });
   });
 
@@ -272,7 +268,7 @@ describe('User Acceptance Tests', () => {
   describe('User Story: Error Recovery and Graceful Degradation', () => {
     it('As a user, I want clear feedback when my request cannot be processed', async () => {
       // Empty input is rejected up front without a model call
-      await expect(aiInterpreter.parseNaturalLanguage('')).rejects.toThrow('Invalid description');
+      await expect(aiInterpreter.compose('')).rejects.toThrow('Invalid description');
       expect(invokeMock.mock.calls.filter(([cmd]) => cmd === 'llm_chat')).toHaveLength(0);
 
       // A model outage surfaces as a meaningful error
@@ -285,8 +281,8 @@ describe('User Acceptance Tests', () => {
         },
       });
       await expect(
-        aiInterpreter.parseNaturalLanguage('Create a todo list app')
-      ).rejects.toThrow('Failed to parse description');
+        aiInterpreter.compose('Create a todo list app')
+      ).rejects.toThrow('Failed to compose experience');
     });
 
     it('As a user, I want to recover from failed operations without losing my work', async () => {
@@ -352,8 +348,7 @@ describe('User Acceptance Tests', () => {
     it('As a user, I want the system to respond quickly to my interactions', async () => {
       const startTime = performance.now();
 
-      const blueprint = await aiInterpreter.parseNaturalLanguage('Create a todo list app');
-      const contract = await aiInterpreter.generateContract(blueprint);
+      const { contract } = await aiInterpreter.compose('Create a todo list app');
       const experience = await runtime.renderExperience(contract);
 
       const totalTime = performance.now() - startTime;
@@ -373,8 +368,7 @@ describe('User Acceptance Tests', () => {
 
       const results = await Promise.all(
         requests.map(async (request, index) => {
-          const blueprint = await aiInterpreter.parseNaturalLanguage(request);
-          const contract = await aiInterpreter.generateContract(blueprint);
+          const { contract } = await aiInterpreter.compose(request);
           return runtime.renderExperience(contract, `concurrent-${index}`);
         })
       );
@@ -388,8 +382,7 @@ describe('User Acceptance Tests', () => {
 
   describe('User Story: Usability of Generated Experiences', () => {
     it('As a user, I want generated inputs and buttons to carry usable labels', async () => {
-      const blueprint = await aiInterpreter.parseNaturalLanguage('Create an accessible todo list');
-      const contract = await aiInterpreter.generateContract(blueprint);
+      const { contract } = await aiInterpreter.compose('Create an accessible todo list');
 
       const inputs = contract.elements.filter((el) => el.type === 'input');
       expect(inputs.length).toBeGreaterThan(0);

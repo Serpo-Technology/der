@@ -1,13 +1,17 @@
 /**
- * AI Interpreter interface - Natural language processing and blueprint generation
- * Requirements: 1.1, 1.2, 1.4, 5.2, 10.4, 10.5
+ * AI Interpreter interface - single-call composition and blueprint projection
  */
 
-import { Blueprint, Question, Answer, ParsedIntent } from '../types/blueprint';
-import { Contract, ContractEdits, ValidationResult } from '../types/contract';
+import { Blueprint, ComposedSpec, Question, Answer } from '../types/blueprint';
+import { Contract, ContractEdits, ValidationResult, ValidationWarning } from '../types/contract';
 
 export interface AIInterpreter {
-  parseDescription(description: string): Promise<Blueprint>;
+  compose(description: string): Promise<{
+    blueprint: Blueprint;
+    contract: Contract;
+    spec: ComposedSpec;
+    warnings: ValidationWarning[];
+  }>;
   generateQuestions(blueprint: Blueprint): Promise<Question[]>;
   refineBlueprint(blueprint: Blueprint, answers: Answer[]): Promise<Blueprint>;
   generateContract(blueprint: Blueprint, userEdits?: ContractEdits): Promise<Contract>;
@@ -15,14 +19,8 @@ export interface AIInterpreter {
   regenerateWithPreservation(blueprint: Blueprint, existingContract: Contract, sections: string[]): Promise<Contract>;
 }
 
-export interface NaturalLanguageParser {
-  extractIntent(description: string): ParsedIntent;
-  identifyAmbiguities(intent: ParsedIntent): Question[];
-  validateDescription(description: string): ValidationResult;
-}
-
 export interface BlueprintGenerator {
-  generateFromIntent(intent: ParsedIntent): Blueprint;
+  deriveFromComposition(spec: ComposedSpec, contract: Contract, description: string): Blueprint;
   refineWithAnswers(blueprint: Blueprint, answers: Answer[]): Blueprint;
   validateBlueprint(blueprint: Blueprint): ValidationResult;
 }

@@ -1,22 +1,78 @@
 /**
- * Blueprint Generator - Creates structured blueprints from parsed intent
- * Requirements: 1.1, 1.2, 1.4
+ * Blueprint Generator - derives the reviewable Blueprint shown in the
+ * Blueprint tab. Creation projects it from the composed spec and contract;
+ * refinement and validation operate on the projected result.
  */
 
 import { Blueprint as BlueprintModel } from '../../models/blueprint';
-import { Blueprint, ParsedIntent, Answer, UserModification } from '../../types/blueprint';
+import {
+  Blueprint,
+  ComposedSpec,
+  Answer,
+  UserModification,
+  UIElementRequirement,
+  OperationRequirement,
+} from '../../types/blueprint';
+import type { Contract, UIElement } from '../../types/contract';
 import { ValidationResult, ValidationError, ValidationWarning } from '../../types/contract';
+import type { ContractShape } from '../../schemas/contract';
 
 export class BlueprintGenerator {
-  generateFromIntent(intent: ParsedIntent): Blueprint {
+  /**
+   * Projects a Blueprint from a composed creation result: goal from the spec,
+   * elements and operations from the contract, ambiguities from the spec's
+   * open questions. The projection feeds the Blueprint tab and its
+   * "Generate Contract" regenerate path.
+   */
+  deriveFromComposition(
+    spec: ComposedSpec,
+    contract: Contract | ContractShape,
+    description: string
+  ): Blueprint {
+    const uiElements: UIElementRequirement[] = [];
+    const walk = (elements: UIElement[]) => {
+      for (const element of elements) {
+        const props = element.properties ?? {};
+        const label =
+          props.text ?? props.content ?? props.label ?? props.placeholder ?? element.id;
+        uiElements.push({
+          type: element.type,
+          purpose: String(label),
+          capabilities: [],
+        });
+        if (element.children?.length) walk(element.children as UIElement[]);
+      }
+    };
+    walk((contract.elements ?? []) as UIElement[]);
+
+    const operations: OperationRequirement[] = (contract.operations ?? []).map((op) => ({
+      name: op.operationName,
+      purpose: op.operationName,
+      inputs: (op.inputs ?? []).map((input) => input.name),
+      outputs: (op.outputs ?? []).map((output) => output.name),
+      executionType: (op.executionType ?? 'builtin') as OperationRequirement['executionType'],
+    }));
+
+    const requiredCapabilities = [
+      ...new Set([
+        ...uiElements.map((element) => element.type),
+        ...operations.map((operation) => operation.name),
+      ]),
+    ];
+
     return new BlueprintModel({
-      description: this.generateDescription(intent),
-      goal: intent.goal,
-      requiredCapabilities: [...new Set(intent.requiredCapabilities)], // Remove duplicates
-      uiElements: intent.uiElements,
-      operations: intent.operations,
-      ambiguities: intent.ambiguities,
-      userModifications: []
+      description,
+      goal: spec.goal || description,
+      requiredCapabilities,
+      uiElements,
+      operations,
+      ambiguities: spec.openQuestions.map((question, index) => ({
+        id: `open-question-${index + 1}`,
+        description: question,
+        options: [],
+        question,
+      })),
+      userModifications: [],
     });
   }
 
@@ -169,26 +225,6 @@ export class BlueprintGenerator {
       errors,
       warnings
     };
-  }
-
-  private generateDescription(intent: ParsedIntent): string {
-    const parts = [intent.goal];
-    
-    if (intent.uiElements.length > 0) {
-      const elementTypes = intent.uiElements.map(el => el.type).join(', ');
-      parts.push(`The interface will include: ${elementTypes}.`);
-    }
-    
-    if (intent.operations.length > 0) {
-      const operationNames = intent.operations.map(op => op.name).join(', ');
-      parts.push(`Required operations: ${operationNames}.`);
-    }
-    
-    if (intent.requiredCapabilities.length > 0) {
-      parts.push(`Key capabilities needed: ${intent.requiredCapabilities.join(', ')}.`);
-    }
-
-    return parts.join(' ');
   }
 
   private applyAmbiguityResolution(blueprint: Blueprint, ambiguity: any, answer: string | boolean): void {

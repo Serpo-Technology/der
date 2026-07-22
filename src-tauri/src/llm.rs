@@ -12,10 +12,23 @@ pub struct ChatMessage {
     pub content: String,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemBlock {
+    pub text: String,
+    #[serde(default)]
+    pub cache: bool,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmChatRequest {
     pub messages: Vec<ChatMessage>,
+    /// Structured system prompt; blocks flagged `cache` become prompt-cache
+    /// breakpoints on Anthropic-shaped providers. Other providers receive the
+    /// concatenated text as a plain system message.
+    #[serde(default)]
+    pub system_blocks: Option<Vec<SystemBlock>>,
     #[serde(default)]
     pub provider: Option<String>,
     #[serde(default)]
@@ -84,25 +97,47 @@ enum AnthropicAuth {
     Bearer(String),
 }
 
-async fn anthropic_chat(
-    auth: &AnthropicAuth,
+fn build_anthropic_body(
+    is_bearer: bool,
     model: &str,
     messages: &[ChatMessage],
+    system_blocks: Option<&[SystemBlock]>,
     max_tokens: u32,
-) -> Result<String, String> {
+) -> Value {
     let (system, conversation) = split_system(messages);
 
     // Subscription bearer tokens are scoped to CLI-shaped requests; identify as
     // one via the leading system block so inference is accepted.
-    let mut system_blocks: Vec<Value> = Vec::new();
-    if matches!(auth, AnthropicAuth::Bearer(_)) {
-        system_blocks.push(json!({
+    let mut blocks: Vec<Value> = Vec::new();
+    if is_bearer {
+        blocks.push(json!({
             "type": "text",
             "text": "You are Claude Code, Anthropic's official CLI for Claude."
         }));
     }
-    if !system.is_empty() {
-        system_blocks.push(json!({ "type": "text", "text": system }));
+    match system_blocks {
+        Some(structured) => {
+            for block in structured {
+                let mut value = json!({ "type": "text", "text": block.text });
+                if block.cache {
+                    value["cache_control"] = json!({ "type": "ephemeral" });
+                }
+                blocks.push(value);
+            }
+            if !system.is_empty() {
+                blocks.push(json!({ "type": "text", "text": system }));
+            }
+        }
+        None => {
+            // Legacy single-string system: stable per mode, so cache it whole.
+            if !system.is_empty() {
+                blocks.push(json!({
+                    "type": "text",
+                    "text": system,
+                    "cache_control": { "type": "ephemeral" }
+                }));
+            }
+        }
     }
 
     let mut body = json!({
@@ -113,9 +148,26 @@ async fn anthropic_chat(
             .map(|m| json!({ "role": m.role, "content": m.content }))
             .collect::<Vec<_>>(),
     });
-    if !system_blocks.is_empty() {
-        body["system"] = json!(system_blocks);
+    if !blocks.is_empty() {
+        body["system"] = json!(blocks);
     }
+    body
+}
+
+async fn anthropic_chat(
+    auth: &AnthropicAuth,
+    model: &str,
+    messages: &[ChatMessage],
+    system_blocks: Option<&[SystemBlock]>,
+    max_tokens: u32,
+) -> Result<String, String> {
+    let body = build_anthropic_body(
+        matches!(auth, AnthropicAuth::Bearer(_)),
+        model,
+        messages,
+        system_blocks,
+        max_tokens,
+    );
 
     let mut request = http_client()?
         .post("https://api.anthropic.com/v1/messages")
@@ -318,22 +370,41 @@ pub async fn llm_chat(app: AppHandle, request: LlmChatRequest) -> Result<LlmChat
     let json_mode = request.json_mode.unwrap_or(false);
     let base_url = request.base_url.or(stored.base_url);
 
+    // Providers without system-block support get the structured prompt as one
+    // plain system message ahead of the conversation.
+    let merged: Vec<ChatMessage>;
+    let flat_messages: &[ChatMessage] = match &request.system_blocks {
+        Some(blocks) if !blocks.is_empty() => {
+            let joined = blocks
+                .iter()
+                .map(|b| b.text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            let mut v = Vec::with_capacity(request.messages.len() + 1);
+            v.push(ChatMessage { role: "system".to_string(), content: joined });
+            v.extend(request.messages.iter().cloned());
+            merged = v;
+            &merged
+        }
+        _ => &request.messages,
+    };
+
     let content = match provider.as_str() {
         "claude-subscription" => {
             let token = oauth::claude_access_token(&app, false).await?;
             let auth = AnthropicAuth::Bearer(token);
-            match anthropic_chat(&auth, &model, &request.messages, max_tokens).await {
+            match anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens).await {
                 Err(e) if e.starts_with("unauthorized") => {
                     let token = oauth::claude_access_token(&app, true).await?;
                     let auth = AnthropicAuth::Bearer(token);
-                    anthropic_chat(&auth, &model, &request.messages, max_tokens).await?
+                    anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens).await?
                 }
                 other => other?,
             }
         }
         "anthropic" => {
             let auth = AnthropicAuth::ApiKey(api_key(&app, "anthropic")?);
-            anthropic_chat(&auth, &model, &request.messages, max_tokens).await?
+            anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens).await?
         }
         "deepseek" => {
             let key = api_key(&app, "deepseek")?;
@@ -342,7 +413,7 @@ pub async fn llm_chat(app: AppHandle, request: LlmChatRequest) -> Result<LlmChat
                 &base,
                 Some(&key),
                 &model,
-                &request.messages,
+                flat_messages,
                 max_tokens,
                 temperature,
                 json_mode,
@@ -356,7 +427,7 @@ pub async fn llm_chat(app: AppHandle, request: LlmChatRequest) -> Result<LlmChat
                 &base,
                 Some(&key),
                 &model,
-                &request.messages,
+                flat_messages,
                 max_tokens,
                 temperature,
                 json_mode,
@@ -372,7 +443,7 @@ pub async fn llm_chat(app: AppHandle, request: LlmChatRequest) -> Result<LlmChat
                 &base,
                 key.as_deref(),
                 &model,
-                &request.messages,
+                flat_messages,
                 max_tokens,
                 temperature,
                 json_mode,
@@ -381,7 +452,7 @@ pub async fn llm_chat(app: AppHandle, request: LlmChatRequest) -> Result<LlmChat
         }
         "gemini" => {
             let key = api_key(&app, "gemini")?;
-            gemini_chat(&key, &model, &request.messages, max_tokens, temperature, json_mode).await?
+            gemini_chat(&key, &model, flat_messages, max_tokens, temperature, json_mode).await?
         }
         other => return Err(format!("Unknown provider: {}", other)),
     };
@@ -391,4 +462,65 @@ pub async fn llm_chat(app: AppHandle, request: LlmChatRequest) -> Result<LlmChat
         provider,
         model,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn msg(role: &str, content: &str) -> ChatMessage {
+        ChatMessage { role: role.to_string(), content: content.to_string() }
+    }
+
+    #[test]
+    fn legacy_system_string_becomes_one_cached_block() {
+        let body = build_anthropic_body(
+            false,
+            "m",
+            &[msg("system", "SYS"), msg("user", "hi")],
+            None,
+            100,
+        );
+        let system = body["system"].as_array().unwrap();
+        assert_eq!(system.len(), 1);
+        assert_eq!(system[0]["text"], "SYS");
+        assert_eq!(system[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(body["messages"].as_array().unwrap().len(), 1);
+        assert_eq!(body["messages"][0]["role"], "user");
+    }
+
+    #[test]
+    fn structured_blocks_cache_only_where_flagged() {
+        let blocks = vec![
+            SystemBlock { text: "BASE".to_string(), cache: true },
+            SystemBlock { text: "MODE".to_string(), cache: false },
+        ];
+        let body = build_anthropic_body(false, "m", &[msg("user", "hi")], Some(&blocks), 100);
+        let system = body["system"].as_array().unwrap();
+        assert_eq!(system.len(), 2);
+        assert_eq!(system[0]["text"], "BASE");
+        assert_eq!(system[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(system[1]["text"], "MODE");
+        assert!(system[1].get("cache_control").is_none());
+    }
+
+    #[test]
+    fn bearer_identity_block_leads_and_stays_uncached() {
+        let blocks = vec![SystemBlock { text: "BASE".to_string(), cache: true }];
+        let body = build_anthropic_body(true, "m", &[msg("user", "hi")], Some(&blocks), 100);
+        let system = body["system"].as_array().unwrap();
+        assert_eq!(
+            system[0]["text"],
+            "You are Claude Code, Anthropic's official CLI for Claude."
+        );
+        assert!(system[0].get("cache_control").is_none());
+        assert_eq!(system[1]["text"], "BASE");
+        assert_eq!(system[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn no_system_at_all_omits_the_field() {
+        let body = build_anthropic_body(false, "m", &[msg("user", "hi")], None, 100);
+        assert!(body.get("system").is_none());
+    }
 }

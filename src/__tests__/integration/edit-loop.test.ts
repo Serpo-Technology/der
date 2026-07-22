@@ -57,9 +57,11 @@ describe('Edit loop', () => {
     );
     expect(editCalls.length).toBeGreaterThanOrEqual(1);
     const [, args] = editCalls[editCalls.length - 1] as [string, any];
-    const system = args.request.messages.find((m: { role: string }) => m.role === 'system');
+    const system = (args.request.systemBlocks ?? [])
+      .map((block: { text: string }) => block.text)
+      .join('\n');
     const user = args.request.messages.find((m: { role: string }) => m.role === 'user');
-    expect(system.content).toContain('EDIT MODE');
+    expect(system).toContain('EDIT MODE');
     expect(user.content).toContain('show how many items are left');
     expect(user.content).toContain(created.contract.name);
   });

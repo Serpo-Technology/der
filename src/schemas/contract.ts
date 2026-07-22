@@ -163,6 +163,25 @@ export const LlmContractSchema = ContractSchema.extend({
   operations: z.array(LlmOperationBindingSchema).default([]),
 });
 
+/**
+ * The single-call creation response: the contract plus a small spec header
+ * that carries the model's reading of the request (shown in the Blueprint tab
+ * and surfaced as informational warnings).
+ */
+export const ComposedSpecSchema = z.object({
+  goal: z.string().default(''),
+  assumptions: z.array(z.string()).default([]),
+  openQuestions: z.array(z.string()).default([]),
+});
+
+export const ComposedResponseSchema = z.object({
+  spec: ComposedSpecSchema.default({ goal: '', assumptions: [], openQuestions: [] }),
+  contract: LlmContractSchema,
+});
+
+export type ComposedSpecShape = z.output<typeof ComposedSpecSchema>;
+export type ComposedResponseShape = z.output<typeof ComposedResponseSchema>;
+
 export type ContractShape = z.output<typeof ContractSchema>;
 
 export function formatZodError(error: z.ZodError): string {
@@ -454,16 +473,20 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     }
   });
 
-  // Seed state keys that are read but never written.
+  // Seed state keys that are read but never written. An empty array for an
+  // array-shaped reader is the normal omitted-seed case and stays silent; a
+  // null seed means a key no operation writes, which usually flags a typo.
   for (const [key, firstReader] of stateReads) {
     if (!stateWrites.has(key)) {
       const seed = firstReader === 'items' || firstReader === 'options' ? [] : null;
       contract.initialState = { ...(contract.initialState ?? {}), [key]: seed };
-      warn(
-        warnings,
-        `initialState.${key}`,
-        `State key "${key}" was read but never written; seeded with ${JSON.stringify(seed)}`
-      );
+      if (seed === null) {
+        warn(
+          warnings,
+          `initialState.${key}`,
+          `State key "${key}" was read but never written; seeded with null`
+        );
+      }
     }
   }
 

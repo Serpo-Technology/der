@@ -29,10 +29,22 @@ export interface LLMMessage {
   content: string;
 }
 
+export interface LLMSystemBlock {
+  text: string;
+  /**
+   * Marks a prompt-cache breakpoint on Anthropic-shaped providers; everything
+   * up to and including this block is cached across calls. Other providers
+   * receive the blocks as one plain system message.
+   */
+  cache?: boolean;
+}
+
 export interface LLMSendOptions {
   /** Ask the provider for a JSON-only response where supported. */
   jsonMode?: boolean;
   maxTokens?: number;
+  /** Structured system prompt sent ahead of any inline system messages. */
+  systemBlocks?: LLMSystemBlock[];
 }
 
 export interface LLMResponse {
@@ -52,6 +64,7 @@ export class LLMClient {
     return await invoke<LLMResponse>('llm_chat', {
       request: {
         messages,
+        systemBlocks: options.systemBlocks,
         provider: this.config.provider,
         model: this.config.model,
         maxTokens: options.maxTokens ?? this.config.maxTokens,

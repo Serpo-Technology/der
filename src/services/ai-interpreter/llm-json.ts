@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod';
-import { LLMClient, LLMMessage } from './llm-client';
+import { LLMClient, LLMMessage, LLMSystemBlock } from './llm-client';
 import { formatZodError } from '../../schemas/contract';
 
 /**
@@ -54,6 +54,12 @@ export interface GenerateJsonOptions<T = unknown> {
   label: string;
   maxTokens?: number;
   /**
+   * Structured system prompt sent with every attempt (including the repair
+   * round); blocks flagged `cache` become prompt-cache breakpoints on
+   * Anthropic-shaped providers.
+   */
+  systemBlocks?: LLMSystemBlock[];
+  /**
    * Post-parse semantic validation; returned problem strings count as a
    * validation failure and feed the repair round. May mutate the parsed value
    * to apply degradations; mutations only survive when no problems remain.
@@ -71,6 +77,7 @@ export async function generateValidatedJson<S extends z.ZodType>(
     const response = await llm.sendMessage(conversation, {
       jsonMode: true,
       maxTokens: options.maxTokens,
+      systemBlocks: options.systemBlocks,
     });
     return response.content;
   };

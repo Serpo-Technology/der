@@ -8,12 +8,10 @@ import { AIInterpreterService } from '../index';
 import type { LLMClient } from '../llm-client';
 import { Answer } from '../../../types/blueprint';
 import { Contract } from '../../../types/contract';
-import { SAMPLE_TODO_CONTRACT } from '../../../test/llm-mocks';
+import { SAMPLE_COMPOSED, SAMPLE_TODO_CONTRACT } from '../../../test/llm-mocks';
 
 // Mock the dependencies
 vi.mock('../llm-client');
-vi.mock('../natural-language-parser');
-vi.mock('../blueprint-generator');
 
 // Mock repository
 const mockRepository = {
@@ -39,76 +37,45 @@ describe('AIInterpreterService', () => {
     vi.clearAllMocks();
   });
 
-  describe('parseDescription', () => {
-    it('should parse valid description successfully', async () => {
+  describe('compose', () => {
+    it('creates the contract and projected blueprint in one model call', async () => {
       const description = 'Create a todo list application with add, edit, and delete functionality';
-      
-      // Mock the internal methods
-      const mockIntent = {
-        goal: 'Create a todo list application',
-        requiredCapabilities: ['task-management'],
-        uiElements: [],
-        operations: [],
-        ambiguities: []
-      };
 
-      const mockBlueprint = {
-        description,
-        goal: mockIntent.goal,
-        requiredCapabilities: mockIntent.requiredCapabilities,
-        uiElements: mockIntent.uiElements,
-        operations: mockIntent.operations,
-        ambiguities: mockIntent.ambiguities,
-        userModifications: []
-      };
-
-      // Mock validation to pass
-      vi.spyOn(service['parser'], 'validateDescription').mockReturnValue({
-        isValid: true,
-        errors: [],
-        warnings: []
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      vi.mocked(mockLLMClient.sendMessage).mockResolvedValue({
+        content: JSON.stringify(SAMPLE_COMPOSED)
       });
 
-      vi.spyOn(service['parser'], 'extractIntent').mockResolvedValue(mockIntent);
-      vi.spyOn(service['generator'], 'generateFromIntent').mockReturnValue(mockBlueprint);
-      vi.spyOn(service['generator'], 'validateBlueprint').mockReturnValue({
-        isValid: true,
-        errors: [],
-        warnings: []
-      });
+      const result = await service.compose(description);
 
-      const result = await service.parseDescription(description);
+      expect(mockLLMClient.sendMessage).toHaveBeenCalledTimes(1);
+      expect(result.contract.name).toBe('todo-list');
+      expect(result.spec.goal).toBe('Create a todo list app');
+      expect(result.spec.assumptions).toHaveLength(1);
+      // Blueprint is projected from the composed result, not model-authored.
+      expect(result.blueprint.goal).toBe('Create a todo list app');
+      expect(result.blueprint.description).toBe(description);
+      expect(result.blueprint.uiElements.map((e) => e.type)).toContain('list');
+      expect(result.blueprint.operations.map((o) => o.name)).toContain('todos.add');
 
-      expect(result).toEqual(mockBlueprint);
-      expect(service['parser'].validateDescription).toHaveBeenCalledWith(description);
-      expect(service['parser'].extractIntent).toHaveBeenCalledWith(description);
-      expect(service['generator'].generateFromIntent).toHaveBeenCalledWith(mockIntent);
+      // The prompt goes out as cached base block + create-mode block.
+      const options = vi.mocked(mockLLMClient.sendMessage).mock.calls[0][1]!;
+      expect(options.systemBlocks).toHaveLength(2);
+      expect(options.systemBlocks![0].cache).toBe(true);
+      expect(options.systemBlocks![0].text).toContain('Contract JSON');
+      expect(options.systemBlocks![1].text).toContain('CREATE MODE');
     });
 
-    it('should reject invalid descriptions', async () => {
-      const description = '';
-      
-      vi.spyOn(service['parser'], 'validateDescription').mockReturnValue({
-        isValid: false,
-        errors: [{ path: 'description', message: 'Description cannot be empty', code: 'EMPTY_DESCRIPTION' }],
-        warnings: []
-      });
-
-      await expect(service.parseDescription(description)).rejects.toThrow('Invalid description: Description cannot be empty');
+    it('should reject empty descriptions', async () => {
+      await expect(service.compose('   ')).rejects.toThrow('Invalid description');
+      expect(mockLLMClient.sendMessage).not.toHaveBeenCalled();
     });
 
-    it('should handle LLM parsing errors', async () => {
-      const description = 'Create an app';
-      
-      vi.spyOn(service['parser'], 'validateDescription').mockReturnValue({
-        isValid: true,
-        errors: [],
-        warnings: []
-      });
+    it('should wrap LLM failures in a compose error', async () => {
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      vi.mocked(mockLLMClient.sendMessage).mockResolvedValue({ content: 'not json' });
 
-      vi.spyOn(service['parser'], 'extractIntent').mockRejectedValue(new Error('LLM API error'));
-
-      await expect(service.parseDescription(description)).rejects.toThrow('Failed to parse description: LLM API error');
+      await expect(service.compose('Create an app')).rejects.toThrow('Failed to compose experience');
     });
   });
 
@@ -140,12 +107,9 @@ describe('AIInterpreterService', () => {
         }
       ];
 
-      vi.spyOn(service['parser'], 'identifyAmbiguities').mockReturnValue(expectedQuestions);
-
       const result = await service.generateQuestions(blueprint);
 
       expect(result).toEqual(expectedQuestions);
-      expect(service['parser'].identifyAmbiguities).toHaveBeenCalledWith(blueprint);
     });
 
     it('should generate default questions when no ambiguities exist', async () => {
@@ -158,8 +122,6 @@ describe('AIInterpreterService', () => {
         ambiguities: [],
         userModifications: []
       };
-
-      vi.spyOn(service['parser'], 'identifyAmbiguities').mockReturnValue([]);
 
       const result = await service.generateQuestions(blueprint);
 
@@ -271,8 +233,9 @@ describe('AIInterpreterService', () => {
       expect(contract.elements).toHaveLength(4);
       expect(contract.operations).toHaveLength(2);
       expect(contract.metadata.description).toBe(blueprint.goal);
-      const messages = vi.mocked(mockLLMClient.sendMessage).mock.calls[0][0];
-      expect(messages.find(m => m.role === 'system')?.content).toContain('Contract JSON');
+      const options = vi.mocked(mockLLMClient.sendMessage).mock.calls[0][1]!;
+      expect(options.systemBlocks![0].text).toContain('Contract JSON');
+      expect(options.systemBlocks![1].text).toContain('BLUEPRINT MODE');
     });
 
     it('should apply user edits to generated contract', async () => {

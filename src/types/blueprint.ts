@@ -43,6 +43,16 @@ export interface UserModification {
   preserved: boolean;
 }
 
+/**
+ * The model's reading of a creation request, returned alongside the contract
+ * by the single composed call and projected into the Blueprint tab.
+ */
+export interface ComposedSpec {
+  goal: string;
+  assumptions: string[];
+  openQuestions: string[];
+}
+
 export interface ParsedIntent {
   goal: string;
   requiredCapabilities: string[];

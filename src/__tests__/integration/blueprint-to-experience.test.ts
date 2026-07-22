@@ -1,9 +1,9 @@
 /**
- * Integration Tests: Blueprint to Experience Pipeline
- * Exercises the LLM-backed generation pipeline directly: natural language to
- * blueprint (intent extraction), blueprint to contract (contract generation),
- * and contract to runtime experience. All model calls go through the mocked
- * Tauri `llm_chat` command.
+ * Integration Tests: Composition to Experience Pipeline
+ * Exercises the LLM-backed generation pipeline directly: one composed call
+ * returns the contract plus spec, the blueprint is projected from the result,
+ * and the contract renders into a runtime experience. All model calls go
+ * through the mocked Tauri `llm_chat` command.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -12,7 +12,7 @@ import { RepositoryService } from '../../services/repository/repository-service'
 import { registerBuiltins } from '../../services/repository/builtins';
 import { DynamicExperienceRuntimeService } from '../../components/runtime/DynamicExperienceRuntimeService';
 import { Blueprint } from '../../models/blueprint';
-import { SAMPLE_INTENT, SAMPLE_TODO_CONTRACT, routeLlmChat } from '../../test/llm-mocks';
+import { SAMPLE_COMPOSED, SAMPLE_TODO_CONTRACT, routeLlmChat } from '../../test/llm-mocks';
 import { installInvokeMock, invokeMock } from '../support/tauri-invoke-mock';
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -20,7 +20,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 
-describe('Blueprint to Experience Pipeline Integration', () => {
+describe('Composition to Experience Pipeline Integration', () => {
   let aiInterpreter: AIInterpreterService;
   let repository: RepositoryService;
   let runtime: DynamicExperienceRuntimeService;
@@ -59,21 +59,29 @@ describe('Blueprint to Experience Pipeline Integration', () => {
   });
 
   describe('Complete Pipeline Flow', () => {
-    it('should process natural language input to a rendered experience', async () => {
+    it('should process natural language input to a rendered experience with one model call', async () => {
       const naturalLanguageInput = 'Create a todo list app where I can add and complete tasks';
 
-      // Natural language to blueprint
-      const blueprint = await aiInterpreter.parseNaturalLanguage(naturalLanguageInput);
+      const { blueprint, contract, spec } = await aiInterpreter.compose(naturalLanguageInput);
 
+      // Creation costs exactly one model round trip.
+      const llmCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === 'llm_chat');
+      expect(llmCalls).toHaveLength(1);
+
+      // The blueprint is a projection of the composed result.
       expect(blueprint).toBeInstanceOf(Blueprint);
-      expect(blueprint.goal).toBe(SAMPLE_INTENT.goal);
-      expect(blueprint.requiredCapabilities).toEqual(
-        expect.arrayContaining(['data-entry', 'list-display'])
-      );
-      expect(blueprint.uiElements.map((el) => el.type)).toEqual(['input', 'button', 'list']);
-
-      // Blueprint to contract (LLM-driven, constrained by the catalog)
-      const contract = await aiInterpreter.generateContract(blueprint);
+      expect(blueprint.goal).toBe(SAMPLE_COMPOSED.spec.goal);
+      expect(blueprint.description).toBe(naturalLanguageInput);
+      expect(blueprint.uiElements.map((el) => el.type)).toEqual([
+        'text',
+        'input',
+        'button',
+        'list',
+        'text',
+        'button',
+      ]);
+      expect(blueprint.operations.map((op) => op.name)).toEqual(['todos.add', 'todos.toggle']);
+      expect(spec.assumptions).toEqual(SAMPLE_COMPOSED.spec.assumptions);
 
       expect(contract.name).toBe('todo-list');
       expect(contract.initialState).toEqual({ todos: [] });
@@ -115,8 +123,7 @@ describe('Blueprint to Experience Pipeline Integration', () => {
     });
 
     it('should produce a contract that passes contract validation', async () => {
-      const blueprint = await aiInterpreter.parseNaturalLanguage('Create a todo list app');
-      const contract = await aiInterpreter.generateContract(blueprint);
+      const { contract } = await aiInterpreter.compose('Create a todo list app');
 
       const { ContractBuilder } = await import('../../services/ai-interpreter');
       const builder = new ContractBuilder(repository);
@@ -126,8 +133,8 @@ describe('Blueprint to Experience Pipeline Integration', () => {
       expect(validation.isValid).toBe(true);
     });
 
-    it('should apply user edits on top of the generated contract', async () => {
-      const blueprint = await aiInterpreter.parseNaturalLanguage('Create a todo list app');
+    it('should apply user edits on top of a contract regenerated from the blueprint', async () => {
+      const { blueprint } = await aiInterpreter.compose('Create a todo list app');
 
       const contract = await aiInterpreter.generateContract(blueprint, {
         elementEdits: {
@@ -147,12 +154,12 @@ describe('Blueprint to Experience Pipeline Integration', () => {
 
   describe('Error Handling and Recovery', () => {
     it('should reject empty descriptions before calling the model', async () => {
-      await expect(aiInterpreter.parseNaturalLanguage('')).rejects.toThrow('Invalid description');
+      await expect(aiInterpreter.compose('')).rejects.toThrow('Invalid description');
       const llmCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === 'llm_chat');
       expect(llmCalls).toHaveLength(0);
     });
 
-    it('should surface LLM failures as parse errors', async () => {
+    it('should surface LLM failures as compose errors', async () => {
       installInvokeMock({
         onCommand: (cmd) => {
           if (cmd === 'llm_chat') {
@@ -163,50 +170,43 @@ describe('Blueprint to Experience Pipeline Integration', () => {
       });
 
       await expect(
-        aiInterpreter.parseNaturalLanguage('Create a todo list app')
-      ).rejects.toThrow('Failed to parse description');
+        aiInterpreter.compose('Create a todo list app')
+      ).rejects.toThrow('Failed to compose experience');
     });
 
     it('should recover from malformed model output through the repair round', async () => {
-      let intentCalls = 0;
+      let composeCalls = 0;
       installInvokeMock({
         onCommand: (cmd, args) => {
           if (cmd !== 'llm_chat') {
             return undefined;
           }
-          const messages = args?.request?.messages ?? [];
-          const system = messages.find((m: any) => m.role === 'system')?.content ?? '';
-          if (system.includes('Contract JSON')) {
-            return undefined; // contract generation uses the shared fixture
-          }
-          intentCalls += 1;
-          if (intentCalls === 1) {
+          composeCalls += 1;
+          if (composeCalls === 1) {
             return { content: 'this is not json at all', provider: 'mock', model: 'mock' };
           }
           return routeLlmChat(args);
         },
       });
 
-      const blueprint = await aiInterpreter.parseNaturalLanguage('Create a todo list app');
+      const { blueprint } = await aiInterpreter.compose('Create a todo list app');
 
-      expect(intentCalls).toBe(2);
-      expect(blueprint.goal).toBe(SAMPLE_INTENT.goal);
+      expect(composeCalls).toBe(2);
+      expect(blueprint.goal).toBe(SAMPLE_COMPOSED.spec.goal);
     });
 
-    it('should generate a contract even when the repository catalog is empty', async () => {
+    it('should compose even when the repository catalog is empty', async () => {
       const emptyRepository = new RepositoryService();
       const interpreter = new AIInterpreterService(emptyRepository);
 
-      const blueprint = await interpreter.parseNaturalLanguage('Create a todo list app');
-      const contract = await interpreter.generateContract(blueprint);
+      const { contract } = await interpreter.compose('Create a todo list app');
 
       expect(contract).toBeDefined();
       expect(contract.elements).toHaveLength(SAMPLE_TODO_CONTRACT.elements.length);
     });
 
     it('should recover from runtime errors during rendering', async () => {
-      const blueprint = await aiInterpreter.parseNaturalLanguage('Create a todo list app');
-      const contract = await aiInterpreter.generateContract(blueprint);
+      const { contract } = await aiInterpreter.compose('Create a todo list app');
 
       vi.spyOn(runtime, 'renderExperience').mockRejectedValueOnce(new Error('Rendering failed'));
       await expect(runtime.renderExperience(contract)).rejects.toThrow('Rendering failed');
@@ -227,8 +227,7 @@ describe('Blueprint to Experience Pipeline Integration', () => {
 
       const results = await Promise.all(
         inputs.map(async (input, index) => {
-          const blueprint = await aiInterpreter.parseNaturalLanguage(input);
-          const contract = await aiInterpreter.generateContract(blueprint);
+          const { contract } = await aiInterpreter.compose(input);
           return runtime.renderExperience(contract, `concurrent-${index}`);
         })
       );

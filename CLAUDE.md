@@ -6,9 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Dynamic Experience Runtime (DER): a Tauri + React desktop app that turns natural-language
 descriptions into interactive UIs through an AI-generated pipeline:
-`Natural language -> Blueprint -> Contract -> rendered React Experience`. The React frontend
-handles interpretation, editing, and rendering; the Rust backend handles storage, operation
-execution, and window/tray management.
+`Natural language -> Contract (+ spec header) -> rendered React Experience`, with the
+reviewable Blueprint projected from that result. The React frontend handles interpretation,
+editing, and rendering; the Rust backend handles storage, operation execution, and
+window/tray management.
 
 The app itself lives at the repository root (`src/`, `src-tauri/`). The `.kiro/specs/` tree is
 the authoritative source for intent and architecture; read
@@ -40,14 +41,20 @@ Rust code under `src-tauri/` is outside the ESLint/tsc setup; build it with `car
 
 ### Generation pipeline
 
-`AIInterpreterService` (`src/services/ai-interpreter/`) is the pipeline core, and generation is
-LLM-first end to end: `NaturalLanguageParser.extractIntent` asks the model for intent JSON and
-`ContractBuilder.generateFromBlueprint` asks it for the full contract, each validated through
-`generateValidatedJson` (`llm-json.ts`): zod structural validation plus a semantic
-`checkAgainstManifests` pass, with one repair round feeding all problems back before failing. The
-contract prompt is generated from the part manifests (knobs, howto, examples, transforms) plus
-repository custom ops. Post-processing dedupes ids, maps unknown element types to `container`,
-and resolves execution types; degradation warnings are exposed via
+`AIInterpreterService` (`src/services/ai-interpreter/`) is the pipeline core. Creation is ONE
+model call: `compose` -> `ContractBuilder.composeFromDescription` asks for
+`{spec: {goal, assumptions, openQuestions}, contract}` (`ComposedResponseSchema`), validated
+through `generateValidatedJson` (`llm-json.ts`): zod structural validation plus a semantic
+`checkAgainstManifests` pass, with one repair round feeding all problems back before failing.
+The Blueprint shown in the tabs is a projection (`BlueprintGenerator.deriveFromComposition`);
+the tab's regenerate path still uses `ContractBuilder.generateFromBlueprint`, and spec
+assumptions/openQuestions surface as informational warnings. The prompt is
+`buildBasePrompt(catalog)` (shape, rules, manifest catalog, example) as a cached system block
+shared by the create/blueprint/edit modes, plus a short mode section block; the model is taught
+to omit empty arrays, defaults, `executionType`, `layout`, `styling`, `metadata`, `triggers`,
+and empty-array seeds (`checkAgainstManifests` seeds read-only array keys silently; null seeds
+still warn). Post-processing dedupes ids, maps unknown element types to `container`, resolves
+execution types, and fills the default column layout; degradation warnings are exposed via
 `ContractBuilder.getLastWarnings()`.
 `DynamicExperienceRenderer` -> `ComponentRenderer` then render the contract live, with
 `ExperienceStateManager` holding per-experience state and `OperationExecutor` running operations.
@@ -107,7 +114,11 @@ object or a model instance depending on where it came from. Calling model method
 settings, so the webview never holds secrets and CORS does not apply. Providers:
 `claude-subscription` (OAuth bearer + auto-refresh; sign-in lives in the Settings view),
 `anthropic` (API key), `deepseek`, `gemini`, `openai`, and `local` (OpenAI-compatible base URL).
-Anthropic requests never send sampling parameters (modern Claude models reject them). Settings UI:
+Anthropic requests never send sampling parameters (modern Claude models reject them). `llm_chat`
+accepts an optional `systemBlocks: [{text, cache}]` array: on Anthropic-shaped providers each
+`cache: true` block gets `cache_control: {type: "ephemeral"}` (prompt caching for the static
+prompt prefix; a legacy single system string is cached whole), while other providers receive the
+blocks as one plain system message. Settings UI:
 `src/components/settings/SettingsView.tsx`; TS wrappers: `src/services/settings/llm-settings.ts`.
 
 ### Composition-only part system

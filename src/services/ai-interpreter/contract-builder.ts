@@ -6,7 +6,7 @@
  * before the runtime receives it.
  */
 
-import { Blueprint } from '../../types/blueprint';
+import { Blueprint, ComposedSpec } from '../../types/blueprint';
 import {
   Contract,
   OperationBinding,
@@ -18,6 +18,7 @@ import { ComponentRepository } from '../../types/repository';
 import { LLMClient, LLMMessage } from './llm-client';
 import { generateValidatedJson } from './llm-json';
 import {
+  ComposedResponseSchema,
   LlmContractSchema,
   checkAgainstManifests,
   formatManifestErrors,
@@ -48,10 +49,49 @@ export class ContractBuilder {
     return this.lastWarnings;
   }
 
+  /**
+   * Single-call creation: one model round trip returns the contract plus a
+   * small spec header (goal, assumptions, open questions). Validation matches
+   * the blueprint path exactly: schema parse, manifest check, repair round.
+   */
+  async composeFromDescription(
+    description: string
+  ): Promise<{ contract: Contract; spec: ComposedSpec }> {
+    const catalog = await this.renderCatalog();
+    const messages: LLMMessage[] = [
+      { role: 'user', content: `Build an app for this request:\n\n${description}` },
+    ];
+
+    let warnings: ValidationWarning[] = [];
+    const composed = await generateValidatedJson(this.llmClient, messages, ComposedResponseSchema, {
+      label: 'Contract',
+      maxTokens: 16000,
+      systemBlocks: [
+        { text: buildBasePrompt(catalog), cache: true },
+        { text: CREATE_PROMPT_SECTION },
+      ],
+      semanticCheck: (candidate) => {
+        const result = checkAgainstManifests(candidate.contract as ContractShape);
+        warnings = result.warnings;
+        return result.errors.length > 0 ? [formatManifestErrors(result.errors)] : [];
+      },
+    });
+
+    this.lastWarnings = warnings;
+    if (warnings.length > 0) {
+      console.warn('Contract adjusted against part manifests:', warnings);
+    }
+    const spec = composed.spec;
+    const contract = this.postProcess(
+      composed.contract as ContractShape,
+      spec.goal || description
+    );
+    return { contract, spec };
+  }
+
   async generateFromBlueprint(blueprint: Blueprint): Promise<Contract> {
     const catalog = await this.renderCatalog();
     const messages: LLMMessage[] = [
-      { role: 'system', content: buildContractSystemPrompt(catalog) },
       {
         role: 'user',
         content: `Generate the contract for this blueprint:\n\n${JSON.stringify(
@@ -72,6 +112,10 @@ export class ContractBuilder {
     const shape = await generateValidatedJson(this.llmClient, messages, LlmContractSchema, {
       label: 'Contract',
       maxTokens: 16000,
+      systemBlocks: [
+        { text: buildBasePrompt(catalog), cache: true },
+        { text: BLUEPRINT_PROMPT_SECTION },
+      ],
       semanticCheck: (candidate) => {
         const result = checkAgainstManifests(candidate as ContractShape);
         warnings = result.warnings;
@@ -83,7 +127,7 @@ export class ContractBuilder {
     if (warnings.length > 0) {
       console.warn('Contract adjusted against part manifests:', warnings);
     }
-    return this.postProcess(shape, blueprint);
+    return this.postProcess(shape, blueprint.goal);
   }
 
   /**
@@ -99,11 +143,14 @@ export class ContractBuilder {
 
     const catalog = await this.renderCatalog();
     const messages: LLMMessage[] = [
-      { role: 'system', content: buildContractSystemPrompt(catalog) + EDIT_PROMPT_SECTION },
       {
         role: 'user',
         content: `Current contract:\n${JSON.stringify(currentObject, null, 2)}\n\nApply this change and return the complete updated contract:\n${instruction}`,
       },
+    ];
+    const systemBlocks = [
+      { text: buildBasePrompt(catalog), cache: true },
+      { text: EDIT_PROMPT_SECTION },
     ];
 
     const stableKinds = new Map<string, string>();
@@ -122,6 +169,7 @@ export class ContractBuilder {
     const shape = await generateValidatedJson(this.llmClient, messages, LlmContractSchema, {
       label: 'Contract',
       maxTokens: 16000,
+      systemBlocks,
       semanticCheck: (candidate) => {
         const result = checkAgainstManifests(candidate as ContractShape);
         warnings = result.warnings;
@@ -170,14 +218,7 @@ export class ContractBuilder {
         author: currentObject.metadata?.author,
       },
     };
-    return this.postProcess(merged, {
-      description: instruction,
-      goal: currentObject.metadata?.description ?? currentObject.name,
-      requiredCapabilities: [],
-      uiElements: [],
-      operations: [],
-      ambiguities: [],
-    } as unknown as Blueprint);
+    return this.postProcess(merged, currentObject.metadata?.description ?? currentObject.name);
   }
 
   /** An id kept across the edit must keep its kind of part. */
@@ -271,11 +312,13 @@ export class ContractBuilder {
     });
 
     // Custom (non-builtin) operations registered in the repository, if any.
+    // Sorted by name so the prompt prefix stays byte-stable for caching.
     let customLines: string[] = [];
     try {
       const customOps = await this.repository.queryOperations({});
       customLines = customOps
         .filter((op) => !getOperationDef(op.name))
+        .sort((a, b) => a.name.localeCompare(b.name))
         .map((op) => {
           const inputs = op.inputs.map((i) => `${i.name}: ${i.type}`).join(', ') || 'none';
           const outputs = op.outputs.map((o) => `${o.name}: ${o.type}`).join(', ') || 'none';
@@ -301,7 +344,7 @@ export class ContractBuilder {
     ].join('\n');
   }
 
-  private postProcess(shape: ContractShape, blueprint: Blueprint): Contract {
+  private postProcess(shape: ContractShape, fallbackDescription?: string): Contract {
     const warnings: string[] = [];
 
     // Unique ids across the element tree and operations.
@@ -356,6 +399,16 @@ export class ContractBuilder {
       return { ...op, id };
     });
 
+    // An omitted layout materializes as empty flex properties; fill the
+    // standard column so omission renders identically to the explicit form.
+    const layout =
+      shape.layout && Object.keys(shape.layout.properties ?? {}).length > 0
+        ? shape.layout
+        : {
+            type: 'flex' as const,
+            properties: { flexDirection: 'column', gap: '12px', padding: '16px' },
+          };
+
     const now = new Date();
     const contract: Contract = {
       name: shape.name,
@@ -363,13 +416,13 @@ export class ContractBuilder {
       initialState: shape.initialState,
       elements,
       operations,
-      layout: shape.layout,
+      layout,
       styling: shape.styling,
       metadata: {
         createdAt: shape.metadata?.createdAt ?? now,
         updatedAt: now,
         version: shape.metadata?.version ?? shape.version,
-        description: shape.metadata?.description ?? blueprint.goal,
+        description: shape.metadata?.description ?? fallbackDescription,
         tags: shape.metadata?.tags,
         author: shape.metadata?.author,
       },
@@ -382,32 +435,36 @@ export class ContractBuilder {
   }
 }
 
-const EDIT_PROMPT_SECTION = `
+const CREATE_PROMPT_SECTION = `CREATE MODE:
+You are given a user's request for a new app. Respond with ONE JSON object:
+{ "spec": { "goal": "one sentence stating what the app does", "assumptions": ["choice you made where the request was open"], "openQuestions": ["question whose answer would change the app"] }, "contract": <the contract> }
+Make reasonable choices instead of blocking on questions; record them as assumptions. Keep both lists short; they are often empty. Return the JSON only: no prose, no code fences.`;
 
-EDIT MODE:
-You are updating an EXISTING app, given its current contract and a change request. Return the COMPLETE updated contract JSON.
+const BLUEPRINT_PROMPT_SECTION = `BLUEPRINT MODE:
+You are given a reviewed blueprint (goal, planned elements and operations). Produce the contract that realizes it, following the blueprint's intent even where you would design differently. Return the contract JSON object only: no prose, no code fences.`;
+
+const EDIT_PROMPT_SECTION = `EDIT MODE:
+You are updating an EXISTING app, given its current contract and a change request. Return the COMPLETE updated contract JSON only: no prose, no code fences.
 - Change only what the instruction requires; keep everything else exactly as it is.
 - Keep the ids of every element and operation you retain. State is keyed by these ids; a changed id loses the user's data. Give NEW parts new ids.
-- Keep existing initialState keys and their seeds; add seeds for any new state keys you read.
+- Keep existing initialState keys and their seeds; new state keys follow rule 1 (seed only what needs a non-empty start).
 - Removing parts the instruction makes obsolete is fine; do not remove anything else.`;
 
-function buildContractSystemPrompt(catalog: string): string {
-  return `You compose a Contract JSON from prewritten parts; a runtime renders it into a live interactive app. You configure parts; you NEVER write code. Return one JSON object only: no prose, no code fences.
+function buildBasePrompt(catalog: string): string {
+  return `You compose a Contract JSON from prewritten parts; a runtime renders it into a live interactive app. You configure parts; you NEVER write code.
 
-CONTRACT SHAPE:
+CONTRACT SHAPE (omit every field marked ?, every empty array or object, and every default):
 {
   "name": "kebab-case-name",
   "version": "1.0.0",
-  "initialState": { "stateKey": <seed value> },
-  "elements": [ { "id", "type", "properties": {}, "dataBindings": [], "eventBindings": [], "visibleWhen"?, "children": [...] } ],
-  "operations": [ { "id", "operationName", "executionType", "inputs": [], "outputs": [], "triggers": [] } ],
-  "layout": { "type": "flex", "properties": { "flexDirection": "column", "gap": "12px", "padding": "16px" } },
-  "styling": { "theme": "default" }
+  "initialState"?: { "<stateKey>": <seed> },
+  "elements": [ { "id", "type", "properties"?, "dataBindings"?, "eventBindings"?, "visibleWhen"?, "children"? } ],
+  "operations": [ { "id", "operationName", "inputs"?, "outputs"?, "implementation"? } ]
 }
-Do not include a "metadata" field; it is added automatically. "triggers" must always be [].
+Never emit "metadata", "triggers", "executionType", "layout", or "styling": the runtime derives them (executionType from the operation name, or remote when "implementation" carries an endpoint; the default layout is a padded 12px column).
 
 RUNTIME RULES (follow exactly):
-1. State is a flat map. Operations write it; display elements read it with dataBindings {"property", "source": "state", "sourceId": "<stateKey>"}. Seed every state key you read in "initialState".
+1. State is a flat map. Operations write it; display elements read it with dataBindings {"property", "source": "state", "sourceId": "<stateKey>"}. Unwritten keys start empty (arrays read as []); add an "initialState" entry only when a key needs a non-empty start, e.g. a default tab name or preset options.
 2. Inputs, selects, and checkboxes are auto-controlled. Give each an id; NEVER bind its value. Operations read them with an InputBinding {"name": "<param>", "source": "ui-element", "sourceId": "<element id>"}. Do not place them inside list children.
 3. Wire interactions only with eventBindings on elements: {"event": "click" | "change" | "submit", "operationId": "<operation id>"}.
 4. A "list" element repeats its children once per entry of the array bound to its "items" property. Inside those children, read entry fields with source "item" and a dot-path sourceId (e.g. "title"; "" for the whole entry), including operation InputBindings {"source": "item", "sourceId": "id"}.
@@ -416,48 +473,45 @@ RUNTIME RULES (follow exactly):
 7. Derived values need no operation: attach a "transforms" pipeline (applied in order) to a dataBinding, e.g. filterBy then count for "N items left", or sum then round then format for totals. Bindings re-resolve on every state change.
 8. Conditional rendering: "visibleWhen": {"source": "state"|"item", "sourceId", "operator": "truthy"|"falsy"|"empty"|"notEmpty"|"equals"|"notEquals"|"gt"|"gte"|"lt"|"lte", "value"?, "transforms"?}. An array of conditions means all must hold. Combine with state.set for tabs and view switching.
 9. Element knobs (variant, size, role, direction, gap, align, justify, padding, label, emptyText) are declared per part below; use only listed values.
-10. executionType "builtin" requires an exact operation name from the catalog. executionType "remote" is configuration of an HTTP call: "implementation": {"type": "remote", "endpoint": "https://...", "method": "GET"|"POST", "headers": {}}; "{name}" placeholders in the endpoint fill from same-named inputs, other inputs become query parameters (GET) or the JSON body. There is no way to include code and none is needed.
+10. A remote operation is configuration of an HTTP call: "implementation": {"type": "remote", "endpoint": "https://...", "method": "GET"|"POST", "headers"?}; "{name}" placeholders in the endpoint fill from same-named inputs, other inputs become query parameters (GET) or the JSON body. Builtin operations take an exact name from the catalog and no implementation. There is no way to include code and none is needed.
 
 ${catalog}
 
-EXAMPLE (expense tracker; note the derived total and count need no operations):
+EXAMPLE CONTRACT (expense tracker; the derived total and count need no operations, everything empty or derivable is omitted, and "expenses" needs no seed because list.append writes it):
 {
   "name": "expense-tracker",
   "version": "1.0.0",
-  "initialState": { "expenses": [] },
   "elements": [
-    { "id": "title", "type": "text", "properties": { "content": "Expenses", "role": "title" }, "dataBindings": [], "eventBindings": [] },
-    { "id": "entry", "type": "container", "properties": { "direction": "row", "gap": "8", "align": "end" }, "dataBindings": [], "eventBindings": [], "children": [
-      { "id": "desc-in", "type": "input", "properties": { "placeholder": "Description", "label": "What" }, "dataBindings": [], "eventBindings": [] },
-      { "id": "amt-in", "type": "input", "properties": { "placeholder": "0.00", "type": "number", "label": "Amount" }, "dataBindings": [], "eventBindings": [] },
-      { "id": "add-btn", "type": "button", "properties": { "text": "Add", "variant": "primary" }, "dataBindings": [], "eventBindings": [ { "event": "click", "operationId": "op-add" } ] } ] },
+    { "id": "title", "type": "text", "properties": { "content": "Expenses", "role": "title" } },
+    { "id": "entry", "type": "container", "properties": { "direction": "row", "gap": "8", "align": "end" }, "children": [
+      { "id": "desc-in", "type": "input", "properties": { "placeholder": "Description", "label": "What" } },
+      { "id": "amt-in", "type": "input", "properties": { "placeholder": "0.00", "type": "number", "label": "Amount" } },
+      { "id": "add-btn", "type": "button", "properties": { "text": "Add", "variant": "primary" }, "eventBindings": [ { "event": "click", "operationId": "op-add" } ] } ] },
     { "id": "rows", "type": "list", "properties": { "emptyText": "No expenses yet" },
-      "dataBindings": [ { "property": "items", "source": "state", "sourceId": "expenses" } ], "eventBindings": [],
+      "dataBindings": [ { "property": "items", "source": "state", "sourceId": "expenses" } ],
       "children": [
-        { "id": "r-desc", "type": "text", "properties": {}, "dataBindings": [ { "property": "content", "source": "item", "sourceId": "description" } ], "eventBindings": [] },
-        { "id": "r-amt", "type": "text", "properties": { "role": "caption" }, "dataBindings": [ { "property": "content", "source": "item", "sourceId": "amount", "transforms": [ { "type": "round", "parameters": { "decimals": 2 } }, { "type": "format", "parameters": { "template": "$ {{value}}" } } ] } ], "eventBindings": [] },
-        { "id": "r-del", "type": "button", "properties": { "text": "Delete", "variant": "danger", "size": "sm" }, "dataBindings": [], "eventBindings": [ { "event": "click", "operationId": "op-del" } ] } ] },
-    { "id": "summary", "type": "container", "properties": { "direction": "row", "justify": "between" }, "visibleWhen": { "source": "state", "sourceId": "expenses", "operator": "notEmpty" }, "dataBindings": [], "eventBindings": [], "children": [
-      { "id": "count", "type": "text", "properties": { "role": "caption" }, "dataBindings": [ { "property": "content", "source": "state", "sourceId": "expenses", "transforms": [ { "type": "count", "parameters": {} }, { "type": "format", "parameters": { "template": "{{value}} expenses" } } ] } ], "eventBindings": [] },
-      { "id": "total", "type": "text", "properties": { "role": "subtitle" }, "dataBindings": [ { "property": "content", "source": "state", "sourceId": "expenses", "transforms": [ { "type": "sum", "parameters": { "field": "amount" } }, { "type": "round", "parameters": { "decimals": 2 } }, { "type": "format", "parameters": { "template": "Total: $ {{value}}" } } ] } ], "eventBindings": [] } ] }
+        { "id": "r-desc", "type": "text", "dataBindings": [ { "property": "content", "source": "item", "sourceId": "description" } ] },
+        { "id": "r-amt", "type": "text", "properties": { "role": "caption" }, "dataBindings": [ { "property": "content", "source": "item", "sourceId": "amount", "transforms": [ { "type": "round", "parameters": { "decimals": 2 } }, { "type": "format", "parameters": { "template": "$ {{value}}" } } ] } ] },
+        { "id": "r-del", "type": "button", "properties": { "text": "Delete", "variant": "danger", "size": "sm" }, "eventBindings": [ { "event": "click", "operationId": "op-del" } ] } ] },
+    { "id": "summary", "type": "container", "properties": { "direction": "row", "justify": "between" }, "visibleWhen": { "source": "state", "sourceId": "expenses", "operator": "notEmpty" }, "children": [
+      { "id": "count", "type": "text", "properties": { "role": "caption" }, "dataBindings": [ { "property": "content", "source": "state", "sourceId": "expenses", "transforms": [ { "type": "count", "parameters": {} }, { "type": "format", "parameters": { "template": "{{value}} expenses" } } ] } ] },
+      { "id": "total", "type": "text", "properties": { "role": "subtitle" }, "dataBindings": [ { "property": "content", "source": "state", "sourceId": "expenses", "transforms": [ { "type": "sum", "parameters": { "field": "amount" } }, { "type": "round", "parameters": { "decimals": 2 } }, { "type": "format", "parameters": { "template": "Total: $ {{value}}" } } ] } ] } ] }
   ],
   "operations": [
-    { "id": "op-add", "operationName": "list.append", "executionType": "builtin",
+    { "id": "op-add", "operationName": "list.append",
       "inputs": [
         { "name": "key", "source": "constant", "sourceId": "expenses" },
         { "name": "item.description", "source": "ui-element", "sourceId": "desc-in" },
         { "name": "item.amount", "source": "ui-element", "sourceId": "amt-in", "transforms": [ { "type": "parseNumber", "parameters": {} } ] } ],
       "outputs": [
         { "name": "reset", "target": "ui-element", "targetId": "desc-in" },
-        { "name": "reset", "target": "ui-element", "targetId": "amt-in" } ], "triggers": [] },
-    { "id": "op-del", "operationName": "list.removeWhere", "executionType": "builtin",
+        { "name": "reset", "target": "ui-element", "targetId": "amt-in" } ] },
+    { "id": "op-del", "operationName": "list.removeWhere",
       "inputs": [
         { "name": "key", "source": "constant", "sourceId": "expenses" },
-        { "name": "value", "source": "item", "sourceId": "id" } ], "outputs": [], "triggers": [] }
-  ],
-  "layout": { "type": "flex", "properties": { "flexDirection": "column", "gap": "12px", "padding": "16px" } },
-  "styling": { "theme": "default" }
+        { "name": "value", "source": "item", "sourceId": "id" } ] }
+  ]
 }
 
-Design the smallest contract that fully satisfies the blueprint. Every eventBinding.operationId must match an operation id; every state key you read must be seeded or written; every part, knob value, operation, and transform must come from the catalog above.`;
+Every eventBinding.operationId must match an operation id; every part, knob value, operation, and transform must come from the catalog above. Design the smallest contract that fully satisfies the request.`;
 }

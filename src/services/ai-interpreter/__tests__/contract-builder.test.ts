@@ -127,15 +127,17 @@ describe('ContractBuilder', () => {
       await builder.generateFromBlueprint(blueprint);
 
       expect(mockRepository.queryOperations).toHaveBeenCalledWith({});
-      const messages = vi.mocked(mockLLMClient.sendMessage).mock.calls[0][0];
-      const system = messages.find(m => m.role === 'system')!;
-      expect(system.content).toContain('Contract JSON');
-      expect(system.content).toContain('list.append');
-      expect(system.content).toContain('TRANSFORMS');
-      expect(system.content).toContain('NEVER write code');
-      expect(system.content).not.toContain('todos.add');
-      expect(system.content).toContain('REGISTERED CUSTOM OPERATIONS');
-      expect(system.content).toContain('text.sentiment');
+      const [messages, options] = vi.mocked(mockLLMClient.sendMessage).mock.calls[0];
+      const base = options!.systemBlocks![0];
+      expect(base.cache).toBe(true);
+      expect(base.text).toContain('Contract JSON');
+      expect(base.text).toContain('list.append');
+      expect(base.text).toContain('TRANSFORMS');
+      expect(base.text).toContain('NEVER write code');
+      expect(base.text).not.toContain('todos.add');
+      expect(base.text).toContain('REGISTERED CUSTOM OPERATIONS');
+      expect(base.text).toContain('text.sentiment');
+      expect(options!.systemBlocks![1].text).toContain('BLUEPRINT MODE');
       const user = messages.find(m => m.role === 'user')!;
       expect(user.content).toContain(blueprint.goal);
     });
@@ -338,6 +340,132 @@ describe('ContractBuilder', () => {
     });
   });
 
+  describe('composeFromDescription', () => {
+    it('parses the composed response and post-processes the contract', async () => {
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      mockLLMResponse(
+        JSON.stringify({
+          spec: {
+            goal: 'Track daily todos',
+            assumptions: ['Single shared list'],
+            openQuestions: ['Support due dates?']
+          },
+          contract: JSON.parse(contractJson())
+        })
+      );
+
+      const { contract, spec } = await builder.composeFromDescription('a todo app');
+
+      expect(spec.goal).toBe('Track daily todos');
+      expect(spec.assumptions).toEqual(['Single shared list']);
+      expect(spec.openQuestions).toEqual(['Support due dates?']);
+      expect(contract.name).toBe('sample-app');
+      expect(contract.metadata?.description).toBe('Track daily todos');
+    });
+
+    it('defaults a missing spec instead of failing', async () => {
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      mockLLMResponse(JSON.stringify({ contract: JSON.parse(contractJson()) }));
+
+      const { spec } = await builder.composeFromDescription('a todo app');
+
+      expect(spec).toEqual({ goal: '', assumptions: [], openQuestions: [] });
+    });
+
+    it('materializes emit-less contracts: omitted fields become runtime defaults', async () => {
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      // Terse style: no initialState, no empty binding arrays, no
+      // executionType, no triggers, no layout/styling/metadata.
+      mockLLMResponse(
+        JSON.stringify({
+          spec: { goal: 'Count clicks' },
+          contract: {
+            name: 'clicker',
+            version: '1.0.0',
+            elements: [
+              {
+                id: 'count',
+                type: 'text',
+                dataBindings: [{ property: 'content', source: 'state', sourceId: 'clicks' }]
+              },
+              {
+                id: 'btn',
+                type: 'button',
+                properties: { text: 'Click' },
+                eventBindings: [{ event: 'click', operationId: 'op-inc' }]
+              }
+            ],
+            operations: [
+              {
+                id: 'op-inc',
+                operationName: 'counter.add',
+                inputs: [
+                  { name: 'key', source: 'constant', sourceId: 'clicks' },
+                  { name: 'amount', source: 'constant', sourceId: '1' }
+                ]
+              }
+            ]
+          }
+        })
+      );
+
+      const { contract } = await builder.composeFromDescription('a click counter');
+
+      const button = contract.elements.find((el) => el.id === 'btn')!;
+      expect(button.dataBindings).toEqual([]);
+      const count = contract.elements.find((el) => el.id === 'count')!;
+      expect(count.eventBindings).toEqual([]);
+      expect(count.properties).toEqual({});
+
+      const op = contract.operations[0];
+      expect(op.executionType).toBe('builtin');
+      expect(op.outputs).toEqual([]);
+      expect(op.triggers).toEqual([]);
+
+      // The default layout fills in so omission renders as the standard column.
+      expect(contract.layout).toEqual({
+        type: 'flex',
+        properties: { flexDirection: 'column', gap: '12px', padding: '16px' }
+      });
+      expect(contract.styling).toEqual({ theme: 'default' });
+      expect(contract.metadata?.description).toBe('Count clicks');
+    });
+
+    it('feeds contract problems back through the repair round', async () => {
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      // First response wires a button to a missing operation; the repair
+      // round must receive the problem and return a fixed composition.
+      mockLLMResponse(
+        JSON.stringify({
+          spec: { goal: 'x' },
+          contract: JSON.parse(
+            contractJson({
+              elements: [
+                {
+                  id: 'btn',
+                  type: 'button',
+                  properties: { text: 'Go' },
+                  eventBindings: [{ event: 'click', operationId: 'op-missing' }]
+                }
+              ]
+            })
+          )
+        })
+      );
+      mockLLMResponse(
+        JSON.stringify({ spec: { goal: 'x' }, contract: JSON.parse(contractJson()) })
+      );
+
+      const { contract } = await builder.composeFromDescription('an app');
+
+      expect(contract.name).toBe('sample-app');
+      const calls = vi.mocked(mockLLMClient.sendMessage).mock.calls;
+      expect(calls).toHaveLength(2);
+      const repairUser = calls[1][0].filter((m) => m.role === 'user').pop()!;
+      expect(repairUser.content).toContain('op-missing');
+    });
+  });
+
   describe('editContract', () => {
     it('prompts with the current contract in edit mode', async () => {
       mockLLMResponse(JSON.stringify(SAMPLE_TODO_CONTRACT));
@@ -345,10 +473,10 @@ describe('ContractBuilder', () => {
 
       await builder.editContract(current as any, 'add a clear-all button');
 
-      const messages = vi.mocked(mockLLMClient.sendMessage).mock.calls[0][0];
-      const system = messages.find(m => m.role === 'system')!;
+      const [messages, options] = vi.mocked(mockLLMClient.sendMessage).mock.calls[0];
+      expect(options!.systemBlocks![0].cache).toBe(true);
+      expect(options!.systemBlocks![1].text).toContain('EDIT MODE');
       const user = messages.find(m => m.role === 'user')!;
-      expect(system.content).toContain('EDIT MODE');
       expect(user.content).toContain('my-current-app');
       expect(user.content).toContain('add a clear-all button');
     });

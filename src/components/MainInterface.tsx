@@ -25,7 +25,6 @@ import { ValidationResult, ValidationWarning } from '../types/contract';
 import { ExperienceState, Experience } from '../types/experience';
 
 // Import services
-import { NaturalLanguageParser } from '../services/ai-interpreter/natural-language-parser';
 import { BlueprintGenerator } from '../services/ai-interpreter/blueprint-generator';
 import { ContractBuilder } from '../services/ai-interpreter/contract-builder';
 import { LLMClient } from '../services/ai-interpreter/llm-client';
@@ -83,7 +82,6 @@ export const MainInterface: React.FC = () => {
     const llmClient = new LLMClient();
 
     return {
-      naturalLanguageParser: new NaturalLanguageParser(llmClient),
       blueprintGenerator: new BlueprintGenerator(),
       contractBuilder: new ContractBuilder(repositoryService, llmClient),
       repositoryService
