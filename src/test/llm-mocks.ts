@@ -114,10 +114,45 @@ interface LlmChatArgs {
  *     return {};
  *   });
  */
+/**
+ * The todo contract after an edit: same ids, plus a caption showing how many
+ * items are left. Returned for edit-leg requests so tests can drive the loop.
+ */
+export const SAMPLE_EDITED_CONTRACT = {
+  ...SAMPLE_TODO_CONTRACT,
+  elements: [
+    ...SAMPLE_TODO_CONTRACT.elements,
+    {
+      id: 'items-left',
+      type: 'text',
+      properties: { role: 'caption' },
+      dataBindings: [
+        {
+          property: 'content',
+          source: 'state',
+          sourceId: 'todos',
+          transforms: [
+            { type: 'filterBy', parameters: { field: 'completed', value: 'false' } },
+            { type: 'count', parameters: {} },
+            { type: 'format', parameters: { template: '{{value}} items left' } }
+          ]
+        }
+      ],
+      eventBindings: []
+    }
+  ]
+};
+
 export function routeLlmChat(args: unknown): { content: string; provider: string; model: string } {
   const messages = (args as LlmChatArgs)?.request?.messages ?? [];
   const system = messages.find((m) => m.role === 'system')?.content ?? '';
+  const user = messages.find((m) => m.role === 'user')?.content ?? '';
+  const isEdit = system.includes('EDIT MODE') || user.includes('Current contract:');
   const isContract = system.includes('Contract JSON');
-  const payload = isContract ? SAMPLE_TODO_CONTRACT : SAMPLE_INTENT;
+  const payload = isEdit
+    ? SAMPLE_EDITED_CONTRACT
+    : isContract
+      ? SAMPLE_TODO_CONTRACT
+      : SAMPLE_INTENT;
   return { content: JSON.stringify(payload), provider: 'mock', model: 'mock' };
 }

@@ -54,8 +54,9 @@ export class BookmarkManager {
     shareableExperience: any, 
     options: { tags?: string[]; collection?: string } = {}
   ): Promise<string> {
-    // Convert shareable experience to Experience format
-    const experienceId = `bookmark-${Date.now()}`;
+    // Convert shareable experience to Experience format. The id doubles as
+    // the storage key, so it must be unique even within one millisecond.
+    const experienceId = `bookmark-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const experience: Experience = {
       id: experienceId,
       contract: shareableExperience.contract || shareableExperience,

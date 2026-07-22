@@ -10,6 +10,7 @@ import './MainInterface.css';
 import { BlueprintEditor } from './editor/BlueprintEditor';
 import { ContractEditor } from './editor/ContractEditor';
 import { DynamicExperienceRenderer } from './runtime/DynamicExperienceRenderer';
+import { ExperienceEditBar } from './runtime/ExperienceEditBar';
 
 // Import persistence components
 import { BookmarkManager } from './bookmarks';
@@ -19,7 +20,7 @@ import { SettingsView } from './settings/SettingsView';
 // Import types
 import { Blueprint } from '../types/blueprint';
 import { Contract as ContractClass } from '../models/contract';
-import { ValidationResult } from '../types/contract';
+import { ValidationResult, ValidationWarning } from '../types/contract';
 import { ExperienceState, Experience } from '../types/experience';
 
 // Import services
@@ -51,6 +52,7 @@ interface MainInterfaceState {
     contract?: ValidationResult;
   };
   bookmarkedExperiences: any[];
+  contractWarnings: ValidationWarning[];
   showSharingDialog: boolean;
   showImportDialog: boolean;
   currentExperienceBookmarked: boolean;
@@ -68,6 +70,7 @@ export const MainInterface: React.FC = () => {
     error: null,
     validationResults: {},
     bookmarkedExperiences: [],
+    contractWarnings: [],
     showSharingDialog: false,
     showImportDialog: false,
     currentExperienceBookmarked: false
@@ -145,6 +148,7 @@ export const MainInterface: React.FC = () => {
         currentExperienceId: result.experienceId,
         currentMode: 'preview',
         currentExperienceBookmarked: false,
+        contractWarnings: result.warnings ?? [],
         validationResults: { ...prev.validationResults, blueprint: validation },
         isProcessing: false
       }));
@@ -220,6 +224,38 @@ export const MainInterface: React.FC = () => {
     setState(prev => ({ ...prev, experienceState }));
   }, []);
 
+  // Live preview data carried across contract edits (recomputed only when
+  // the contract object changes, so typing does not re-seed the renderer).
+  const previewRehydrationData = useMemo(
+    () => ({ ...(state.experienceState?.data ?? {}) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.contract]
+  );
+
+  // Apply a natural-language change to the previewed experience
+  const handleRefineExperience = useCallback(async (instruction: string) => {
+    if (!state.contract || !state.currentExperienceId) {
+      throw new Error('Generate an experience before editing it.');
+    }
+    setState(prev => ({ ...prev, isProcessing: true }));
+    try {
+      const result = await integratedExperienceService.refineExperience(
+        state.currentExperienceId,
+        instruction,
+        state.contract
+      );
+      setState(prev => ({
+        ...prev,
+        contract: result.contract,
+        contractWarnings: result.warnings,
+        isProcessing: false
+      }));
+    } catch (error) {
+      setState(prev => ({ ...prev, isProcessing: false }));
+      throw error;
+    }
+  }, [state.contract, state.currentExperienceId]);
+
   // Handle experience errors
   const handleExperienceError = useCallback((error: Error) => {
     setState(prev => ({ ...prev, error: error.message }));
@@ -247,6 +283,7 @@ export const MainInterface: React.FC = () => {
       error: null,
       validationResults: {},
       bookmarkedExperiences: [],
+      contractWarnings: [],
       showSharingDialog: false,
       showImportDialog: false,
       currentExperienceBookmarked: false
@@ -483,6 +520,10 @@ export const MainInterface: React.FC = () => {
           <PreviewView
             contract={state.contract}
             experienceId={state.currentExperienceId || 'preview'}
+            initialData={previewRehydrationData}
+            onRefine={handleRefineExperience}
+            warnings={state.contractWarnings}
+            onDismissWarnings={() => setState(prev => ({ ...prev, contractWarnings: [] }))}
             onStateChange={handleExperienceStateChange}
             onError={handleExperienceError}
             onBookmark={handleBookmarkExperience}
@@ -719,6 +760,10 @@ const ContractView: React.FC<ContractViewProps> = ({
 interface PreviewViewProps {
   contract: ContractClass;
   experienceId: string;
+  initialData?: Record<string, unknown>;
+  onRefine?: (instruction: string) => Promise<void>;
+  warnings?: ValidationWarning[];
+  onDismissWarnings?: () => void;
   onStateChange: (state: ExperienceState) => void;
   onError: (error: Error) => void;
   onBookmark?: () => void;
@@ -731,6 +776,10 @@ interface PreviewViewProps {
 const PreviewView: React.FC<PreviewViewProps> = ({
   contract,
   experienceId,
+  initialData,
+  onRefine,
+  warnings,
+  onDismissWarnings,
   onStateChange,
   onError,
   onBookmark,
@@ -780,9 +829,18 @@ const PreviewView: React.FC<PreviewViewProps> = ({
         </div>
       </div>
 
+      {onRefine && (
+        <ExperienceEditBar
+          onSubmit={onRefine}
+          busy={isProcessing}
+          warnings={warnings}
+          onDismissWarnings={onDismissWarnings}
+        />
+      )}
       <div className="preview-container">
         <DynamicExperienceRenderer
           contract={contract}
+          initialData={initialData}
           experienceId={experienceId}
           onStateChange={onStateChange}
           onError={onError}

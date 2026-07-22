@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { IntegratedExperienceService } from '../../services/IntegratedExperienceService';
 import { Blueprint } from '../../models/blueprint';
 import { Contract } from '../../models/contract';
-import { installInvokeMock } from '../support/tauri-invoke-mock';
+import { installInvokeMock, invokeMock } from '../support/tauri-invoke-mock';
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -202,10 +202,21 @@ describe('User Stories and Acceptance Criteria', () => {
         'Enhanced task tracker with categories'
       );
       expect(regenerationResult.success).toBe(true);
-      const preserved = regenerationResult.updatedContract.getElement(
-        result.contract.elements[0].id
+      // Preservation now works by feeding the current contract (with the
+      // user's modification) to the model with id stability required.
+      const editLeg = invokeMock.mock.calls.filter(
+        ([cmd, args]: [string, any]) =>
+          cmd === 'llm_chat' &&
+          args?.request?.messages?.some(
+            (m: { role: string; content: string }) =>
+              m.role === 'user' && m.content.includes('Current contract:')
+          )
       );
-      expect(preserved?.properties?.content).toBe('User Modified Label');
+      expect(editLeg.length).toBeGreaterThanOrEqual(1);
+      const userMessage = editLeg[editLeg.length - 1][1].request.messages.find(
+        (m: { role: string }) => m.role === 'user'
+      );
+      expect(userMessage.content).toContain('User Modified Label');
 
       // 5.5: Edits stay tracked through subsequent generations
       const editHistory = await integratedService.getEditHistory(result.experienceId);

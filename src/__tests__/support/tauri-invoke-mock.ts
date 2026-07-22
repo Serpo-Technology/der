@@ -66,7 +66,9 @@ export function installInvokeMock(options: InvokeMockOptions = {}): InvokeMockHa
         throw new Error('no stored repository index in tests');
 
       case 'bookmark_experience': {
-        const id = `bookmark-${++bookmarkSeq}`;
+        // Mirrors the Rust command: the experience id is the bookmark id, so
+        // re-bookmarking the same experience overwrites the record.
+        const id = args?.experienceId ?? `bookmark-${++bookmarkSeq}`;
         const now = new Date().toISOString();
         bookmarks.set(id, {
           id,

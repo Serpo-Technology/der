@@ -338,6 +338,51 @@ describe('ContractBuilder', () => {
     });
   });
 
+  describe('editContract', () => {
+    it('prompts with the current contract in edit mode', async () => {
+      mockLLMResponse(JSON.stringify(SAMPLE_TODO_CONTRACT));
+      const current = { ...SAMPLE_TODO_CONTRACT, name: 'my-current-app' };
+
+      await builder.editContract(current as any, 'add a clear-all button');
+
+      const messages = vi.mocked(mockLLMClient.sendMessage).mock.calls[0][0];
+      const system = messages.find(m => m.role === 'system')!;
+      const user = messages.find(m => m.role === 'user')!;
+      expect(system.content).toContain('EDIT MODE');
+      expect(user.content).toContain('my-current-app');
+      expect(user.content).toContain('add a clear-all button');
+    });
+
+    it('repairs an edit that reuses an id for a different kind of part', async () => {
+      const mutated = JSON.parse(JSON.stringify(SAMPLE_TODO_CONTRACT));
+      // The edit response hijacks an existing element id with a new type.
+      mutated.elements[0] = { ...mutated.elements[0], type: 'button', properties: { text: 'x' } };
+      vi.mocked(mockLLMClient.sendMessage)
+        .mockResolvedValueOnce({ content: JSON.stringify(mutated) })
+        .mockResolvedValueOnce({ content: JSON.stringify(SAMPLE_TODO_CONTRACT) });
+
+      const contract = await builder.editContract(SAMPLE_TODO_CONTRACT as any, 'restyle the title');
+
+      expect(vi.mocked(mockLLMClient.sendMessage)).toHaveBeenCalledTimes(2);
+      const repairMessage = vi.mocked(mockLLMClient.sendMessage).mock.calls[1][0].at(-1)!;
+      expect(repairMessage.content).toContain('must keep it');
+      expect(contract.elements[0].type).toBe(SAMPLE_TODO_CONTRACT.elements[0].type);
+    });
+
+    it('warns about parts the edit removed', async () => {
+      const trimmed = JSON.parse(JSON.stringify(SAMPLE_TODO_CONTRACT));
+      const removed = trimmed.elements.pop();
+      mockLLMResponse(JSON.stringify(trimmed));
+
+      await builder.editContract(SAMPLE_TODO_CONTRACT as any, 'remove the list');
+
+      const warnings = builder.getLastWarnings();
+      expect(
+        warnings.some(w => w.code === 'EDIT_REMOVED_PART' && w.message.includes(removed.id))
+      ).toBe(true);
+    });
+  });
+
   describe('validateContract', () => {
     const validContract: Contract = {
       name: 'test-contract',

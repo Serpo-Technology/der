@@ -236,6 +236,79 @@
   accent-color: #3b82f6;
 }
 
+/* --- Edit bar --- */
+
+.der-edit-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e4e7ec;
+  background: #fafbfc;
+}
+
+.der-edit-form {
+  display: flex;
+  gap: 8px;
+}
+
+.der-edit-form input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.der-edit-form input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.der-edit-form button {
+  padding: 8px 16px;
+  border: 1px solid #3b82f6;
+  border-radius: 8px;
+  background: #3b82f6;
+  color: #ffffff;
+  font-size: 0.9rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.der-edit-form button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.der-edit-error {
+  font-size: 0.82rem;
+  color: #b91c1c;
+}
+
+.der-edit-warnings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: #92600a;
+  background: #fef7e6;
+  border: 1px solid #f2dfae;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.der-edit-warnings button {
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 .dynamic-experience-container hr.divider-part {
   width: 100%;
   border: none;

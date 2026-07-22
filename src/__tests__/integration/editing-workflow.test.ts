@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { IntegratedExperienceService } from '../../services/IntegratedExperienceService';
 import { Contract } from '../../models/contract';
-import { installInvokeMock } from '../support/tauri-invoke-mock';
+import { installInvokeMock, invokeMock } from '../support/tauri-invoke-mock';
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -57,19 +57,31 @@ describe('Editing Workflow Integration', () => {
       );
       expect(updatedElement?.properties?.content).toBe('My Curated Tasks');
 
-      // Regenerate with preservation; the LLM legs run against the mock again
+      // Refining sends the CURRENT contract (with the manual edit) to the
+      // model; preservation is id stability plus contract-in/contract-out.
       const regenerationResult = await integratedService.regenerateExperienceWithPreservation(
         experienceId,
-        'Create a task management app with priority levels',
+        'Add priority levels to tasks',
         { preserveEdits: true, enableRealTimeUpdates: true }
       );
 
       expect(regenerationResult.success).toBe(true);
 
-      const preservedElement = regenerationResult.updatedContract.getElement(
-        originalContract.elements[0].id
+      const editLeg = invokeMock.mock.calls.filter(
+        ([cmd, args]: [string, any]) =>
+          cmd === 'llm_chat' &&
+          args?.request?.messages?.some(
+            (m: { role: string; content: string }) =>
+              m.role === 'user' && m.content.includes('Current contract:')
+          )
       );
-      expect(preservedElement?.properties?.content).toBe('My Curated Tasks');
+      expect(editLeg.length).toBeGreaterThanOrEqual(1);
+      const userMessage = editLeg[editLeg.length - 1][1].request.messages.find(
+        (m: { role: string }) => m.role === 'user'
+      );
+      // The user's manual edit rides into the model as part of the input.
+      expect(userMessage.content).toContain('My Curated Tasks');
+      expect(userMessage.content).toContain('Add priority levels to tasks');
     });
 
     it('should track edit history throughout the workflow', async () => {

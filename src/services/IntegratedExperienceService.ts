@@ -13,6 +13,8 @@ import { BookmarkManager } from './persistence/BookmarkManager';
 import { PersistenceService } from './persistence/PersistenceService';
 import { Blueprint as BlueprintModel } from '../models/blueprint';
 import { Contract as ContractModel } from '../models/contract';
+import { emit } from '@tauri-apps/api/event';
+import type { Contract, ValidationWarning } from '../types/contract';
 import type { Experience, ExperienceState } from '../types/experience';
 import type { ShareableContract, BookmarkedExperience } from '../types/persistence';
 
@@ -29,6 +31,7 @@ export interface ExperienceCreationResult {
   contract: ContractModel;
   experience: Experience;
   renderComponent: React.ComponentType;
+  warnings?: ValidationWarning[];
 }
 
 export interface ExperienceEditResult {
@@ -111,7 +114,8 @@ export class IntegratedExperienceService {
         blueprint,
         contract,
         experience,
-        renderComponent
+        renderComponent,
+        warnings: this.aiInterpreter.getLastContractWarnings()
       };
     } catch (error) {
       throw new Error(`Failed to create experience: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -167,42 +171,82 @@ export class IntegratedExperienceService {
   }
 
   /**
-   * Regenerate experience with AI while preserving user edits
+   * Applies a natural-language edit to a live experience. The contract
+   * regenerates through the manifest-validated pipeline with stable ids, so
+   * the user's data survives; the runtime, other windows, persistence, and
+   * any bookmark of the app are all brought up to date.
+   */
+  async refineExperience(
+    experienceId: string,
+    instruction: string,
+    currentContract?: ContractModel | Contract
+  ): Promise<{ contract: ContractModel; warnings: ValidationWarning[] }> {
+    const existing =
+      currentContract ?? (await this.runtime.getExperience(experienceId))?.contract;
+    if (!existing) {
+      throw new Error(`No contract available for experience ${experienceId}`);
+    }
+
+    const { contract: editedData, warnings } = await this.aiInterpreter.editContract(
+      existing as Contract,
+      instruction
+    );
+    const contract = ContractModel.fromObject(editedData);
+
+    // Update the runtime when it knows this experience (registers preview
+    // sessions); it emits the cross-window contract-updated event. Standalone
+    // windows may not be registered here, so emit the event ourselves then.
+    const known = await this.runtime.getExperience(experienceId);
+    if (known) {
+      await this.runtime.updateExperienceContract(experienceId, contract);
+    } else {
+      try {
+        await emit('experience-contract-updated', { experienceId, contract: contract.toObject() });
+      } catch {
+        // Outside Tauri there is no event bus; the caller applies the result.
+      }
+    }
+
+    await this.persistence
+      .saveExperience({
+        id: experienceId,
+        contract,
+        reactComponent: () => null,
+        state: known?.state ?? { data: {}, loading: {}, errors: {}, lastUpdated: new Date() },
+        operations: new Map()
+      })
+      .catch((error) => console.warn('Failed to save refined experience', error));
+
+    // Keep a bookmarked app (and its tray entry) current.
+    try {
+      const bookmark = await this.persistence.loadBookmarkRecord(experienceId);
+      if (bookmark) {
+        await this.persistence.bookmarkExperience({
+          id: experienceId,
+          contract,
+          reactComponent: () => null,
+          state: { data: {}, loading: {}, errors: {}, lastUpdated: new Date() },
+          operations: new Map()
+        });
+      }
+    } catch {
+      // Bookmark sync is best-effort.
+    }
+
+    return { contract, warnings };
+  }
+
+  /**
+   * Legacy name kept for existing callers; delegates to refineExperience.
    */
   async regenerateExperienceWithPreservation(
     experienceId: string,
     newInput: string,
-    options: IntegratedWorkflowOptions = {}
+    _options: IntegratedWorkflowOptions = {}
   ): Promise<ExperienceEditResult> {
     try {
-      // Generate new contract from input
-      const newBlueprintData = await this.aiInterpreter.parseNaturalLanguage(newInput);
-      await this.aiInterpreter.generateContract(newBlueprintData);
-      
-      // Use editor service to preserve edits
-      const preservedContract = await this.editor.regenerateWithPreservation(
-        experienceId,
-        ['contract'] // sections to regenerate
-      );
-
-      // Update runtime
-      await this.runtime.updateExperienceContract(experienceId, preservedContract);
-
-      // Auto-save if enabled
-      if (options.autoSave) {
-        const experience = await this.runtime.getExperience(experienceId);
-        if (experience) {
-          await this.persistence.saveExperience({
-            ...experience,
-            contract: preservedContract
-          });
-        }
-      }
-
-      return {
-        success: true,
-        updatedContract: preservedContract
-      };
+      const { contract } = await this.refineExperience(experienceId, newInput);
+      return { success: true, updatedContract: contract };
     } catch (error) {
       throw new Error(`Failed to regenerate experience: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

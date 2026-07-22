@@ -5,7 +5,7 @@
 
 import { AIInterpreter } from '../../interfaces/ai-interpreter';
 import { Blueprint, Question, Answer } from '../../types/blueprint';
-import { Contract, ContractEdits } from '../../types/contract';
+import { Contract, ContractEdits, ValidationWarning } from '../../types/contract';
 import { ComponentRepository } from '../../types/repository';
 import { LLMClient } from './llm-client';
 import { NaturalLanguageParser } from './natural-language-parser';
@@ -15,6 +15,7 @@ import { EditPreservationSystem, EditConflict, ConflictResolution } from './edit
 
 export class AIInterpreterService implements AIInterpreter {
   private llmClient: LLMClient;
+  private lastContractWarnings: ValidationWarning[] = [];
   private parser: NaturalLanguageParser;
   private generator: BlueprintGenerator;
   private repository: ComponentRepository;
@@ -113,6 +114,7 @@ export class AIInterpreterService implements AIInterpreter {
       
       // Generate contract from blueprint
       let contract = await contractBuilder.generateFromBlueprint(blueprint);
+      this.lastContractWarnings = contractBuilder.getLastWarnings();
       
       // Apply user edits if provided
       if (userEdits) {
@@ -122,6 +124,29 @@ export class AIInterpreterService implements AIInterpreter {
       return contract;
     } catch (error) {
       throw new Error(`Failed to generate contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /** Degradations applied by the most recent contract generation or edit. */
+  getLastContractWarnings(): ValidationWarning[] {
+    return this.lastContractWarnings;
+  }
+
+  /**
+   * Applies a natural-language edit to an existing contract; user data is
+   * preserved through id stability rather than merge heuristics.
+   */
+  async editContract(
+    current: Contract,
+    instruction: string
+  ): Promise<{ contract: Contract; warnings: ValidationWarning[] }> {
+    try {
+      const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
+      const contract = await contractBuilder.editContract(current, instruction);
+      this.lastContractWarnings = contractBuilder.getLastWarnings();
+      return { contract, warnings: this.lastContractWarnings };
+    } catch (error) {
+      throw new Error(`Failed to edit contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

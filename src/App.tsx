@@ -4,7 +4,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { LiveExperienceRenderer } from "./components/runtime/LiveExperienceRenderer";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import type { Contract as ContractType } from "./types/contract";
+import type { Contract as ContractType, ValidationWarning } from "./types/contract";
+import { ExperienceEditBar } from "./components/runtime/ExperienceEditBar";
 import { integratedExperienceService } from "./services/IntegratedExperienceService";
 import { persistenceService } from "./services/persistence";
 import { repositoryService } from "./services/repository/repository-service";
@@ -65,12 +66,23 @@ const ExperienceWindow: React.FC<{
   savedState?: Record<string, unknown>;
 }> = ({ initialExperienceId, initialContract, savedState }) => {
   const [currentContract, setCurrentContract] = useState<ContractType>(initialContract);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editWarnings, setEditWarnings] = useState<ValidationWarning[]>([]);
   const title = useMemo(() => currentContract.name || initialExperienceId, [currentContract.name, initialExperienceId]);
 
   // Persist the app's state so it survives closing the window. Writes are
   // debounced; the latest snapshot is flushed when the window goes away.
   const pendingState = React.useRef<Record<string, unknown> | null>(null);
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestData = React.useRef<Record<string, unknown> | null>(null);
+
+  // Rehydration data for the renderer: recomputed only when the contract
+  // changes (an edit), carrying the live data across the remount.
+  const rehydrationData = useMemo(
+    () => ({ ...(savedState ?? {}), ...(latestData.current ?? {}) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentContract, savedState]
+  );
 
   const flushState = useCallback(() => {
     if (saveTimer.current) {
@@ -88,11 +100,30 @@ const ExperienceWindow: React.FC<{
 
   const handleStateChange = useCallback(
     (state: { data: Record<string, unknown> }) => {
+      latestData.current = state.data;
       pendingState.current = state.data;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(flushState, 800);
     },
     [flushState]
+  );
+
+  const handleRefine = useCallback(
+    async (instruction: string) => {
+      setEditBusy(true);
+      try {
+        const result = await integratedExperienceService.refineExperience(
+          initialExperienceId,
+          instruction,
+          currentContract
+        );
+        setEditWarnings(result.warnings);
+        setCurrentContract(result.contract.toObject() as unknown as ContractType);
+      } finally {
+        setEditBusy(false);
+      }
+    },
+    [initialExperienceId, currentContract]
   );
 
   React.useEffect(() => {
@@ -104,21 +135,6 @@ const ExperienceWindow: React.FC<{
       flushState();
     };
   }, [flushState]);
-
-  const handleEdit = useCallback(async () => {
-    const input = globalThis.prompt("Describe your edits for the AI to apply:");
-    if (!input) return;
-    try {
-      const result = await integratedExperienceService.regenerateExperienceWithPreservation(
-        initialExperienceId,
-        input,
-        { enableRealTimeUpdates: true, autoSave: true }
-      );
-      setCurrentContract(result.updatedContract as unknown as ContractType);
-    } catch (e) {
-      alert(`Edit failed: ${(e as Error).message}`);
-    }
-  }, [initialExperienceId]);
 
   const handleBookmark = useCallback(async () => {
     try {
@@ -156,15 +172,20 @@ const ExperienceWindow: React.FC<{
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid #eee" }}>
         <div style={{ fontWeight: 600 }}>{title}</div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={handleEdit}>Edit</button>
           <button onClick={handleBookmark}>Bookmark</button>
         </div>
       </header>
+      <ExperienceEditBar
+        onSubmit={handleRefine}
+        busy={editBusy}
+        warnings={editWarnings}
+        onDismissWarnings={() => setEditWarnings([])}
+      />
       <div style={{ flex: 1, minHeight: 0 }}>
         <LiveExperienceRenderer
           initialContract={currentContract}
           experienceId={initialExperienceId}
-          initialData={savedState}
+          initialData={rehydrationData}
           onStateChange={handleStateChange}
           enableRealTimeUpdates={true}
           onContractUpdate={(c) => setCurrentContract(c as unknown as ContractType)}

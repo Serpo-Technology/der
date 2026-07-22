@@ -84,6 +84,128 @@ export class ContractBuilder {
     return this.postProcess(shape, blueprint);
   }
 
+  /**
+   * Applies a natural-language edit to an existing contract. Preservation is
+   * a property of id stability: the prompt requires kept elements/operations
+   * to keep their ids, and an id that changes its kind of part is repaired.
+   */
+  async editContract(current: Contract | ContractShape, instruction: string): Promise<Contract> {
+    const currentObject =
+      typeof (current as { toObject?: () => unknown }).toObject === 'function'
+        ? (current as unknown as { toObject(): Contract }).toObject()
+        : (current as Contract);
+
+    const catalog = await this.renderCatalog();
+    const messages: LLMMessage[] = [
+      { role: 'system', content: buildContractSystemPrompt(catalog) + EDIT_PROMPT_SECTION },
+      {
+        role: 'user',
+        content: `Current contract:\n${JSON.stringify(currentObject, null, 2)}\n\nApply this change and return the complete updated contract:\n${instruction}`,
+      },
+    ];
+
+    const stableKinds = new Map<string, string>();
+    const collectKinds = (elements: UIElement[]) => {
+      for (const element of elements) {
+        stableKinds.set(`element:${element.id}`, element.type);
+        if (element.children) collectKinds(element.children);
+      }
+    };
+    collectKinds(currentObject.elements ?? []);
+    for (const op of currentObject.operations ?? []) {
+      stableKinds.set(`operation:${op.id}`, op.operationName);
+    }
+
+    let warnings: ValidationWarning[] = [];
+    const shape = await generateValidatedJson(this.llmClient, messages, LlmContractSchema, {
+      label: 'Contract',
+      maxTokens: 16000,
+      semanticCheck: (candidate) => {
+        const result = checkAgainstManifests(candidate as ContractShape);
+        warnings = result.warnings;
+        const problems =
+          result.errors.length > 0 ? [formatManifestErrors(result.errors)] : [];
+        problems.push(...this.checkIdStability(candidate as ContractShape, stableKinds));
+        return problems;
+      },
+    });
+
+    // Ids that disappeared are legitimate removals; note them for the caller.
+    const remaining = new Set<string>();
+    const collectRemaining = (elements: UIElement[]) => {
+      for (const element of elements) {
+        remaining.add(`element:${element.id}`);
+        if (element.children) collectRemaining(element.children as UIElement[]);
+      }
+    };
+    collectRemaining(shape.elements as UIElement[]);
+    for (const op of shape.operations) remaining.add(`operation:${op.id}`);
+    for (const [key] of stableKinds) {
+      if (!remaining.has(key)) {
+        const [kind, id] = key.split(':');
+        warnings.push({
+          path: kind === 'element' ? 'elements' : 'operations',
+          message: `Edit removed ${kind} "${id}"`,
+          code: 'EDIT_REMOVED_PART',
+        });
+      }
+    }
+
+    this.lastWarnings = warnings;
+    if (warnings.length > 0) {
+      console.warn('Contract edit adjustments:', warnings);
+    }
+
+    // Preserve creation metadata; postProcess stamps updatedAt.
+    const merged: ContractShape = {
+      ...shape,
+      metadata: shape.metadata ?? {
+        createdAt: currentObject.metadata?.createdAt ?? new Date(),
+        updatedAt: new Date(),
+        version: currentObject.metadata?.version ?? shape.version,
+        description: currentObject.metadata?.description,
+        tags: currentObject.metadata?.tags,
+        author: currentObject.metadata?.author,
+      },
+    };
+    return this.postProcess(merged, {
+      description: instruction,
+      goal: currentObject.metadata?.description ?? currentObject.name,
+      requiredCapabilities: [],
+      uiElements: [],
+      operations: [],
+      ambiguities: [],
+    } as unknown as Blueprint);
+  }
+
+  /** An id kept across the edit must keep its kind of part. */
+  private checkIdStability(candidate: ContractShape, stableKinds: Map<string, string>): string[] {
+    const problems: string[] = [];
+    const checkElement = (element: UIElement, path: string) => {
+      const known = stableKinds.get(`element:${element.id}`);
+      if (known !== undefined && known !== element.type) {
+        problems.push(
+          `${path}: element id "${element.id}" was type "${known}" and must keep it (use a new id for a different part; reused ids preserve user state)`
+        );
+      }
+      element.children?.forEach((child, i) =>
+        checkElement(child as UIElement, `${path}.children.${i}`)
+      );
+    };
+    (candidate.elements as UIElement[]).forEach((element, i) =>
+      checkElement(element, `elements.${i}`)
+    );
+    candidate.operations.forEach((op, i) => {
+      const known = stableKinds.get(`operation:${op.id}`);
+      if (known !== undefined && known !== op.operationName) {
+        problems.push(
+          `operations.${i}: operation id "${op.id}" was "${known}" and must keep it (use a new id for a different operation)`
+        );
+      }
+    });
+    return problems;
+  }
+
   validateContract(contract: unknown): ValidationResult {
     const data =
       contract && typeof contract === 'object' && 'toObject' in (contract as object)
@@ -242,6 +364,15 @@ export class ContractBuilder {
     return normalizeContract(contract);
   }
 }
+
+const EDIT_PROMPT_SECTION = `
+
+EDIT MODE:
+You are updating an EXISTING app, given its current contract and a change request. Return the COMPLETE updated contract JSON.
+- Change only what the instruction requires; keep everything else exactly as it is.
+- Keep the ids of every element and operation you retain. State is keyed by these ids; a changed id loses the user's data. Give NEW parts new ids.
+- Keep existing initialState keys and their seeds; add seeds for any new state keys you read.
+- Removing parts the instruction makes obsolete is fine; do not remove anything else.`;
 
 function buildContractSystemPrompt(catalog: string): string {
   return `You compose a Contract JSON from prewritten parts; a runtime renders it into a live interactive app. You configure parts; you NEVER write code. Return one JSON object only: no prose, no code fences.
