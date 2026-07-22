@@ -202,7 +202,11 @@ export class ComponentRenderer {
    * components destructure them away from the DOM.
    */
   private applyKnobs(element: UIElement, finalProps: Record<string, any>): void {
-    const manifest = ELEMENT_MANIFESTS[element.type];
+    // A plain form groups children exactly like a container, so it takes the
+    // container knobs (and their CSS classes) instead of leaking raw
+    // direction/gap/align props into the DOM.
+    const manifestType = element.type === 'form' ? 'container' : element.type;
+    const manifest = ELEMENT_MANIFESTS[manifestType];
     if (!manifest) return;
 
     const classes: string[] = [];
@@ -217,7 +221,7 @@ export class ComponentRenderer {
       }
       delete finalProps[knob.name];
       if (value !== undefined) {
-        classes.push(`${element.type}-${knob.name}-${value}`);
+        classes.push(`${manifestType}-${knob.name}-${value}`);
       }
     }
 

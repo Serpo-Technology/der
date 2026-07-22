@@ -82,6 +82,30 @@ describe('ComponentRenderer', () => {
     expect(screen.getByRole('button')).toHaveAttribute('type', 'submit');
   });
 
+  it('applies container knobs to form elements as CSS classes', () => {
+    const formElement: UIElement = {
+      id: 'entry',
+      type: 'form',
+      properties: { align: 'end', direction: 'row', gap: '8' },
+      dataBindings: [],
+      eventBindings: []
+    };
+
+    const RenderedComponent = componentRenderer.renderUIElement(
+      formElement,
+      stateWithData({}),
+      mockOnOperationExecute
+    );
+    const { container } = render(<RenderedComponent />);
+
+    const form = container.querySelector('form')!;
+    expect(form.className).toContain('container-align-end');
+    expect(form.className).toContain('container-gap-8');
+    // Knob values are consumed, never leaked as DOM attributes.
+    expect(form).not.toHaveAttribute('align');
+    expect(form).not.toHaveAttribute('direction');
+  });
+
   it('runs click bindings on a button inside a form without navigating', async () => {
     // The score-tracker shape: a form-wrapped entry row whose button chains
     // two click operations. A native submit here reloads the webview.

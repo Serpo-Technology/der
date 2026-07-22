@@ -73,6 +73,12 @@
   gap: 8px;
 }
 
+/* Entry rows pair labeled fields with buttons; bottoms align so the button
+   sits level with the input, and knob classes still override. */
+.dynamic-experience-container form {
+  align-items: flex-end;
+}
+
 .dynamic-experience-container ul,
 .dynamic-experience-container ol {
   list-style: none;
