@@ -264,18 +264,18 @@ export const MainInterface: React.FC = () => {
     }));
   }, []);
 
-  // Handle bookmark creation using integrated service
+  // Handle bookmark creation
   const handleBookmarkExperience = useCallback(async () => {
     if (!state.contract) return;
+    const experienceId = state.currentExperienceId || `exp-${Date.now()}`;
     if (!state.currentExperienceId) {
-      setState(prev => ({ ...prev, error: 'Generate or load an experience before bookmarking.' }));
-      return;
+      setState(prev => ({ ...prev, currentExperienceId: experienceId }));
     }
 
     setState(prev => ({ ...prev, isProcessing: true, error: null }));
     try {
       await persistenceService.bookmarkExperience({
-        id: state.currentExperienceId,
+        id: experienceId,
         contract: state.contract,
         reactComponent: () => null,
         state: { data: {}, loading: {}, errors: {}, lastUpdated: new Date() },

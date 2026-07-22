@@ -91,14 +91,20 @@ export function installInvokeMock(options: InvokeMockOptions = {}): InvokeMockHa
       case 'list_bookmarked_experiences_detailed':
         return Array.from(bookmarks.values()).map((b) => ({ ...b, thumbnail: null }));
       case 'load_bookmarked_experience': {
+        // Mirrors the Rust command: full snake_case record, null when missing.
         const record = bookmarks.get(args?.experienceId);
         if (!record) {
-          throw new Error(`bookmark ${args?.experienceId} not found`);
+          return null;
         }
         return {
           id: record.id,
+          name: record.name,
+          description: record.description ?? null,
           contract: record.contract,
+          created_at: record.createdAt,
           last_accessed_at: record.lastAccessedAt,
+          tags: record.tags ?? null,
+          thumbnail: null,
         };
       }
       case 'delete_bookmarked_experience':

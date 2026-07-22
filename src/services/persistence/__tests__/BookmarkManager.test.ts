@@ -16,6 +16,7 @@ vi.mock('../PersistenceService', () => ({
     bookmarkExperience: vi.fn(),
     listBookmarkedExperiences: vi.fn(),
     loadBookmarkedExperience: vi.fn(),
+    loadBookmarkRecord: vi.fn(),
     deleteBookmarkedExperience: vi.fn(),
     updateExperience: vi.fn()
   }
@@ -191,7 +192,9 @@ describe('BookmarkManager', () => {
 
   describe('getBookmark', () => {
     it('should return specific bookmark by ID', async () => {
-      mockPersistenceService.listBookmarkedExperiences.mockResolvedValue(mockBookmarks);
+      mockPersistenceService.loadBookmarkRecord.mockImplementation(async (id: string) =>
+        mockBookmarks.find(bookmark => bookmark.id === id) ?? null
+      );
 
       const result = await bookmarkManager.getBookmark('bookmark-2');
 
@@ -201,7 +204,7 @@ describe('BookmarkManager', () => {
     });
 
     it('should return null for non-existent bookmark', async () => {
-      mockPersistenceService.listBookmarkedExperiences.mockResolvedValue(mockBookmarks);
+      mockPersistenceService.loadBookmarkRecord.mockResolvedValue(null);
 
       const result = await bookmarkManager.getBookmark('non-existent');
 

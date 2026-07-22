@@ -166,6 +166,30 @@ export class PersistenceService implements PersistenceLayer {
   }
 
   /**
+   * Load the full bookmark record (metadata plus contract) by ID.
+   */
+  async loadBookmarkRecord(id: string): Promise<BookmarkedExperience | null> {
+    try {
+      const bookmark = await invoke<any>('load_bookmarked_experience', { experienceId: id });
+      if (!bookmark) {
+        return null;
+      }
+      return {
+        id: bookmark.id,
+        name: bookmark.name,
+        description: bookmark.description ?? undefined,
+        contract: bookmark.contract,
+        createdAt: new Date(bookmark.created_at),
+        lastAccessedAt: new Date(bookmark.last_accessed_at),
+        tags: bookmark.tags ?? undefined,
+        thumbnail: bookmark.thumbnail ?? undefined
+      };
+    } catch (error) {
+      throw new Error(`Failed to load bookmark: ${error}`);
+    }
+  }
+
+  /**
    * Get list of all bookmarked experiences
    * Requirements: 4.1, 4.2
    */

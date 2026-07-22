@@ -5,6 +5,7 @@ import { LiveExperienceRenderer } from "./components/runtime/LiveExperienceRende
 import { listen } from "@tauri-apps/api/event";
 import type { Contract as ContractType } from "./types/contract";
 import { integratedExperienceService } from "./services/IntegratedExperienceService";
+import { persistenceService } from "./services/persistence";
 import { repositoryService } from "./services/repository/repository-service";
 import { registerBuiltins } from "./services/repository/builtins";
 
@@ -54,12 +55,18 @@ const ExperienceWindow: React.FC<{ initialExperienceId: string; initialContract:
 
   const handleBookmark = useCallback(async () => {
     try {
-      await integratedExperienceService.bookmarkExperience(initialExperienceId, "current-user", { tags: ["window"], collection: "Experiences" });
+      await persistenceService.bookmarkExperience({
+        id: initialExperienceId,
+        contract: currentContract,
+        reactComponent: () => null,
+        state: { data: {}, loading: {}, errors: {}, lastUpdated: new Date() },
+        operations: new Map()
+      });
       alert("Bookmarked");
     } catch (e) {
       alert(`Bookmark failed: ${(e as Error).message}`);
     }
-  }, [initialExperienceId]);
+  }, [initialExperienceId, currentContract]);
 
   // Cross-window subscription to updates via Tauri events
   React.useEffect(() => {

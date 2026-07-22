@@ -138,8 +138,8 @@ export class BookmarkManager {
    */
   async getBookmark(id: string): Promise<BookmarkedExperience | null> {
     try {
-      const bookmarks = await persistenceService.listBookmarkedExperiences();
-      return bookmarks.find(bookmark => bookmark.id === id) || null;
+      // The detailed listing carries no contract; load the full record.
+      return await persistenceService.loadBookmarkRecord(id);
     } catch (error) {
       throw new Error(`Failed to get bookmark: ${error}`);
     }
