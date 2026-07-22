@@ -354,27 +354,21 @@ async fn save_experience_state(
         .map_err(|e| format!("Failed to save experience state: {}", e))
 }
 
+fn read_experience_state(app: &AppHandle, experience_id: &str) -> Option<Value> {
+    let app_data_dir = app.path().app_data_dir().ok()?;
+    let state_file = app_data_dir
+        .join("experience_states")
+        .join(format!("{}.json", experience_id));
+    let state_json = fs::read_to_string(state_file).ok()?;
+    serde_json::from_str(&state_json).ok()
+}
+
 #[tauri::command]
 async fn load_experience_state(
     app: tauri::AppHandle,
     experience_id: String
 ) -> Result<Option<Value>, String> {
-    let app_data_dir = app.path().app_data_dir()
-        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
-    
-    let state_file = app_data_dir.join("experience_states").join(format!("{}.json", experience_id));
-    
-    if !state_file.exists() {
-        return Ok(None);
-    }
-    
-    let state_json = fs::read_to_string(state_file)
-        .map_err(|e| format!("Failed to read experience state: {}", e))?;
-    
-    let state: Value = serde_json::from_str(&state_json)
-        .map_err(|e| format!("Failed to parse experience state: {}", e))?;
-    
-    Ok(Some(state))
+    Ok(read_experience_state(&app, &experience_id))
 }
 
 // Save full experience (contract + state + metadata)
@@ -496,7 +490,10 @@ async fn bookmark_experience(
     
     fs::write(bookmark_file, bookmark_json)
         .map_err(|e| format!("Failed to save bookmark: {}", e))?;
-    
+
+    // Every creator (direct, import, duplicate) lands here, so the tray
+    // reflects new apps immediately.
+    rebuild_tray_menu(&app);
     Ok(experience_id)
 }
 
@@ -538,44 +535,45 @@ async fn load_bookmarked_experience(
 // List all bookmarked experiences
 #[tauri::command]
 async fn list_bookmarked_experiences_detailed(app: AppHandle) -> Result<Vec<Value>, String> {
-    let app_data_dir = app.path().app_data_dir()
-        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
-    
+    let experiences = read_bookmarks(&app)
+        .into_iter()
+        .map(|bookmark| {
+            serde_json::json!({
+                "id": bookmark.id,
+                "name": bookmark.name,
+                "description": bookmark.description,
+                "createdAt": bookmark.created_at,
+                "lastAccessedAt": bookmark.last_accessed_at,
+                "tags": bookmark.tags,
+                "thumbnail": bookmark.thumbnail
+            })
+        })
+        .collect();
+    Ok(experiences)
+}
+
+/// Reads every bookmark record, most recently accessed first.
+fn read_bookmarks(app: &AppHandle) -> Vec<BookmarkedExperience> {
+    let Ok(app_data_dir) = app.path().app_data_dir() else {
+        return Vec::new();
+    };
     let bookmarks_dir = app_data_dir.join("bookmarks");
-    let mut experiences = Vec::new();
-    
-    if bookmarks_dir.exists() {
-        if let Ok(entries) = fs::read_dir(bookmarks_dir) {
-            for entry in entries.flatten() {
-                if let Some(extension) = entry.path().extension() {
-                    if extension == "json" {
-                        if let Ok(content) = fs::read_to_string(entry.path()) {
-                            if let Ok(bookmark) = serde_json::from_str::<BookmarkedExperience>(&content) {
-                                experiences.push(serde_json::json!({
-                                    "id": bookmark.id,
-                                    "name": bookmark.name,
-                                    "description": bookmark.description,
-                                    "createdAt": bookmark.created_at,
-                                    "lastAccessedAt": bookmark.last_accessed_at,
-                                    "tags": bookmark.tags,
-                                    "thumbnail": bookmark.thumbnail
-                                }));
-                            }
-                        }
+    let mut bookmarks: Vec<BookmarkedExperience> = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(bookmarks_dir) {
+        for entry in entries.flatten() {
+            if entry.path().extension().map(|ext| ext == "json").unwrap_or(false) {
+                if let Ok(content) = fs::read_to_string(entry.path()) {
+                    if let Ok(bookmark) = serde_json::from_str::<BookmarkedExperience>(&content) {
+                        bookmarks.push(bookmark);
                     }
                 }
             }
         }
     }
-    
-    // Sort by last accessed time (most recent first)
-    experiences.sort_by(|a, b| {
-        let a_time = a.get("lastAccessedAt").and_then(|t| t.as_str()).unwrap_or("");
-        let b_time = b.get("lastAccessedAt").and_then(|t| t.as_str()).unwrap_or("");
-        b_time.cmp(a_time)
-    });
-    
-    Ok(experiences)
+
+    bookmarks.sort_by(|a, b| b.last_accessed_at.cmp(&a.last_accessed_at));
+    bookmarks
 }
 
 // Delete bookmarked experience
@@ -588,12 +586,21 @@ async fn delete_bookmarked_experience(
         .map_err(|e| format!("Failed to get app data directory: {}", e))?;
     
     let bookmark_file = app_data_dir.join("bookmarks").join(format!("{}.json", experience_id));
-    
+
     if bookmark_file.exists() {
         fs::remove_file(bookmark_file)
             .map_err(|e| format!("Failed to delete bookmark: {}", e))?;
     }
-    
+
+    // The app's saved state goes with it.
+    let state_file = app_data_dir
+        .join("experience_states")
+        .join(format!("{}.json", experience_id));
+    if state_file.exists() {
+        let _ = fs::remove_file(state_file);
+    }
+
+    rebuild_tray_menu(&app);
     Ok(())
 }
 
@@ -1063,22 +1070,71 @@ async fn list_bookmarked_experiences(app: AppHandle) -> Result<Vec<Value>, Strin
     Ok(experiences)
 }
 
+const TRAY_APP_LIMIT: usize = 12;
+
+fn truncate_label(name: &str, max: usize) -> String {
+    if name.chars().count() <= max {
+        name.to_string()
+    } else {
+        let cut: String = name.chars().take(max.saturating_sub(3)).collect();
+        format!("{}...", cut.trim_end())
+    }
+}
+
 fn create_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
     let show_window = MenuItem::with_id(app, "show_window", "Open DER", true, None::<&str>)?;
     let new_experience = MenuItem::with_id(app, "new_experience", "New Experience", true, None::<&str>)?;
     let bookmarks = MenuItem::with_id(app, "bookmarks", "Bookmarked Experiences", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    
+
     let menu = Menu::with_items(app, &[
         &show_window,
         &PredefinedMenuItem::separator(app)?,
         &new_experience,
-        &bookmarks,
-        &PredefinedMenuItem::separator(app)?,
-        &quit,
     ])?;
-    
+
+    // The user's saved apps, most recently used first.
+    let apps: Vec<BookmarkedExperience> = read_bookmarks(app)
+        .into_iter()
+        .take(TRAY_APP_LIMIT)
+        .collect();
+    if !apps.is_empty() {
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+        for bookmark in &apps {
+            let item = MenuItem::with_id(
+                app,
+                format!("bookmark:{}", bookmark.id),
+                truncate_label(&bookmark.name, 40),
+                true,
+                None::<&str>,
+            )?;
+            menu.append(&item)?;
+        }
+    }
+
+    menu.append(&bookmarks)?;
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&quit)?;
+
     Ok(menu)
+}
+
+/// Rebuilds the tray menu so it reflects the current bookmarks.
+fn rebuild_tray_menu(app: &AppHandle) {
+    if let Some(tray) = app.tray_by_id("main") {
+        match create_tray_menu(app) {
+            Ok(menu) => {
+                let _ = tray.set_menu(Some(menu));
+            }
+            Err(e) => eprintln!("Failed to rebuild tray menu: {}", e),
+        }
+    }
+}
+
+#[tauri::command]
+async fn refresh_tray_menu(app: AppHandle) -> Result<(), String> {
+    rebuild_tray_menu(&app);
+    Ok(())
 }
 
 // No explicit tray click handler required; menu shows via macOS left click automatically
@@ -1110,41 +1166,58 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         "quit" => {
             app.exit(0);
         }
+        id if id.starts_with("bookmark:") => {
+            let bookmark_id = id.trim_start_matches("bookmark:").to_string();
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                match load_bookmarked_experience(app.clone(), bookmark_id.clone()).await {
+                    Ok(Some(bookmark)) => {
+                        let contract = bookmark.get("contract").cloned().unwrap_or(Value::Null);
+                        let title = bookmark
+                            .get("name")
+                            .and_then(|n| n.as_str())
+                            .map(|s| s.to_string());
+                        if let Err(e) =
+                            open_experience_window_impl(&app, &bookmark_id, contract, title)
+                        {
+                            eprintln!("Failed to open app window for {}: {}", bookmark_id, e);
+                        }
+                    }
+                    Ok(None) => eprintln!("Bookmark {} not found", bookmark_id),
+                    Err(e) => eprintln!("Failed to load bookmark {}: {}", bookmark_id, e),
+                }
+            });
+        }
         _ => {}
     }
 }
 
-// Open an OS window for a specific experience id with an initial contract
-#[tauri::command]
-async fn open_experience_window(
-    app: AppHandle,
-    experience_id: String,
+/// Opens (or focuses) the OS window for an experience, injecting the contract
+/// and any previously saved per-app state into the webview bootstrap.
+fn open_experience_window_impl(
+    app: &AppHandle,
+    experience_id: &str,
     contract: Value,
-    title: Option<String>
+    title: Option<String>,
 ) -> Result<(), String> {
     let label = format!("exp-{}", experience_id);
-    if app.get_webview_window(&label).is_some() {
-        // Focus existing window
-        if let Some(w) = app.get_webview_window(&label) {
-            w.show().map_err(|e| e.to_string())?;
-            w.set_focus().map_err(|e| e.to_string())?;
-        }
+    if let Some(existing) = app.get_webview_window(&label) {
+        existing.show().map_err(|e| e.to_string())?;
+        existing.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
 
-    // Build bootstrap script to pass data to the webview
+    let saved_state = read_experience_state(app, experience_id).unwrap_or(Value::Null);
     let bootstrap = serde_json::json!({
         "experienceId": experience_id,
-        "contract": contract
+        "contract": contract,
+        "state": saved_state
     });
-    let init_script = format!(
-        "window.__DER_BOOTSTRAP = {};",
-        bootstrap.to_string()
-    );
+    let init_script = format!("window.__DER_BOOTSTRAP = {};", bootstrap);
 
     let mut builder = WebviewWindowBuilder::new(
-        &app,
-        label.clone(),
+        app,
+        label,
         WebviewUrl::App("index.html".into())
     )
     .initialization_script(&init_script)
@@ -1159,11 +1232,21 @@ async fn open_experience_window(
     Ok(())
 }
 
+// Open an OS window for a specific experience id with an initial contract
+#[tauri::command]
+async fn open_experience_window(
+    app: AppHandle,
+    experience_id: String,
+    contract: Value,
+    title: Option<String>
+) -> Result<(), String> {
+    open_experience_window_impl(&app, &experience_id, contract, title)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_sql::Builder::default().build())
         .manage(oauth::PendingOauth::default())
         .setup(|app| {
             
@@ -1222,6 +1305,7 @@ pub fn run() {
             get_experience_versions,
             restore_experience_version,
             open_experience_window,
+            refresh_tray_menu,
             llm::llm_chat,
             settings::get_llm_settings,
             settings::set_llm_settings,

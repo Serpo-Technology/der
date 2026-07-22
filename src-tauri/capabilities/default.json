@@ -5,9 +5,6 @@
   "windows": ["*"],
   "permissions": [
     "core:default",
-    "opener:default",
-    "sql:allow-load",
-    "sql:default",
-    "sql:allow-execute"
+    "opener:default"
   ]
 }

@@ -72,15 +72,16 @@ PKCE sign-in and token refresh). `execute_operation`'s `remote` branch performs 
 Rust are legacy and unreachable from contracts (the TS executor handles those). Rust
 `query_repository` still returns mock components and is unused by the TS repository.
 
-### Two persistence paths (gotcha)
+### Persistence and the tray launcher
 
-Persistence is not unified. The TypeScript `PersistenceService` writes to SQLite
-(`sqlite:der.db` via `@tauri-apps/plugin-sql`) with a filesystem fallback, while the Rust
-commands in `lib.rs` write JSON files under the Tauri app data dir
-(`experiences/`, `bookmarks/`, `contracts/`, `versions/`). Both are live: `MainInterface`
-bookmark listing calls the Rust JSON path via `invoke('list_bookmarked_experiences')`, whereas
-`IntegratedExperienceService` goes through the SQLite path. Check which side you are on before
-adding storage behavior.
+All persistence goes through the Rust commands in `lib.rs`, which write JSON files under the
+Tauri app data dir: `experiences/`, `bookmarks/`, `experience_states/` (per-app state saved by
+the standalone window, debounced), `contracts/`, `versions/`. The TypeScript `PersistenceService`
+is a thin invoke wrapper; `parseMaybeJson` tolerates older double-encoded records. The tray menu
+lists bookmarks as launchable apps: `bookmark_experience`/`delete_bookmarked_experience` rebuild
+it (`rebuild_tray_menu`), and clicking an entry opens the experience window with its saved state
+injected into `__DER_BOOTSTRAP.state`. An old `der.db` may exist in the app data dir; nothing
+reads it.
 
 ### Two render entry points
 

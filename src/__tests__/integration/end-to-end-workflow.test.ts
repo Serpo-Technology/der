@@ -18,15 +18,6 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 // The SQL plugin is an external package, so its internal import of the Tauri
 // core module bypasses the mock above; stub the database handle directly.
-vi.mock('@tauri-apps/plugin-sql', () => ({
-  default: {
-    load: vi.fn(async () => ({
-      execute: vi.fn(async () => ({ rowsAffected: 1, lastInsertId: 1 })),
-      select: vi.fn(async () => []),
-      close: vi.fn(async () => true),
-    })),
-  },
-}));
 
 describe('End-to-End Workflow Integration', () => {
   let integratedService: IntegratedExperienceService;

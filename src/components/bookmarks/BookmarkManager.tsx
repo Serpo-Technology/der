@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { BookmarkedExperience } from '../../types/persistence';
 import { Experience } from '../../types/experience';
 import { bookmarkManager, BookmarkFilter, BookmarkSortOptions } from '../../services/persistence';
+import { invoke } from '@tauri-apps/api/core';
 import './BookmarkManager.css';
 
 interface BookmarkManagerProps {
@@ -91,6 +92,24 @@ export const BookmarkManager: React.FC<BookmarkManagerProps> = ({
       setIsLoading(false);
     }
   }, [onLoadExperience, onError]);
+
+  // Open a bookmark as its own app window
+  const handleOpenAsApp = useCallback(async (bookmarkId: string) => {
+    try {
+      const record = await bookmarkManager.getBookmark(bookmarkId);
+      if (!record) {
+        onError?.('Bookmark not found');
+        return;
+      }
+      await invoke('open_experience_window', {
+        experienceId: record.id,
+        contract: record.contract,
+        title: record.name
+      });
+    } catch (error) {
+      onError?.(error instanceof Error ? error.message : 'Failed to open app');
+    }
+  }, [onError]);
 
   // Handle bookmark deletion
   const handleDeleteBookmark = useCallback(async (bookmarkId: string) => {
@@ -237,6 +256,7 @@ export const BookmarkManager: React.FC<BookmarkManagerProps> = ({
                 key={bookmark.id}
                 bookmark={bookmark}
                 onLoad={() => handleLoadBookmark(bookmark.id)}
+                onOpenWindow={() => handleOpenAsApp(bookmark.id)}
                 onDelete={() => handleDeleteBookmark(bookmark.id)}
                 isLoading={isLoading}
               />
@@ -252,6 +272,7 @@ export const BookmarkManager: React.FC<BookmarkManagerProps> = ({
 interface BookmarkCardProps {
   bookmark: BookmarkedExperience;
   onLoad: () => void;
+  onOpenWindow: () => void;
   onDelete: () => void;
   isLoading: boolean;
 }
@@ -259,6 +280,7 @@ interface BookmarkCardProps {
 const BookmarkCard: React.FC<BookmarkCardProps> = ({
   bookmark,
   onLoad,
+  onOpenWindow,
   onDelete,
   isLoading
 }) => {
@@ -308,10 +330,19 @@ const BookmarkCard: React.FC<BookmarkCardProps> = ({
         <div className="bookmark-actions">
           <button
             className="load-button primary"
+            onClick={onOpenWindow}
+            disabled={isLoading}
+            title="Open in its own window"
+          >
+            Open app
+          </button>
+          <button
+            className="load-button"
             onClick={onLoad}
             disabled={isLoading}
+            title="Open inline in this window"
           >
-            Open Experience
+            Preview here
           </button>
           <button
             className="delete-button danger"
@@ -319,7 +350,7 @@ const BookmarkCard: React.FC<BookmarkCardProps> = ({
             disabled={isLoading}
             title="Delete bookmark"
           >
-            🗑️
+            Delete
           </button>
         </div>
       </div>

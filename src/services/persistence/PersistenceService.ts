@@ -4,7 +4,6 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import Database from '@tauri-apps/plugin-sql';
 import {
   PersistenceLayer,
   BookmarkedExperience,
@@ -31,50 +30,11 @@ function parseMaybeJson<T>(value: unknown): T {
 }
 
 export class PersistenceService implements PersistenceLayer {
-  private schemaInitialized = false;
-
-  private async ensureSchema() {
-    if (this.schemaInitialized) return;
-    const db = await Database.load('sqlite:der.db');
-    await db.execute(`CREATE TABLE IF NOT EXISTS experiences (
-      id TEXT PRIMARY KEY,
-      name TEXT,
-      contract TEXT NOT NULL,
-      state TEXT,
-      created_at TEXT,
-      updated_at TEXT
-    );`);
-    await db.execute(`CREATE TABLE IF NOT EXISTS bookmarks (
-      id TEXT PRIMARY KEY,
-      name TEXT,
-      description TEXT,
-      contract TEXT NOT NULL,
-      created_at TEXT,
-      last_accessed_at TEXT,
-      tags TEXT
-    );`);
-    this.schemaInitialized = true;
-  }
   /**
    * Save an experience
    */
   async saveExperience(experience: Experience): Promise<void> {
     try {
-      await this.ensureSchema();
-      // Persist via SQLite (primary) and filesystem (fallback)
-      const db = await Database.load('sqlite:der.db');
-      await db.execute(
-        `INSERT INTO experiences (id, name, contract, state, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, datetime('now'), datetime('now'))
-         ON CONFLICT(id) DO UPDATE SET name=excluded.name, contract=excluded.contract, state=excluded.state, updated_at=datetime('now')`,
-        [
-          experience.id,
-          experience.contract.name || 'Unnamed Experience',
-          JSON.stringify(experience.contract),
-          JSON.stringify(experience.state || {})
-        ]
-      );
-      // Fallback file persistence
       await invoke('save_experience', {
         experienceId: experience.id,
         contract: experience.contract,
@@ -91,27 +51,6 @@ export class PersistenceService implements PersistenceLayer {
    */
   async loadExperience(experienceId: string): Promise<Experience | null> {
     try {
-      await this.ensureSchema();
-      const db = await Database.load('sqlite:der.db');
-      const rows = await db.select<any[]>(
-        `SELECT id, name, contract, state, created_at, updated_at FROM experiences WHERE id = ?1`,
-        [experienceId]
-      );
-      if (rows && rows.length > 0) {
-        const row = rows[0];
-        const parsedContract = parseMaybeJson<any>(JSON.parse(row.contract));
-        return {
-          id: row.id,
-          contract: parsedContract,
-          state: row.state ? parseMaybeJson(JSON.parse(row.state)) : {},
-          metadata: {
-            createdAt: row.created_at ? new Date(row.created_at) : new Date(),
-            updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
-            version: parsedContract?.version || '1.0.0'
-          }
-        } as Experience;
-      }
-      // Fallback to filesystem
       const experienceData = await invoke<any>('load_experience', { experienceId });
       if (!experienceData) return null;
       return {

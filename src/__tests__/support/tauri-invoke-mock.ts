@@ -60,14 +60,6 @@ export function installInvokeMock(options: InvokeMockOptions = {}): InvokeMockHa
       case 'llm_chat':
         return routeLlmChat(args);
 
-      // SQLite plugin used by PersistenceService.
-      case 'plugin:sql|load':
-        return 'sqlite:der.db';
-      case 'plugin:sql|execute':
-        return [1, 1];
-      case 'plugin:sql|select':
-        return [];
-
       // Repository index storage is unavailable in tests; the repository
       // service falls back to its in-memory index.
       case 'read_repository_index':

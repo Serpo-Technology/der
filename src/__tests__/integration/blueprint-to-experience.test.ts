@@ -19,15 +19,6 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }));
 
-vi.mock('@tauri-apps/plugin-sql', () => ({
-  default: {
-    load: vi.fn(async () => ({
-      execute: vi.fn(async () => ({ rowsAffected: 1, lastInsertId: 1 })),
-      select: vi.fn(async () => []),
-      close: vi.fn(async () => true),
-    })),
-  },
-}));
 
 describe('Blueprint to Experience Pipeline Integration', () => {
   let aiInterpreter: AIInterpreterService;

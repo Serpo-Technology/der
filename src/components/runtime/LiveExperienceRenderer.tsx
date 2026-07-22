@@ -13,6 +13,8 @@ import { dynamicExperienceRuntimeService } from './DynamicExperienceRuntimeServi
 interface LiveExperienceRendererProps {
   initialContract: Contract;
   experienceId: string;
+  /** Previously saved state data, merged over the contract's seeds. */
+  initialData?: Record<string, unknown>;
   enableRealTimeUpdates?: boolean;
   updateOptions?: RealTimeUpdateOptions;
   onContractUpdate?: (contract: Contract) => void;
@@ -26,6 +28,7 @@ interface LiveExperienceRendererProps {
 export const LiveExperienceRenderer: React.FC<LiveExperienceRendererProps> = ({
   initialContract,
   experienceId,
+  initialData,
   enableRealTimeUpdates = true,
   updateOptions = {},
   onContractUpdate,
@@ -147,6 +150,7 @@ export const LiveExperienceRenderer: React.FC<LiveExperienceRendererProps> = ({
         key={renderKey}
         contract={currentContract}
         experienceId={experienceId}
+        initialData={initialData}
         onStateChange={handleStateChange}
         onError={handleError}
       />

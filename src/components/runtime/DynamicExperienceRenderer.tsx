@@ -16,6 +16,8 @@ import { normalizeContract } from '../../schemas/contract';
 interface DynamicExperienceRendererProps {
   contract: Contract;
   experienceId: string;
+  /** Previously saved state data, merged over the contract's seeds. */
+  initialData?: Record<string, unknown>;
   onStateChange?: (state: ExperienceState) => void;
   onError?: (error: Error) => void;
 }
@@ -23,6 +25,7 @@ interface DynamicExperienceRendererProps {
 export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps> = ({
   contract,
   experienceId,
+  initialData,
   onStateChange,
   onError
 }) => {
@@ -40,11 +43,18 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
   const operationExecutor = useMemo(() => new OperationExecutor(), []);
   const componentRenderer = useMemo(() => new ComponentRenderer(), []);
 
-  // Initialize experience state
+  // Initialize experience state (saved per-app data overrides contract seeds)
   useEffect(() => {
     const initializeState = async () => {
       try {
-        const initialState = await stateManager.initializeState(normalizedContract);
+        let initialState = await stateManager.initializeState(normalizedContract);
+        if (initialData && Object.keys(initialData).length > 0) {
+          initialState = {
+            ...initialState,
+            data: { ...initialState.data, ...initialData }
+          };
+          stateManager.updateState(initialState);
+        }
         setExperienceState(initialState);
         onStateChange?.(initialState);
       } catch (error) {
@@ -53,7 +63,7 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
     };
 
     initializeState();
-  }, [normalizedContract, stateManager, onStateChange, onError]);
+  }, [normalizedContract, stateManager, initialData, onStateChange, onError]);
 
   // Subscribe to state changes
   useEffect(() => {
