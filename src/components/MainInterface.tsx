@@ -163,9 +163,12 @@ export const MainInterface: React.FC = () => {
       // Validate blueprint
       const validation = services.blueprintGenerator.validateBlueprint(result.blueprint);
 
-      // The app is built; open it as its own window right away.
+      // In the desktop shell the service already opened the app window (live
+      // assembly); outside it, fall back to the debug window.
       const title = result.contract.name || 'Experience';
-      await openExperienceWindow(result.experienceId, result.contract, title);
+      if (!isTauriRuntime()) {
+        await openExperienceWindow(result.experienceId, result.contract, title);
+      }
 
       setState(prev => ({
         ...prev,

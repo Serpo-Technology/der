@@ -6,7 +6,7 @@
  * overrides the stored settings for this client instance.
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import { Channel, invoke } from '@tauri-apps/api/core';
 
 export type LLMProvider =
   | 'claude-subscription'
@@ -45,6 +45,11 @@ export interface LLMSendOptions {
   maxTokens?: number;
   /** Structured system prompt sent ahead of any inline system messages. */
   systemBlocks?: LLMSystemBlock[];
+  /**
+   * Receives text deltas as the model produces them, on providers that
+   * stream; the resolved response still carries the full content.
+   */
+  onChunk?: (delta: string) => void;
 }
 
 export interface LLMResponse {
@@ -61,10 +66,29 @@ export class LLMClient {
   }
 
   async sendMessage(messages: LLMMessage[], options: LLMSendOptions = {}): Promise<LLMResponse> {
+    // The command always takes a channel; the stream flag decides whether the
+    // provider actually feeds it. Resolved defensively: test doubles of the
+    // Tauri module may not define a Channel export at all.
+    let onChunk: Channel<string> | undefined;
+    let ChannelCtor: typeof Channel | undefined;
+    try {
+      ChannelCtor = typeof Channel === 'function' ? Channel : undefined;
+    } catch {
+      ChannelCtor = undefined;
+    }
+    if (ChannelCtor) {
+      onChunk = new ChannelCtor<string>();
+      const handler = options.onChunk;
+      if (handler) {
+        onChunk.onmessage = (delta) => handler(delta);
+      }
+    }
+
     return await invoke<LLMResponse>('llm_chat', {
       request: {
         messages,
         systemBlocks: options.systemBlocks,
+        stream: Boolean(options.onChunk),
         provider: this.config.provider,
         model: this.config.model,
         maxTokens: options.maxTokens ?? this.config.maxTokens,
@@ -72,6 +96,7 @@ export class LLMClient {
         jsonMode: options.jsonMode ?? false,
         baseUrl: this.config.baseUrl,
       },
+      onChunk,
     });
   }
 }

@@ -56,6 +56,12 @@ and empty-array seeds (`checkAgainstManifests` seeds read-only array keys silent
 still warn). Post-processing dedupes ids, maps unknown element types to `container`, resolves
 execution types, and fills the default column layout; normalization warnings are exposed via
 `ContractBuilder.getLastWarnings()`.
+On streaming providers, creation opens the app window as soon as the first elements parse and
+assembles it live: `llm_chat` forwards text deltas over a Tauri channel, `parsePartialJson` /
+`extractStreamingContract` (`partial-json.ts`) shape the growing response into an inert
+display-only contract (operations and event bindings stripped), and
+`IntegratedExperienceService` pushes it through `experience-contract-updated` until the
+validated final contract replaces it. Non-streaming providers open the window when done.
 `DynamicExperienceRenderer` -> `ComponentRenderer` then render the contract live, with
 `ExperienceStateManager` holding per-experience state and `OperationExecutor` running operations.
 
@@ -118,7 +124,10 @@ Anthropic requests never send sampling parameters (modern Claude models reject t
 accepts an optional `systemBlocks: [{text, cache}]` array: on Anthropic-shaped providers each
 `cache: true` block gets `cache_control: {type: "ephemeral"}` (prompt caching for the static
 prompt prefix; a legacy single system string is cached whole), while other providers receive the
-blocks as one plain system message. Settings UI:
+blocks as one plain system message. The command always takes a `Channel<String>` argument and a
+`stream` flag in the request: when set, Anthropic-shaped and OpenAI-shaped providers switch to
+SSE and forward text deltas over the channel (Gemini stays non-streaming), with the full content
+still returned at the end. Settings UI:
 `src/components/settings/SettingsView.tsx`; TS wrappers: `src/services/settings/llm-settings.ts`.
 
 ### Composition-only part system

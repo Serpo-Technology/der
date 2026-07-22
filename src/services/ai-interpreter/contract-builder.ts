@@ -57,7 +57,8 @@ export class ContractBuilder {
    * the blueprint path exactly: schema parse, manifest check, repair round.
    */
   async composeFromDescription(
-    description: string
+    description: string,
+    onPartial?: (accumulated: string) => void
   ): Promise<{ contract: Contract; spec: ComposedSpec }> {
     const catalog = await this.renderCatalog();
     const messages: LLMMessage[] = [
@@ -72,6 +73,7 @@ export class ContractBuilder {
         { text: buildBasePrompt(catalog), cache: true },
         { text: CREATE_PROMPT_SECTION },
       ],
+      onPartial,
       semanticCheck: (candidate) => {
         const result = checkAgainstManifests(candidate.contract as ContractShape);
         warnings = result.warnings;

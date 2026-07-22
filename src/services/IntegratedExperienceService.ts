@@ -14,6 +14,9 @@ import { PersistenceService } from './persistence/PersistenceService';
 import { Blueprint as BlueprintModel } from '../models/blueprint';
 import { Contract as ContractModel } from '../models/contract';
 import { emit } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
+import { isTauriRuntime } from './tauri/TauriCommandService';
+import { extractStreamingContract } from './ai-interpreter/partial-json';
 import type { Contract, ValidationWarning } from '../types/contract';
 import type { Experience, ExperienceState } from '../types/experience';
 import type { ShareableContract, BookmarkedExperience } from '../types/persistence';
@@ -68,26 +71,73 @@ export class IntegratedExperienceService {
    * Complete workflow: one composed model call returns the contract plus its
    * spec header; the blueprint shown in the tabs is projected from that
    * result, and the spec's assumptions and open questions surface as
-   * informational warnings.
+   * informational warnings. On streaming providers the app window opens as
+   * soon as the first elements parse and assembles live; the validated final
+   * contract replaces the preview when composition completes.
    */
   async createExperienceFromNaturalLanguage(
     input: string,
     options: IntegratedWorkflowOptions = {}
   ): Promise<ExperienceCreationResult> {
     try {
-      // Step 1: Compose contract + spec in a single call; project the blueprint
-      const composed = await this.aiInterpreter.compose(input);
+      const experienceId = this.generateExperienceId();
+      const windowTitle = input.length > 48 ? `${input.slice(0, 45)}...` : input;
+
+      // Step 1: Compose contract + spec in a single call; project the
+      // blueprint. Streaming partials drive the live assembly preview.
+      let windowOpened = false;
+      let opening: Promise<void> | null = null;
+      const onPartial = isTauriRuntime()
+        ? (accumulated: string) => {
+            const preview = extractStreamingContract(accumulated);
+            if (!preview) return;
+            if (!windowOpened) {
+              windowOpened = true;
+              opening = invoke('open_experience_window', {
+                experienceId,
+                contract: preview,
+                title: windowTitle
+              }).then(
+                () => undefined,
+                (error) => {
+                  console.warn('Failed to open the assembly window', error);
+                }
+              );
+              return;
+            }
+            emit('experience-contract-updated', { experienceId, contract: preview }).catch(
+              () => undefined
+            );
+          }
+        : undefined;
+
+      const composed = await this.aiInterpreter.compose(input, onPartial);
       const blueprint = BlueprintModel.fromObject(composed.blueprint);
       const contract = ContractModel.fromObject(composed.contract);
+      if (opening) await opening;
 
-      // Step 2: Create experience ID and initialize editor if needed
-      const experienceId = this.generateExperienceId();
+      // Step 2: Hand the finished app to its window: replace the assembly
+      // preview, or open the window now when nothing streamed.
+      if (isTauriRuntime()) {
+        if (windowOpened) {
+          await emit('experience-contract-updated', {
+            experienceId,
+            contract: contract.toObject()
+          }).catch(() => undefined);
+        } else {
+          await invoke('open_experience_window', {
+            experienceId,
+            contract: contract.toObject(),
+            title: contract.name || windowTitle
+          });
+        }
+      }
 
       if (options.preserveEdits) {
         await this.editor.initializeExperience(experienceId, contract);
       }
 
-      // Step 3: Render experience
+      // Step 3: Render experience (registers it with this window's runtime)
       const renderComponent = await this.runtime.renderExperience(contract, experienceId);
 
       // Step 4: Create experience object

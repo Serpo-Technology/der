@@ -37,14 +37,20 @@ export class AIInterpreterService implements AIInterpreter {
    * Creates a contract from a natural-language description in one model call
    * and projects the reviewable blueprint from the result.
    */
-  async compose(description: string): Promise<ComposedExperience> {
+  async compose(
+    description: string,
+    onPartial?: (accumulated: string) => void
+  ): Promise<ComposedExperience> {
     if (!description || description.trim().length === 0) {
       throw new Error('Invalid description: Description cannot be empty');
     }
 
     try {
       const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
-      const { contract, spec } = await contractBuilder.composeFromDescription(description);
+      const { contract, spec } = await contractBuilder.composeFromDescription(
+        description,
+        onPartial
+      );
       this.lastContractWarnings = contractBuilder.getLastWarnings();
 
       const blueprint = this.generator.deriveFromComposition(spec, contract, description);

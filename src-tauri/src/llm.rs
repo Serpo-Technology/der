@@ -1,6 +1,8 @@
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::Duration;
+use tauri::ipc::Channel;
 use tauri::AppHandle;
 
 use crate::oauth;
@@ -29,6 +31,10 @@ pub struct LlmChatRequest {
     /// concatenated text as a plain system message.
     #[serde(default)]
     pub system_blocks: Option<Vec<SystemBlock>>,
+    /// Stream deltas over the command's channel where the provider supports
+    /// it; the full content still returns at the end either way.
+    #[serde(default)]
+    pub stream: bool,
     #[serde(default)]
     pub provider: Option<String>,
     #[serde(default)]
@@ -154,20 +160,91 @@ fn build_anthropic_body(
     body
 }
 
+/// Splits complete lines off an SSE byte buffer and returns their `data:`
+/// payloads; an unterminated tail stays in the buffer so multi-byte
+/// characters split across chunks survive.
+fn drain_sse_data(buffer: &mut Vec<u8>) -> Vec<String> {
+    let mut out = Vec::new();
+    while let Some(pos) = buffer.iter().position(|b| *b == b'\n') {
+        let line: Vec<u8> = buffer.drain(..=pos).collect();
+        let line = String::from_utf8_lossy(&line);
+        let line = line.trim_end_matches(['\n', '\r']);
+        if let Some(data) = line.strip_prefix("data:") {
+            out.push(data.trim_start().to_string());
+        }
+    }
+    out
+}
+
+fn anthropic_delta_text(payload: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(payload).ok()?;
+    if value.get("type")?.as_str()? != "content_block_delta" {
+        return None;
+    }
+    value
+        .get("delta")?
+        .get("text")
+        .and_then(|t| t.as_str())
+        .map(|s| s.to_string())
+}
+
+fn openai_delta_text(payload: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(payload).ok()?;
+    value
+        .get("choices")?
+        .get(0)?
+        .get("delta")?
+        .get("content")
+        .and_then(|c| c.as_str())
+        .map(|s| s.to_string())
+}
+
+/// Reads an SSE response to completion, forwarding each extracted text delta
+/// over the channel and returning the accumulated content.
+async fn consume_sse(
+    response: reqwest::Response,
+    extract: fn(&str) -> Option<String>,
+    on_chunk: &Channel<String>,
+) -> Result<String, String> {
+    let mut stream = response.bytes_stream();
+    let mut buffer: Vec<u8> = Vec::new();
+    let mut content = String::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Stream read failed: {}", e))?;
+        buffer.extend_from_slice(&chunk);
+        for payload in drain_sse_data(&mut buffer) {
+            if payload == "[DONE]" {
+                continue;
+            }
+            if let Some(text) = extract(&payload) {
+                if !text.is_empty() {
+                    let _ = on_chunk.send(text.clone());
+                    content.push_str(&text);
+                }
+            }
+        }
+    }
+    Ok(content)
+}
+
 async fn anthropic_chat(
     auth: &AnthropicAuth,
     model: &str,
     messages: &[ChatMessage],
     system_blocks: Option<&[SystemBlock]>,
     max_tokens: u32,
+    on_chunk: Option<&Channel<String>>,
 ) -> Result<String, String> {
-    let body = build_anthropic_body(
+    let mut body = build_anthropic_body(
         matches!(auth, AnthropicAuth::Bearer(_)),
         model,
         messages,
         system_blocks,
         max_tokens,
     );
+    if on_chunk.is_some() {
+        body["stream"] = json!(true);
+    }
 
     let mut request = http_client()?
         .post("https://api.anthropic.com/v1/messages")
@@ -186,17 +263,27 @@ async fn anthropic_chat(
         .await
         .map_err(|e| format!("Anthropic request failed: {}", e))?;
     let status = response.status();
+    if status.as_u16() == 401 {
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("unauthorized: {}", error_body(status, &text)));
+    }
+    if !status.is_success() {
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("Anthropic {}", error_body(status, &text)));
+    }
+
+    if let Some(channel) = on_chunk {
+        let content = consume_sse(response, anthropic_delta_text, channel).await?;
+        if content.is_empty() {
+            return Err("Anthropic returned an empty response.".to_string());
+        }
+        return Ok(content);
+    }
+
     let text = response
         .text()
         .await
         .map_err(|e| format!("Failed to read Anthropic response: {}", e))?;
-    if status.as_u16() == 401 {
-        return Err(format!("unauthorized: {}", error_body(status, &text)));
-    }
-    if !status.is_success() {
-        return Err(format!("Anthropic {}", error_body(status, &text)));
-    }
-
     let value: Value =
         serde_json::from_str(&text).map_err(|e| format!("Unexpected Anthropic response: {}", e))?;
     if value["stop_reason"] == json!("refusal") {
@@ -227,6 +314,7 @@ async fn openai_compat_chat(
     max_tokens: u32,
     temperature: Option<f64>,
     json_mode: bool,
+    on_chunk: Option<&Channel<String>>,
 ) -> Result<String, String> {
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let mut body = json!({
@@ -243,6 +331,9 @@ async fn openai_compat_chat(
     if json_mode {
         body["response_format"] = json!({ "type": "json_object" });
     }
+    if on_chunk.is_some() {
+        body["stream"] = json!(true);
+    }
 
     let mut request = http_client()?.post(&url).header("content-type", "application/json");
     if let Some(key) = api_key {
@@ -255,14 +346,23 @@ async fn openai_compat_chat(
         .await
         .map_err(|e| format!("Request to {} failed: {}", url, e))?;
     let status = response.status();
+    if !status.is_success() {
+        let text = response.text().await.unwrap_or_default();
+        return Err(error_body(status, &text));
+    }
+
+    if let Some(channel) = on_chunk {
+        let content = consume_sse(response, openai_delta_text, channel).await?;
+        if content.is_empty() {
+            return Err("Model returned an empty response.".to_string());
+        }
+        return Ok(content);
+    }
+
     let text = response
         .text()
         .await
         .map_err(|e| format!("Failed to read response: {}", e))?;
-    if !status.is_success() {
-        return Err(error_body(status, &text));
-    }
-
     let value: Value =
         serde_json::from_str(&text).map_err(|e| format!("Unexpected response: {}", e))?;
     value["choices"][0]["message"]["content"]
@@ -344,7 +444,11 @@ async fn gemini_chat(
 }
 
 #[tauri::command]
-pub async fn llm_chat(app: AppHandle, request: LlmChatRequest) -> Result<LlmChatResponse, String> {
+pub async fn llm_chat(
+    app: AppHandle,
+    request: LlmChatRequest,
+    on_chunk: Channel<String>,
+) -> Result<LlmChatResponse, String> {
     if request.messages.is_empty() {
         return Err("No messages to send.".to_string());
     }
@@ -370,6 +474,8 @@ pub async fn llm_chat(app: AppHandle, request: LlmChatRequest) -> Result<LlmChat
     let json_mode = request.json_mode.unwrap_or(false);
     let base_url = request.base_url.or(stored.base_url);
 
+    let chunk_sink = if request.stream { Some(&on_chunk) } else { None };
+
     // Providers without system-block support get the structured prompt as one
     // plain system message ahead of the conversation.
     let merged: Vec<ChatMessage>;
@@ -393,18 +499,18 @@ pub async fn llm_chat(app: AppHandle, request: LlmChatRequest) -> Result<LlmChat
         "claude-subscription" => {
             let token = oauth::claude_access_token(&app, false).await?;
             let auth = AnthropicAuth::Bearer(token);
-            match anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens).await {
+            match anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens, chunk_sink).await {
                 Err(e) if e.starts_with("unauthorized") => {
                     let token = oauth::claude_access_token(&app, true).await?;
                     let auth = AnthropicAuth::Bearer(token);
-                    anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens).await?
+                    anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens, chunk_sink).await?
                 }
                 other => other?,
             }
         }
         "anthropic" => {
             let auth = AnthropicAuth::ApiKey(api_key(&app, "anthropic")?);
-            anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens).await?
+            anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens, chunk_sink).await?
         }
         "deepseek" => {
             let key = api_key(&app, "deepseek")?;
@@ -417,6 +523,7 @@ pub async fn llm_chat(app: AppHandle, request: LlmChatRequest) -> Result<LlmChat
                 max_tokens,
                 temperature,
                 json_mode,
+                chunk_sink,
             )
             .await?
         }
@@ -431,6 +538,7 @@ pub async fn llm_chat(app: AppHandle, request: LlmChatRequest) -> Result<LlmChat
                 max_tokens,
                 temperature,
                 json_mode,
+                chunk_sink,
             )
             .await?
         }
@@ -447,6 +555,7 @@ pub async fn llm_chat(app: AppHandle, request: LlmChatRequest) -> Result<LlmChat
                 max_tokens,
                 temperature,
                 json_mode,
+                chunk_sink,
             )
             .await?
         }
@@ -516,6 +625,31 @@ mod tests {
         assert!(system[0].get("cache_control").is_none());
         assert_eq!(system[1]["text"], "BASE");
         assert_eq!(system[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn sse_buffer_drains_complete_lines_and_keeps_the_tail() {
+        let mut buffer = b"event: x\ndata: {\"a\":1}\n\ndata: par".to_vec();
+        let drained = drain_sse_data(&mut buffer);
+        assert_eq!(drained, vec!["{\"a\":1}".to_string()]);
+        assert_eq!(buffer, b"data: par".to_vec());
+
+        buffer.extend_from_slice(b"tial\n");
+        let drained = drain_sse_data(&mut buffer);
+        assert_eq!(drained, vec!["partial".to_string()]);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn provider_delta_extractors_pull_text_only_from_text_deltas() {
+        let anthropic =
+            r#"{"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}"#;
+        assert_eq!(anthropic_delta_text(anthropic), Some("hi".to_string()));
+        assert_eq!(anthropic_delta_text(r#"{"type":"message_start"}"#), None);
+
+        let openai = r#"{"choices":[{"delta":{"content":"yo"}}]}"#;
+        assert_eq!(openai_delta_text(openai), Some("yo".to_string()));
+        assert_eq!(openai_delta_text(r#"{"choices":[{"delta":{}}]}"#), None);
     }
 
     #[test]

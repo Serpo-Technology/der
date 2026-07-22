@@ -65,6 +65,12 @@ export interface GenerateJsonOptions<T = unknown> {
    * to apply degradations; mutations only survive when no problems remain.
    */
   semanticCheck?: (value: T) => string[];
+  /**
+   * Receives the accumulated raw response text as the model streams it
+   * (throttled), for best-effort progressive previews. Runs on every
+   * attempt, including the repair round.
+   */
+  onPartial?: (accumulated: string) => void;
 }
 
 export async function generateValidatedJson<S extends z.ZodType>(
@@ -74,11 +80,29 @@ export async function generateValidatedJson<S extends z.ZodType>(
   options: GenerateJsonOptions<z.output<S>>
 ): Promise<z.output<S>> {
   const attempt = async (conversation: LLMMessage[]) => {
+    const onPartial = options.onPartial;
+    let accumulated = '';
+    let lastFlush = 0;
+    const onChunk = onPartial
+      ? (delta: string) => {
+          accumulated += delta;
+          const now = Date.now();
+          if (now - lastFlush >= 150) {
+            lastFlush = now;
+            onPartial(accumulated);
+          }
+        }
+      : undefined;
+
     const response = await llm.sendMessage(conversation, {
       jsonMode: true,
       maxTokens: options.maxTokens,
       systemBlocks: options.systemBlocks,
+      onChunk,
     });
+    if (onPartial && accumulated.length > 0) {
+      onPartial(accumulated);
+    }
     return response.content;
   };
 

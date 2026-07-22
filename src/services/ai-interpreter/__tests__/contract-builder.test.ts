@@ -86,6 +86,33 @@ describe('ContractBuilder', () => {
     vi.restoreAllMocks();
   });
 
+  describe('composeFromDescription streaming', () => {
+    it('feeds accumulated text to onPartial while the model streams', async () => {
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      const full = JSON.stringify({ spec: { goal: 'x' }, contract: JSON.parse(contractJson()) });
+      vi.mocked(mockLLMClient.sendMessage).mockImplementationOnce(async (_messages, options) => {
+        const step = Math.ceil(full.length / 4);
+        for (let i = 0; i < full.length; i += step) {
+          options?.onChunk?.(full.slice(i, i + step));
+        }
+        return { content: full };
+      });
+
+      const partials: string[] = [];
+      const { contract } = await builder.composeFromDescription('an app', (accumulated) =>
+        partials.push(accumulated)
+      );
+
+      expect(contract.name).toBe('sample-app');
+      expect(partials.length).toBeGreaterThan(0);
+      // Accumulations only grow and the last one is the full response.
+      for (let i = 1; i < partials.length; i++) {
+        expect(partials[i].startsWith(partials[i - 1])).toBe(true);
+      }
+      expect(partials[partials.length - 1]).toBe(full);
+    });
+  });
+
   describe('generateFromBlueprint', () => {
     it('should generate a contract from the LLM response', async () => {
       mockLLMResponse(JSON.stringify(SAMPLE_TODO_CONTRACT));
