@@ -157,7 +157,7 @@ const BlueprintSchemaHelp: React.FC = () => (
       "purpose": "string - Purpose description",
       "inputs": ["string"] - Input parameters,
       "outputs": ["string"] - Output parameters,
-      "executionType": "remote|local|repository"
+      "executionType": "builtin|remote|local|repository"
     }
   ],
   "ambiguities": [

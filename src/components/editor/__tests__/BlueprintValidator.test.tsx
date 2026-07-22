@@ -279,11 +279,27 @@ describe('BlueprintValidator', () => {
         ]
       };
       const result = validator.validate(blueprint);
-      
+
       expect(result.isValid).toBe(false);
       expect(result.errors.some(e => e.message === 'Operation 1: Name is required')).toBe(true);
       expect(result.errors.some(e => e.message === 'Operation 2: Purpose is required')).toBe(true);
       expect(result.errors.some(e => e.message === 'Operation 3: Invalid execution type')).toBe(true);
+    });
+
+    it('accepts every execution type the pipeline emits', () => {
+      const blueprint = {
+        ...validBlueprint,
+        operations: ['builtin', 'remote', 'local', 'repository'].map((executionType, i) => ({
+          name: `op-${i}`,
+          purpose: 'Valid purpose',
+          inputs: ['input1'],
+          outputs: ['output1'],
+          executionType: executionType as any
+        }))
+      };
+      const result = validator.validate(blueprint);
+
+      expect(result.errors.filter(e => e.message.includes('Invalid execution type'))).toHaveLength(0);
     });
   });
 });

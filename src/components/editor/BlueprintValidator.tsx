@@ -182,7 +182,7 @@ export class BlueprintValidator {
           code: 'REQUIRED_FIELD'
         });
       }
-      if (!['remote', 'local', 'repository'].includes(operation.executionType)) {
+      if (!['builtin', 'remote', 'local', 'repository'].includes(operation.executionType)) {
         errors.push({
           path: `operations[${i}].executionType`,
           message: `Operation ${i + 1}: Invalid execution type`,

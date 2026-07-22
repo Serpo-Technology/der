@@ -386,7 +386,7 @@ export class ComponentRegistry {
       if (!opManifest.executionType) {
         throw new Error('Operation manifest missing executionType');
       }
-      if (!['remote', 'local', 'repository'].includes(opManifest.executionType)) {
+      if (!['builtin', 'remote', 'local', 'repository'].includes(opManifest.executionType)) {
         throw new Error(`Invalid operation executionType: ${opManifest.executionType}`);
       }
       if (!opManifest.inputs || !opManifest.outputs) {
