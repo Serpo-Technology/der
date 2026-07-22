@@ -130,7 +130,10 @@ describe('ContractBuilder', () => {
       const messages = vi.mocked(mockLLMClient.sendMessage).mock.calls[0][0];
       const system = messages.find(m => m.role === 'system')!;
       expect(system.content).toContain('Contract JSON');
-      expect(system.content).toContain('todos.add');
+      expect(system.content).toContain('list.append');
+      expect(system.content).toContain('TRANSFORMS');
+      expect(system.content).toContain('NEVER write code');
+      expect(system.content).not.toContain('todos.add');
       expect(system.content).toContain('REGISTERED CUSTOM OPERATIONS');
       expect(system.content).toContain('text.sentiment');
       const user = messages.find(m => m.role === 'user')!;
@@ -215,7 +218,7 @@ describe('ContractBuilder', () => {
       expect(console.warn).toHaveBeenCalled();
     });
 
-    it('should resolve operation execution types and drop unrunnable operations', async () => {
+    it('should resolve execution types for builtin and remote operations', async () => {
       mockLLMResponse(
         contractJson({
           elements: [
@@ -224,27 +227,14 @@ describe('ContractBuilder', () => {
               type: 'button',
               properties: {},
               dataBindings: [],
-              eventBindings: [
-                { event: 'click', operationId: 'op-ghost' },
-                { event: 'click', operationId: 'op-local' }
-              ]
+              eventBindings: [{ event: 'click', operationId: 'op-builtin' }]
             }
           ],
           operations: [
             {
               id: 'op-builtin',
               operationName: 'todos.add',
-              executionType: 'local',
-              implementation: { type: 'local', code: 'ignored' },
-              inputs: [],
-              outputs: [],
-              triggers: []
-            },
-            {
-              id: 'op-local',
-              operationName: 'custom.compute',
-              implementation: { type: 'local', code: 'return {};' },
-              inputs: [],
+              inputs: [{ name: 'title', source: 'constant', sourceId: 'hello' }],
               outputs: [],
               triggers: []
             },
@@ -255,13 +245,6 @@ describe('ContractBuilder', () => {
               inputs: [],
               outputs: [],
               triggers: []
-            },
-            {
-              id: 'op-ghost',
-              operationName: 'mystery.op',
-              inputs: [],
-              outputs: [],
-              triggers: []
             }
           ]
         })
@@ -269,19 +252,64 @@ describe('ContractBuilder', () => {
 
       const contract = await builder.generateFromBlueprint(blueprint);
 
-      expect(contract.operations.map(op => op.id)).toEqual(['op-builtin', 'op-local', 'op-remote']);
-      const [builtinOp, localOp, remoteOp] = contract.operations;
+      const [builtinOp, remoteOp] = contract.operations;
       expect(builtinOp.executionType).toBe('builtin');
       expect(builtinOp.implementation).toBeUndefined();
-      expect(localOp.executionType).toBe('local');
-      expect(localOp.implementation?.code).toBe('return {};');
       expect(remoteOp.executionType).toBe('remote');
       expect(remoteOp.implementation?.endpoint).toBe('https://api.example.com');
-      // Event bindings pointing at the dropped operation are stripped.
-      expect(contract.elements[0].eventBindings).toEqual([
-        { event: 'click', operationId: 'op-local' }
-      ]);
-      expect(console.warn).toHaveBeenCalled();
+    });
+
+    it('should reject model-authored code through the repair round', async () => {
+      const withCode = contractJson({
+        operations: [
+          {
+            id: 'op-code',
+            operationName: 'custom.compute',
+            implementation: { type: 'local', code: 'return {};' },
+            inputs: [],
+            outputs: [],
+            triggers: []
+          }
+        ]
+      });
+      vi.mocked(mockLLMClient.sendMessage)
+        .mockResolvedValueOnce({ content: withCode })
+        .mockResolvedValueOnce({ content: JSON.stringify(SAMPLE_TODO_CONTRACT) });
+
+      const contract = await builder.generateFromBlueprint(blueprint);
+
+      expect(vi.mocked(mockLLMClient.sendMessage)).toHaveBeenCalledTimes(2);
+      const repairMessage = vi.mocked(mockLLMClient.sendMessage).mock.calls[1][0].at(-1)!;
+      expect(repairMessage.role).toBe('user');
+      expect(repairMessage.content).toContain('problems');
+      expect(contract.operations.every(op => op.executionType !== 'local')).toBe(true);
+    });
+
+    it('should repair manifest violations such as unknown operations', async () => {
+      const withGhost = contractJson({
+        elements: [
+          {
+            id: 'btn',
+            type: 'button',
+            properties: {},
+            dataBindings: [],
+            eventBindings: [{ event: 'click', operationId: 'op-ghost' }]
+          }
+        ],
+        operations: [
+          { id: 'op-ghost', operationName: 'mystery.op', inputs: [], outputs: [], triggers: [] }
+        ]
+      });
+      vi.mocked(mockLLMClient.sendMessage)
+        .mockResolvedValueOnce({ content: withGhost })
+        .mockResolvedValueOnce({ content: JSON.stringify(SAMPLE_TODO_CONTRACT) });
+
+      const contract = await builder.generateFromBlueprint(blueprint);
+
+      expect(vi.mocked(mockLLMClient.sendMessage)).toHaveBeenCalledTimes(2);
+      const repairMessage = vi.mocked(mockLLMClient.sendMessage).mock.calls[1][0].at(-1)!;
+      expect(repairMessage.content).toContain('mystery.op');
+      expect(contract.name).toBe('todo-list');
     });
 
     it('should convert legacy event triggers into event bindings', async () => {
@@ -295,7 +323,7 @@ describe('ContractBuilder', () => {
               id: 'op-1',
               operationName: 'todos.add',
               executionType: 'builtin',
-              inputs: [],
+              inputs: [{ name: 'title', source: 'constant', sourceId: 'hello' }],
               outputs: [],
               triggers: [{ type: 'event', parameters: { elementId: 'btn', eventType: 'click' } }]
             }
@@ -327,8 +355,12 @@ describe('ContractBuilder', () => {
       operations: [
         {
           id: 'operation1',
-          operationName: 'testOp',
-          inputs: [],
+          operationName: 'state.set',
+          executionType: 'builtin' as const,
+          inputs: [
+            { name: 'key', source: 'constant' as const, sourceId: 'view' },
+            { name: 'value', source: 'constant' as const, sourceId: 'list' }
+          ],
           outputs: [],
           triggers: []
         }

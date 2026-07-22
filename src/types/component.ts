@@ -59,6 +59,21 @@ export interface JSONSchemaProperty {
   required?: string[];
 }
 
+export type KnobType = 'enum' | 'string' | 'number' | 'boolean';
+
+/**
+ * A declared, validated configuration knob on a part. Only enum knobs map to
+ * styling classes; string/number/boolean knobs configure behavior.
+ */
+export interface KnobSpec {
+  name: string;
+  type: KnobType;
+  /** Allowed values; required when type is 'enum'. */
+  values?: string[];
+  default?: string | number | boolean;
+  description: string;
+}
+
 export interface ComponentCriteria {
   type?: 'ui-element' | 'operation';
   capabilities?: string[];

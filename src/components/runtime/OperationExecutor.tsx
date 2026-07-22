@@ -10,8 +10,10 @@ import { tauriCommandService, OperationRequest } from '../../services/tauri/Taur
 import {
   BUILTIN_OPERATIONS,
   OperationContext,
+  assembleStructured,
   getValueAtPath,
 } from '../../services/operations/registry';
+import { applyBindingTransforms } from '../../services/operations/transforms';
 
 /** State surface the executor needs; implemented by ExperienceStateManager. */
 export interface StateAccess {
@@ -36,23 +38,6 @@ export class OperationResolutionError extends Error {
 const LOCAL_CODE_TIMEOUT_MS = 5000;
 
 type ExecType = 'builtin' | 'local' | 'remote';
-
-function applyTransform(value: unknown, transform: { type: string; parameters: Record<string, any> }): unknown {
-  switch (transform.type) {
-    case 'format':
-      if (typeof value === 'string' && transform.parameters.template) {
-        return String(transform.parameters.template).replace('{{value}}', value);
-      }
-      return value;
-    case 'map':
-      if (transform.parameters.mapping && typeof transform.parameters.mapping === 'object') {
-        return transform.parameters.mapping[String(value)] ?? value;
-      }
-      return value;
-    default:
-      return value;
-  }
-}
 
 export class OperationExecutor {
   async executeOperation(
@@ -104,7 +89,9 @@ export class OperationExecutor {
     for (const binding of operation.inputs) {
       inputs[binding.name] = this.resolveInput(binding, eventContext, state);
     }
-    return inputs;
+    // Group item./set. style inputs into objects for structured builtins.
+    const def = BUILTIN_OPERATIONS[operation.operationName];
+    return assembleStructured(inputs, def?.structuredPrefixes);
   }
 
   private resolveInput(binding: InputBinding, eventContext: EventContext, state: StateAccess): unknown {
@@ -117,7 +104,7 @@ export class OperationExecutor {
         value = state.getData(binding.sourceId);
         break;
       case 'constant':
-        value = binding.sourceId;
+        value = binding.value !== undefined ? binding.value : binding.sourceId;
         break;
       case 'item':
         value = getValueAtPath(eventContext.item, binding.sourceId);
@@ -125,10 +112,7 @@ export class OperationExecutor {
       default:
         value = undefined;
     }
-    if (binding.transform && value !== null && value !== undefined) {
-      value = applyTransform(value, binding.transform);
-    }
-    return value;
+    return applyBindingTransforms(value, binding);
   }
 
   private operationContext(state: StateAccess): OperationContext {

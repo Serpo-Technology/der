@@ -1,10 +1,14 @@
 /**
- * Builtin operation registry - real TypeScript implementations of the
- * operations that generated contracts can bind to, plus the element catalog
- * both the contract generator prompt and the runtime share.
+ * Part registry - the single source of truth for the prewritten parts a
+ * contract can compose: UI element manifests (knobs, binding surfaces, howto)
+ * and builtin operations. The contract prompt, the runtime, validation, and
+ * the repository catalog all derive from this module. Contracts configure
+ * these parts; they never carry code.
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import type { KnobSpec } from '../../types/component';
+import type { OperationBinding, UIElement } from '../../types/contract';
 
 export interface OperationContext {
   getState(key: string): unknown;
@@ -30,18 +34,50 @@ export interface BuiltinOperationDef {
   description: string;
   inputs: BuiltinIoSpec[];
   outputs: BuiltinIoSpec[];
+  /** Input-name prefixes assembled into objects, e.g. item.title -> inputs.item.title */
+  structuredPrefixes?: string[];
+  /** Short usage guide written for the model. */
+  howto?: string;
+  /** Validated usage snippet for the prompt. */
+  example?: OperationBinding;
+  /** Executable but omitted from the model-facing catalog. */
+  hidden?: boolean;
   execute: BuiltinFn;
 }
 
-export interface TodoItem {
-  id: string;
-  title: string;
-  completed: boolean;
+/** A UI part's declared capability surface. */
+export interface ElementManifest {
+  type: string;
+  description: string;
+  /** Validated configuration knobs; enum knobs map to styling classes. */
+  knobs: KnobSpec[];
+  /** Legal but unvalidated properties (className, placeholder, src...). */
+  passthroughProps?: string[];
+  /** Properties intended as dataBinding targets. */
+  bindableProps?: string[];
+  allowsChildren?: boolean;
+  /** Short usage guide written for the model. */
+  howto: string;
+  /** Validated usage snippet for the prompt. */
+  example?: UIElement;
 }
 
-function readTodos(ctx: OperationContext): TodoItem[] {
-  const value = ctx.getState('todos');
-  return Array.isArray(value) ? (value as TodoItem[]) : [];
+/** Tolerant equality across the string boundary (typed ids vs input text). */
+export function looseEquals(a: unknown, b: unknown): boolean {
+  return a === b || String(a) === String(b);
+}
+
+/** Resolves a dot-path into a value; an empty path returns the value itself. */
+export function getValueAtPath(value: unknown, path: string): unknown {
+  if (!path) return value;
+  let current: unknown = value;
+  for (const segment of path.split('.')) {
+    if (current === null || current === undefined || typeof current !== 'object') {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
 }
 
 function newId(): string {
@@ -51,53 +87,234 @@ function newId(): string {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function readList(ctx: OperationContext, key: unknown): Record<string, unknown>[] {
+  const value = ctx.getState(String(key ?? ''));
+  return Array.isArray(value) ? (value as Record<string, unknown>[]) : [];
+}
+
+function isBlank(value: unknown): boolean {
+  return value === undefined || value === null || String(value).trim() === '';
+}
+
+/**
+ * Groups prefixed inputs into objects: with prefixes ['item'], the resolved
+ * inputs {key, 'item.title': 'x'} become {key, item: {title: 'x'}}. The field
+ * name is everything after the first prefix dot (nesting is not supported).
+ */
+export function assembleStructured(
+  raw: Record<string, unknown>,
+  prefixes: string[] | undefined
+): Record<string, unknown> {
+  if (!prefixes || prefixes.length === 0) return raw;
+  const flat: Record<string, unknown> = {};
+  const groups: Record<string, Record<string, unknown>> = {};
+  for (const [name, value] of Object.entries(raw)) {
+    const prefix = prefixes.find((p) => name.startsWith(`${p}.`));
+    if (prefix) {
+      (groups[prefix] ??= {})[name.slice(prefix.length + 1)] = value;
+    } else {
+      flat[name] = value;
+    }
+  }
+  return { ...flat, ...groups };
+}
+
+export interface TodoItem {
+  id: string;
+  title: string;
+  completed: boolean;
+}
+
 export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
-  'todos.add': {
-    name: 'todos.add',
-    description:
-      "Appends a todo {id, title, completed:false} to the 'todos' state array. Ignores empty titles. Returns {todos, todo, reset:''} - bind the 'reset' output to the entry input (target 'ui-element') to clear it.",
-    inputs: [{ name: 'title', type: 'string', required: true, description: 'Todo text' }],
-    outputs: [
-      { name: 'todos', type: 'array', description: 'The updated todos array' },
-      { name: 'todo', type: 'object', description: 'The created todo, or null for empty input' },
-      { name: 'reset', type: 'string', description: "Always ''; use to clear the entry input" },
+  'state.set': {
+    name: 'state.set',
+    description: 'Writes a value to a state key.',
+    inputs: [
+      { name: 'key', type: 'string', required: true, description: 'State key to write' },
+      { name: 'value', type: 'any', required: true, description: 'Value to store' },
     ],
+    outputs: [{ name: 'value', type: 'any', description: 'The stored value' }],
+    howto:
+      'Use for toggles and view switching: bind "key" and "value" as constants (use the typed "value" field for booleans and numbers), then show panels with visibleWhen equals on that key.',
+    example: {
+      id: 'op-show-done',
+      operationName: 'state.set',
+      executionType: 'builtin',
+      inputs: [
+        { name: 'key', source: 'constant', sourceId: 'view' },
+        { name: 'value', source: 'constant', sourceId: 'done', value: 'done' },
+      ],
+      outputs: [],
+      triggers: [],
+    },
     execute: (inputs, ctx) => {
-      const title = String(inputs.title ?? '').trim();
-      const todos = readTodos(ctx);
-      if (!title) {
-        return { todos, todo: null, reset: '' };
+      const key = String(inputs.key ?? '');
+      ctx.setState(key, inputs.value);
+      return { value: inputs.value };
+    },
+  },
+  'counter.add': {
+    name: 'counter.add',
+    description: 'Adds an amount (default 1) to a numeric state key.',
+    inputs: [
+      { name: 'key', type: 'string', required: true, description: 'State key holding the number' },
+      { name: 'amount', type: 'number', required: false, description: 'Amount to add (default 1)' },
+    ],
+    outputs: [{ name: 'value', type: 'number', description: 'The new value' }],
+    howto: 'Seed the key in initialState. Negative amounts subtract.',
+    execute: (inputs, ctx) => {
+      const key = String(inputs.key ?? '');
+      const current = Number(ctx.getState(key)) || 0;
+      const amount = inputs.amount === undefined ? 1 : Number(inputs.amount) || 0;
+      const next = current + amount;
+      ctx.setState(key, next);
+      return { value: next };
+    },
+  },
+  'list.append': {
+    name: 'list.append',
+    description:
+      'Appends an item to an array state key. Item fields come from inputs named item.<field>; the part generates the id itself.',
+    inputs: [
+      { name: 'key', type: 'string', required: true, description: 'State key of the array' },
+      {
+        name: 'item.<field>',
+        type: 'any',
+        required: true,
+        description: 'One input per item field, e.g. item.title, item.amount',
+      },
+    ],
+    outputs: [
+      { name: 'list', type: 'array', description: 'The updated array' },
+      { name: 'item', type: 'object', description: 'The created item, or null when all fields were empty' },
+      { name: 'reset', type: 'string', description: "Always ''; route to entry inputs to clear them" },
+    ],
+    structuredPrefixes: ['item'],
+    howto:
+      'Never supply item.id; it is generated. Skips silently when every item field is blank. Use the parseNumber transform on numeric fields fed from text inputs.',
+    example: {
+      id: 'op-add',
+      operationName: 'list.append',
+      executionType: 'builtin',
+      inputs: [
+        { name: 'key', source: 'constant', sourceId: 'expenses' },
+        { name: 'item.description', source: 'ui-element', sourceId: 'desc-in' },
+        {
+          name: 'item.amount',
+          source: 'ui-element',
+          sourceId: 'amount-in',
+          transforms: [{ type: 'parseNumber', parameters: {} }],
+        },
+      ],
+      outputs: [
+        { name: 'reset', target: 'ui-element', targetId: 'desc-in' },
+        { name: 'reset', target: 'ui-element', targetId: 'amount-in' },
+      ],
+      triggers: [],
+    },
+    execute: (inputs, ctx) => {
+      const key = String(inputs.key ?? '');
+      const list = readList(ctx, key);
+      const fields =
+        inputs.item && typeof inputs.item === 'object'
+          ? { ...(inputs.item as Record<string, unknown>) }
+          : {};
+      const meaningful = Object.entries(fields).filter(([name]) => name !== 'id');
+      if (meaningful.length === 0 || meaningful.every(([, value]) => isBlank(value))) {
+        return { list, item: null, reset: '' };
       }
-      const todo: TodoItem = { id: newId(), title, completed: false };
-      const next = [...todos, todo];
-      ctx.setState('todos', next);
-      return { todos: next, todo, reset: '' };
+      const item = { ...fields, id: newId() };
+      const next = [...list, item];
+      ctx.setState(key, next);
+      return { list: next, item, reset: '' };
     },
   },
-  'todos.toggle': {
-    name: 'todos.toggle',
-    description: "Flips 'completed' on the todo with the given id in the 'todos' state array.",
-    inputs: [{ name: 'id', type: 'string', required: true, description: 'Todo id' }],
-    outputs: [{ name: 'todos', type: 'array', description: 'The updated todos array' }],
+  'list.updateWhere': {
+    name: 'list.updateWhere',
+    description:
+      'Updates matching items in an array state key. Fields to write come from inputs named set.<field>.',
+    inputs: [
+      { name: 'key', type: 'string', required: true, description: 'State key of the array' },
+      { name: 'field', type: 'string', required: false, description: "Match field (default 'id')" },
+      { name: 'value', type: 'any', required: true, description: 'Value the match field must equal' },
+      { name: 'set.<field>', type: 'any', required: true, description: 'One input per field to write' },
+    ],
+    outputs: [
+      { name: 'list', type: 'array', description: 'The updated array' },
+      { name: 'count', type: 'number', description: 'How many items matched' },
+    ],
+    structuredPrefixes: ['set'],
+    howto: "Typical row edit: value from {source: 'item', sourceId: 'id'}.",
     execute: (inputs, ctx) => {
-      const id = String(inputs.id ?? '');
-      const next = readTodos(ctx).map((todo) =>
-        todo.id === id ? { ...todo, completed: !todo.completed } : todo
+      const key = String(inputs.key ?? '');
+      const field = isBlank(inputs.field) ? 'id' : String(inputs.field);
+      const updates =
+        inputs.set && typeof inputs.set === 'object'
+          ? (inputs.set as Record<string, unknown>)
+          : {};
+      let count = 0;
+      const next = readList(ctx, key).map((item) => {
+        if (looseEquals(getValueAtPath(item, field), inputs.value)) {
+          count++;
+          return { ...item, ...updates };
+        }
+        return item;
+      });
+      ctx.setState(key, next);
+      return { list: next, count };
+    },
+  },
+  'list.removeWhere': {
+    name: 'list.removeWhere',
+    description: 'Removes matching items from an array state key.',
+    inputs: [
+      { name: 'key', type: 'string', required: true, description: 'State key of the array' },
+      { name: 'field', type: 'string', required: false, description: "Match field (default 'id')" },
+      { name: 'value', type: 'any', required: true, description: 'Value the match field must equal' },
+    ],
+    outputs: [{ name: 'list', type: 'array', description: 'The updated array' }],
+    howto: "Typical row delete: value from {source: 'item', sourceId: 'id'}.",
+    example: {
+      id: 'op-delete',
+      operationName: 'list.removeWhere',
+      executionType: 'builtin',
+      inputs: [
+        { name: 'key', source: 'constant', sourceId: 'expenses' },
+        { name: 'value', source: 'item', sourceId: 'id' },
+      ],
+      outputs: [],
+      triggers: [],
+    },
+    execute: (inputs, ctx) => {
+      const key = String(inputs.key ?? '');
+      const field = isBlank(inputs.field) ? 'id' : String(inputs.field);
+      const next = readList(ctx, key).filter(
+        (item) => !looseEquals(getValueAtPath(item, field), inputs.value)
       );
-      ctx.setState('todos', next);
-      return { todos: next };
+      ctx.setState(key, next);
+      return { list: next };
     },
   },
-  'todos.remove': {
-    name: 'todos.remove',
-    description: "Removes the todo with the given id from the 'todos' state array.",
-    inputs: [{ name: 'id', type: 'string', required: true, description: 'Todo id' }],
-    outputs: [{ name: 'todos', type: 'array', description: 'The updated todos array' }],
+  'list.toggleField': {
+    name: 'list.toggleField',
+    description: 'Flips a boolean field on the matching item of an array state key.',
+    inputs: [
+      { name: 'key', type: 'string', required: true, description: 'State key of the array' },
+      { name: 'id', type: 'any', required: true, description: 'Id of the item to toggle' },
+      { name: 'field', type: 'string', required: false, description: "Boolean field (default 'completed')" },
+    ],
+    outputs: [{ name: 'list', type: 'array', description: 'The updated array' }],
+    howto: "Typical row toggle: id from {source: 'item', sourceId: 'id'}.",
     execute: (inputs, ctx) => {
-      const id = String(inputs.id ?? '');
-      const next = readTodos(ctx).filter((todo) => todo.id !== id);
-      ctx.setState('todos', next);
-      return { todos: next };
+      const key = String(inputs.key ?? '');
+      const field = isBlank(inputs.field) ? 'completed' : String(inputs.field);
+      const next = readList(ctx, key).map((item) =>
+        looseEquals(getValueAtPath(item, 'id'), inputs.id)
+          ? { ...item, [field]: !item[field] }
+          : item
+      );
+      ctx.setState(key, next);
+      return { list: next };
     },
   },
   'math.add': {
@@ -108,7 +325,8 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       { name: 'b', type: 'number', required: true },
     ],
     outputs: [{ name: 'result', type: 'number' }],
-    execute: (inputs) => ({ result: Number(inputs.a) + Number(inputs.b) }),
+    howto: 'Pure calculation; write the result to state with an OutputBinding when it should display.',
+    execute: (inputs) => ({ result: (Number(inputs.a) || 0) + (Number(inputs.b) || 0) }),
   },
   'http.get': {
     name: 'http.get',
@@ -116,6 +334,7 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       'Fetches JSON from an http(s) URL. Returns {response}. Route the response with an OutputBinding into state.',
     inputs: [{ name: 'url', type: 'string', required: true, description: 'http(s) URL' }],
     outputs: [{ name: 'response', type: 'object' }],
+    howto: 'Route the response into a state key, then bind display elements to that key (pick/format transforms help).',
     execute: async (inputs) => {
       const url = String(inputs.url ?? '');
       if (!/^https?:\/\//.test(url)) {
@@ -139,30 +358,245 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       return { response: result.data };
     },
   },
+
+  // Compat parts for previously saved contracts; hidden from the catalog.
+  'todos.add': {
+    name: 'todos.add',
+    description: "Appends a todo {id, title, completed:false} to the 'todos' state array.",
+    inputs: [{ name: 'title', type: 'string', required: true, description: 'Todo text' }],
+    outputs: [
+      { name: 'todos', type: 'array', description: 'The updated todos array' },
+      { name: 'todo', type: 'object', description: 'The created todo, or null for empty input' },
+      { name: 'reset', type: 'string', description: "Always ''; use to clear the entry input" },
+    ],
+    hidden: true,
+    execute: (inputs, ctx) => {
+      const title = String(inputs.title ?? '').trim();
+      const todos = readList(ctx, 'todos') as unknown as TodoItem[];
+      if (!title) {
+        return { todos, todo: null, reset: '' };
+      }
+      const todo: TodoItem = { id: newId(), title, completed: false };
+      const next = [...todos, todo];
+      ctx.setState('todos', next);
+      return { todos: next, todo, reset: '' };
+    },
+  },
+  'todos.toggle': {
+    name: 'todos.toggle',
+    description: "Flips 'completed' on the todo with the given id in the 'todos' state array.",
+    inputs: [{ name: 'id', type: 'string', required: true, description: 'Todo id' }],
+    outputs: [{ name: 'todos', type: 'array', description: 'The updated todos array' }],
+    hidden: true,
+    execute: (inputs, ctx) => {
+      const next = (readList(ctx, 'todos') as unknown as TodoItem[]).map((todo) =>
+        looseEquals(todo.id, inputs.id) ? { ...todo, completed: !todo.completed } : todo
+      );
+      ctx.setState('todos', next);
+      return { todos: next };
+    },
+  },
+  'todos.remove': {
+    name: 'todos.remove',
+    description: "Removes the todo with the given id from the 'todos' state array.",
+    inputs: [{ name: 'id', type: 'string', required: true, description: 'Todo id' }],
+    outputs: [{ name: 'todos', type: 'array', description: 'The updated todos array' }],
+    hidden: true,
+    execute: (inputs, ctx) => {
+      const next = (readList(ctx, 'todos') as unknown as TodoItem[]).filter(
+        (todo) => !looseEquals(todo.id, inputs.id)
+      );
+      ctx.setState('todos', next);
+      return { todos: next };
+    },
+  },
+};
+
+const SPACING_VALUES = ['0', '4', '8', '12', '16', '24'];
+
+export const ELEMENT_MANIFESTS: Record<string, ElementManifest> = {
+  text: {
+    type: 'text',
+    description: 'Text content.',
+    knobs: [
+      {
+        name: 'role',
+        type: 'enum',
+        values: ['title', 'subtitle', 'body', 'caption', 'label'],
+        default: 'body',
+        description: 'Typographic role',
+      },
+    ],
+    passthroughProps: ['content', 'className'],
+    bindableProps: ['content'],
+    howto:
+      'Bind "content" from state or item; use transform pipelines for derived text (filterBy then count, sum then round then format).',
+    example: {
+      id: 'items-left',
+      type: 'text',
+      properties: { role: 'caption' },
+      dataBindings: [
+        {
+          property: 'content',
+          source: 'state',
+          sourceId: 'todos',
+          transforms: [
+            { type: 'filterBy', parameters: { field: 'completed', value: 'false' } },
+            { type: 'count', parameters: {} },
+            { type: 'format', parameters: { template: '{{value}} items left' } },
+          ],
+        },
+      ],
+      eventBindings: [],
+    },
+  },
+  button: {
+    type: 'button',
+    description: 'Clickable button.',
+    knobs: [
+      {
+        name: 'variant',
+        type: 'enum',
+        values: ['default', 'primary', 'danger', 'ghost'],
+        default: 'default',
+        description: 'Visual emphasis',
+      },
+      {
+        name: 'size',
+        type: 'enum',
+        values: ['sm', 'md', 'lg'],
+        default: 'md',
+        description: 'Button size',
+      },
+    ],
+    passthroughProps: ['text', 'disabled', 'className'],
+    howto: 'Label via the "text" property; wire clicks with eventBindings. One primary button per view.',
+  },
+  input: {
+    type: 'input',
+    description: 'Text input, auto-controlled by the runtime.',
+    knobs: [
+      { name: 'label', type: 'string', description: 'Optional label rendered above the field' },
+    ],
+    passthroughProps: ['placeholder', 'type', 'className'],
+    howto:
+      'Give it an id and NEVER bind its value; operations read it with an InputBinding {source: "ui-element", sourceId: "<id>"}. Not allowed inside list children.',
+  },
+  container: {
+    type: 'container',
+    description: 'Layout container for children.',
+    knobs: [
+      { name: 'direction', type: 'enum', values: ['row', 'column'], default: 'row', description: 'Flex direction' },
+      { name: 'gap', type: 'enum', values: SPACING_VALUES, default: '8', description: 'Gap between children (px)' },
+      {
+        name: 'align',
+        type: 'enum',
+        values: ['start', 'center', 'end', 'stretch'],
+        default: 'center',
+        description: 'Cross-axis alignment',
+      },
+      {
+        name: 'justify',
+        type: 'enum',
+        values: ['start', 'center', 'end', 'between'],
+        default: 'start',
+        description: 'Main-axis distribution',
+      },
+      { name: 'padding', type: 'enum', values: SPACING_VALUES, default: '0', description: 'Inner padding (px)' },
+    ],
+    passthroughProps: ['className'],
+    allowsChildren: true,
+    howto: 'Group related elements; use direction "column" for stacked sections and "row" for toolbars.',
+  },
+  list: {
+    type: 'list',
+    description: 'Repeats its children once per entry of the bound "items" array.',
+    knobs: [
+      { name: 'emptyText', type: 'string', description: 'Text shown when the array is empty' },
+    ],
+    passthroughProps: ['className'],
+    bindableProps: ['items'],
+    allowsChildren: true,
+    howto:
+      'Bind "items" from state (filterBy/sortBy pipelines allowed). Children are the row template; read entry fields with source "item". No input elements inside.',
+  },
+  form: {
+    type: 'form',
+    description: 'Form wrapper; submit events get preventDefault.',
+    knobs: [],
+    passthroughProps: ['className'],
+    allowsChildren: true,
+    howto: 'Wrap an entry row to make Enter submit; wire {"event": "submit"} to the same operation as the button.',
+  },
+  image: {
+    type: 'image',
+    description: 'Image.',
+    knobs: [],
+    passthroughProps: ['src', 'alt', 'className'],
+    bindableProps: ['src'],
+    howto: 'Set "src" and "alt".',
+  },
+  link: {
+    type: 'link',
+    description: 'Hyperlink.',
+    knobs: [],
+    passthroughProps: ['href', 'text', 'className'],
+    howto: 'Set "href" and "text".',
+  },
+  select: {
+    type: 'select',
+    description: 'Dropdown, auto-controlled by the runtime.',
+    knobs: [
+      { name: 'label', type: 'string', description: 'Optional label rendered above the field' },
+      { name: 'placeholder', type: 'string', description: 'Shown while nothing is selected' },
+    ],
+    passthroughProps: ['className'],
+    bindableProps: ['options'],
+    howto:
+      'Bind "options" as ["a","b"] or [{"value","label"}] (state or constant with a typed value). Operations read the selection via {source: "ui-element", sourceId: "<id>"}.',
+  },
+  checkbox: {
+    type: 'checkbox',
+    description: 'Checkbox.',
+    knobs: [{ name: 'label', type: 'string', description: 'Text rendered beside the box' }],
+    passthroughProps: ['className'],
+    bindableProps: ['checked'],
+    howto:
+      'Standalone: auto-controlled, read via {source: "ui-element"}. Inside list rows: bind "checked" from {source: "item"} and wire {"event": "change"} to list.toggleField.',
+  },
+  progress: {
+    type: 'progress',
+    description: 'Progress bar.',
+    knobs: [{ name: 'max', type: 'number', default: 100, description: 'Value at 100%' }],
+    passthroughProps: ['className'],
+    bindableProps: ['value'],
+    howto: 'Bind "value" from state (sum/count pipelines work well).',
+  },
+  divider: {
+    type: 'divider',
+    description: 'Horizontal separator.',
+    knobs: [],
+    passthroughProps: ['className'],
+    howto: 'Use between sections.',
+  },
 };
 
 /**
- * Element types the runtime renders natively, with the properties the
- * generator may set. Anything else falls back to a plain container.
+ * Legacy prompt-catalog view kept for compatibility; prefer ELEMENT_MANIFESTS.
  */
-export const ELEMENT_CATALOG: Record<string, { description: string; properties: string[] }> = {
-  text: { description: 'Text content', properties: ['content'] },
-  button: { description: 'Clickable button', properties: ['text', 'disabled'] },
-  input: {
-    description:
-      'Text input. Auto-controlled by the runtime: never bind its own value; operations read it via an InputBinding {source:"ui-element", sourceId:"<element id>"}.',
-    properties: ['placeholder', 'defaultValue', 'type'],
-  },
-  container: { description: 'Layout container for children', properties: [] },
-  list: {
-    description:
-      'Repeats its children once per item of the array bound to the "items" property. Inside the children, use bindings with source "item".',
-    properties: ['items (bind via dataBindings)'],
-  },
-  form: { description: 'Form wrapper; submit events get preventDefault', properties: [] },
-  image: { description: 'Image', properties: ['src', 'alt'] },
-  link: { description: 'Hyperlink', properties: ['href', 'text'] },
-};
+export const ELEMENT_CATALOG: Record<string, { description: string; properties: string[] }> =
+  Object.fromEntries(
+    Object.values(ELEMENT_MANIFESTS).map((manifest) => [
+      manifest.type,
+      {
+        description: manifest.description,
+        properties: [
+          ...manifest.knobs.map((knob) => knob.name),
+          ...(manifest.passthroughProps ?? []),
+        ],
+      },
+    ])
+  );
 
 /** Plain HTML tags the renderer also accepts as element types. */
 export const INTRINSIC_ELEMENT_TYPES = new Set([
@@ -191,18 +625,5 @@ export const INTRINSIC_ELEMENT_TYPES = new Set([
 ]);
 
 export function isKnownElementType(type: string): boolean {
-  return type in ELEMENT_CATALOG || INTRINSIC_ELEMENT_TYPES.has(type);
-}
-
-/** Resolves a dot-path into a value; an empty path returns the value itself. */
-export function getValueAtPath(value: unknown, path: string): unknown {
-  if (!path) return value;
-  let current: unknown = value;
-  for (const segment of path.split('.')) {
-    if (current === null || current === undefined || typeof current !== 'object') {
-      return undefined;
-    }
-    current = (current as Record<string, unknown>)[segment];
-  }
-  return current;
+  return type in ELEMENT_MANIFESTS || INTRINSIC_ELEMENT_TYPES.has(type);
 }

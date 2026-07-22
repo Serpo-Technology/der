@@ -3,16 +3,28 @@
  *
  * Conventions the renderer implements:
  * - input-like elements are auto-controlled: their value lives in state under
- *   `element_${id}` and every keystroke writes it back;
+ *   `element_${id}` and every change writes it back (skipped inside list
+ *   templates, where one key would be shared across rows);
  * - a `list` element with children repeats them per entry of its bound
  *   `items` array, exposing the entry to bindings with source 'item';
+ * - `visibleWhen` conditions gate rendering declaratively;
+ * - manifest knobs map to `type-knob-value` classes; invalid enum values
+ *   normalize to the manifest default;
  * - event bindings call operations with the current item as event context.
  */
 
 import React from 'react';
-import { UIElement, DataBinding, EventBinding } from '../../types/contract';
+import { UIElement, DataBinding, EventBinding, VisibilityCondition } from '../../types/contract';
 import { ExperienceState } from '../../types/experience';
-import { getValueAtPath } from '../../services/operations/registry';
+import {
+  ELEMENT_MANIFESTS,
+  getValueAtPath,
+  looseEquals,
+} from '../../services/operations/registry';
+import {
+  applyBindingTransforms,
+  applyTransformPipeline,
+} from '../../services/operations/transforms';
 import type { EventContext } from './OperationExecutor';
 
 // Standard UI component registry
@@ -24,7 +36,11 @@ const UI_COMPONENTS = {
   'list': ListComponent,
   'form': FormComponent,
   'image': ImageComponent,
-  'link': LinkComponent
+  'link': LinkComponent,
+  'select': SelectComponent,
+  'checkbox': CheckboxComponent,
+  'progress': ProgressComponent,
+  'divider': DividerComponent
 };
 
 // Supported intrinsic HTML tags for 1:1 contract rendering
@@ -32,7 +48,7 @@ const INTRINSIC_TAGS = new Set([
   'div','span','p','button','input','form','ul','ol','li','img','a','label','section','header','footer','main','nav','article','aside','h1','h2','h3','h4','h5','h6','textarea','select','option'
 ]);
 
-const INPUT_LIKE_TYPES = new Set(['input', 'textarea', 'select']);
+const INPUT_LIKE_TYPES = new Set(['input', 'textarea', 'select', 'checkbox']);
 
 export interface ItemScope {
   item: unknown;
@@ -73,6 +89,10 @@ export class ComponentRenderer {
     onOperationExecute: OperationExecuteHandler,
     options: RenderOptions = {}
   ): React.ReactElement {
+    if (!this.isVisible(element, experienceState, options.scope)) {
+      return <React.Fragment key={element.id} />;
+    }
+
     const resolvedProps = this.resolveDataBindings(element, experienceState, options.scope);
     const eventHandlers = this.createEventHandlers(element, onOperationExecute, options.scope);
 
@@ -83,6 +103,7 @@ export class ComponentRenderer {
       'data-element-id': element.id
     };
 
+    this.applyKnobs(element, finalProps);
     this.applyControlledInput(element, experienceState, finalProps, options);
 
     // A list with children repeats them per item of the bound array.
@@ -112,13 +133,97 @@ export class ComponentRenderer {
     if (typeof element.type === 'string' && INTRINSIC_TAGS.has(element.type)) {
       const { content, text, children: _ignored, ...rest } = finalProps as any;
       const children = [] as any[];
-      if (content || text) children.push(content ?? text);
+      if (content ?? text) children.push(content ?? text);
       children.push(renderChildren());
       return React.createElement(element.type, { key: element.id, ...rest }, children.length > 0 ? children : undefined);
     }
 
     // Unknown custom component type fallback
     return <UnknownComponent key={element.id} element={element} />;
+  }
+
+  /** Evaluates the element's visibility conditions (an array means AND). */
+  private isVisible(
+    element: UIElement,
+    experienceState: ExperienceState,
+    scope?: ItemScope
+  ): boolean {
+    const raw = element.visibleWhen;
+    if (!raw) return true;
+    const conditions = Array.isArray(raw) ? raw : [raw];
+    return conditions.every(condition => this.evaluateCondition(condition, experienceState, scope));
+  }
+
+  private evaluateCondition(
+    condition: VisibilityCondition,
+    experienceState: ExperienceState,
+    scope?: ItemScope
+  ): boolean {
+    const read =
+      condition.source === 'state'
+        ? experienceState.data[condition.sourceId]
+        : getValueAtPath(scope?.item, condition.sourceId);
+    const value = applyTransformPipeline(read, condition.transforms);
+
+    switch (condition.operator) {
+      case 'truthy':
+        return Boolean(value);
+      case 'falsy':
+        return !value;
+      case 'empty':
+        return Array.isArray(value)
+          ? value.length === 0
+          : value === null || value === undefined || String(value) === '';
+      case 'notEmpty':
+        return Array.isArray(value)
+          ? value.length > 0
+          : !(value === null || value === undefined || String(value) === '');
+      case 'equals':
+        return looseEquals(value, condition.value);
+      case 'notEquals':
+        return !looseEquals(value, condition.value);
+      case 'gt':
+        return Number(value) > Number(condition.value);
+      case 'gte':
+        return Number(value) >= Number(condition.value);
+      case 'lt':
+        return Number(value) < Number(condition.value);
+      case 'lte':
+        return Number(value) <= Number(condition.value);
+      default:
+        return true;
+    }
+  }
+
+  /**
+   * Maps manifest knobs to `type-knob-value` classes. Enum knobs are stripped
+   * from the DOM spread (React would warn) and invalid values normalize to
+   * the manifest default. String/number knobs stay as props; the part
+   * components destructure them away from the DOM.
+   */
+  private applyKnobs(element: UIElement, finalProps: Record<string, any>): void {
+    const manifest = ELEMENT_MANIFESTS[element.type];
+    if (!manifest) return;
+
+    const classes: string[] = [];
+    for (const knob of manifest.knobs) {
+      if (knob.type !== 'enum') continue;
+      let value = finalProps[knob.name] ?? knob.default;
+      if (value !== undefined && !(knob.values ?? []).includes(String(value))) {
+        console.warn(
+          `Element ${element.id}: "${value}" is not a valid ${knob.name}; using "${knob.default}"`
+        );
+        value = knob.default;
+      }
+      delete finalProps[knob.name];
+      if (value !== undefined) {
+        classes.push(`${element.type}-${knob.name}-${value}`);
+      }
+    }
+
+    if (classes.length > 0) {
+      finalProps.className = [finalProps.className, ...classes].filter(Boolean).join(' ');
+    }
   }
 
   private renderListTemplate(
@@ -128,8 +233,16 @@ export class ComponentRenderer {
     options: RenderOptions,
     finalProps: Record<string, any>
   ): React.ReactElement {
-    const { items, children: _children, content: _content, text: _text, ...rest } = finalProps;
+    const { items, emptyText, children: _children, content: _content, text: _text, ...rest } = finalProps;
     const array: unknown[] = Array.isArray(items) ? items : [];
+
+    if (array.length === 0 && emptyText) {
+      return (
+        <div key={element.id} className="der-empty" data-element-id={element.id}>
+          {String(emptyText)}
+        </div>
+      );
+    }
 
     return (
       <ul key={element.id} {...rest}>
@@ -156,7 +269,9 @@ export class ComponentRenderer {
 
   /**
    * Injects controlled value/onChange for input-like elements so their
-   * current value always lives in state under `element_${id}`.
+   * current value always lives in state under `element_${id}`. Skipped inside
+   * list templates: one state key would be shared by every row (in-row
+   * checkboxes are binding-driven instead).
    */
   private applyControlledInput(
     element: UIElement,
@@ -164,13 +279,13 @@ export class ComponentRenderer {
     finalProps: Record<string, any>,
     options: RenderOptions
   ): void {
-    if (!INPUT_LIKE_TYPES.has(element.type) || !options.setElementValue) {
+    if (!INPUT_LIKE_TYPES.has(element.type) || !options.setElementValue || options.scope) {
       return;
     }
 
     const setElementValue = options.setElementValue;
     const stateValue = experienceState.data[`element_${element.id}`];
-    const isCheckbox = finalProps.type === 'checkbox';
+    const isCheckbox = element.type === 'checkbox' || finalProps.type === 'checkbox';
     const boundOnChange = finalProps.onChange as ((event: any) => void) | undefined;
 
     if (isCheckbox) {
@@ -218,7 +333,7 @@ export class ComponentRenderer {
         value = experienceState.data[`operation_${binding.sourceId}`];
         break;
       case 'constant':
-        value = binding.sourceId;
+        value = binding.value !== undefined ? binding.value : binding.sourceId;
         break;
       case 'item':
         value = getValueAtPath(scope?.item, binding.sourceId);
@@ -227,45 +342,7 @@ export class ComponentRenderer {
         value = null;
     }
 
-    // Apply transform if specified
-    if (binding.transform && value !== null && value !== undefined) {
-      value = this.applyTransform(value, binding.transform);
-    }
-
-    return value;
-  }
-
-  private applyTransform(value: any, transform: any): any {
-    // Simple transform implementation - can be extended
-    switch (transform.type) {
-      case 'format':
-        if (typeof value === 'string' && transform.parameters.template) {
-          return transform.parameters.template.replace('{{value}}', value);
-        }
-        return value;
-      case 'map':
-        if (transform.parameters.mapping && typeof transform.parameters.mapping === 'object') {
-          return transform.parameters.mapping[value] ?? value;
-        }
-        return value;
-      case 'filter':
-        if (Array.isArray(value) && transform.parameters.condition) {
-          // Simple filter implementation
-          return value.filter(item => this.evaluateCondition(item, transform.parameters.condition));
-        }
-        return value;
-      default:
-        return value;
-    }
-  }
-
-  private evaluateCondition(item: any, condition: string): boolean {
-    // Simple condition evaluation - can be extended with a proper expression parser
-    try {
-      return new Function('item', `return ${condition}`)(item);
-    } catch {
-      return true;
-    }
+    return applyBindingTransforms(value, binding);
   }
 
   private createEventHandlers(
@@ -321,12 +398,21 @@ function ButtonComponent({ children, text, ...props }: any) {
   return <button {...props}>{children || text}</button>;
 }
 
-function InputComponent({ ...props }: any) {
-  return <input {...props} />;
+function InputComponent({ label, ...props }: any) {
+  const input = <input {...props} />;
+  if (label) {
+    return (
+      <label className="der-field">
+        <span>{label}</span>
+        {input}
+      </label>
+    );
+  }
+  return input;
 }
 
 function TextComponent({ children, text, content, ...props }: any) {
-  const display = children || content || text;
+  const display = children ?? content ?? text;
   return <span {...props}>{display}</span>;
 }
 
@@ -334,7 +420,7 @@ function ContainerComponent({ children, ...props }: any) {
   return <div {...props}>{children}</div>;
 }
 
-function ListComponent({ items, renderItem, children, ...props }: any) {
+function ListComponent({ items, renderItem, children, emptyText, ...props }: any) {
   if (items && renderItem) {
     return (
       <ul {...props}>
@@ -345,6 +431,9 @@ function ListComponent({ items, renderItem, children, ...props }: any) {
     );
   }
   if (Array.isArray(items)) {
+    if (items.length === 0 && emptyText) {
+      return <div className="der-empty">{String(emptyText)}</div>;
+    }
     return (
       <ul {...props}>
         {items.map((item: any, index: number) => (
@@ -366,6 +455,78 @@ function ImageComponent({ src, alt, ...props }: any) {
 
 function LinkComponent({ href, children, ...props }: any) {
   return <a href={href} {...props}>{children}</a>;
+}
+
+interface SelectOption {
+  value: string;
+  label: string;
+}
+
+function normalizeOptions(options: unknown): SelectOption[] {
+  if (!Array.isArray(options)) return [];
+  return options.map((option) => {
+    if (option && typeof option === 'object') {
+      const record = option as Record<string, unknown>;
+      const value = String(record.value ?? '');
+      return { value, label: String(record.label ?? value) };
+    }
+    return { value: String(option), label: String(option) };
+  });
+}
+
+function SelectComponent({ label, placeholder, options, children: _children, ...props }: any) {
+  const normalized = normalizeOptions(options);
+  const select = (
+    <select {...props}>
+      {placeholder !== undefined && (props.value === '' || props.value === undefined) && (
+        <option value="" disabled>
+          {String(placeholder)}
+        </option>
+      )}
+      {normalized.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+  if (label) {
+    return (
+      <label className="der-field">
+        <span>{label}</span>
+        {select}
+      </label>
+    );
+  }
+  return select;
+}
+
+function CheckboxComponent({ label, checked, onChange, children: _children, ...props }: any) {
+  const input = (
+    <input
+      type="checkbox"
+      checked={Boolean(checked)}
+      onChange={onChange}
+      readOnly={checked !== undefined && !onChange}
+      {...props}
+    />
+  );
+  return (
+    <label className="checkbox-part">
+      {input}
+      {label !== undefined && <span>{String(label)}</span>}
+    </label>
+  );
+}
+
+function ProgressComponent({ value, max, children: _children, ...props }: any) {
+  const numericMax = Number(max) || 100;
+  const numericValue = Math.min(Math.max(Number(value) || 0, 0), numericMax);
+  return <progress value={numericValue} max={numericMax} {...props} />;
+}
+
+function DividerComponent({ children: _children, ...props }: any) {
+  return <hr className="divider-part" {...props} />;
 }
 
 function UnknownComponent({ element }: { element: UIElement }) {

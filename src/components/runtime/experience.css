@@ -117,3 +117,128 @@
   text-decoration: line-through;
   opacity: 0.55;
 }
+
+/* --- Knob variants (class scheme: type-knob-value) --- */
+
+.dynamic-experience-container .button-variant-primary {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+.dynamic-experience-container .button-variant-primary:hover {
+  background: #2f6fe0;
+  border-color: #2f6fe0;
+}
+.dynamic-experience-container .button-variant-danger {
+  background: #ffffff;
+  border-color: #f0b4b4;
+  color: #b91c1c;
+}
+.dynamic-experience-container .button-variant-danger:hover {
+  background: #fef2f2;
+  border-color: #dc8a8a;
+}
+.dynamic-experience-container .button-variant-ghost {
+  background: transparent;
+  border-color: transparent;
+}
+.dynamic-experience-container .button-variant-ghost:hover {
+  background: #f2f4f7;
+}
+.dynamic-experience-container .button-size-sm {
+  padding: 5px 10px;
+  font-size: 0.8rem;
+}
+.dynamic-experience-container .button-size-lg {
+  padding: 10px 20px;
+  font-size: 1rem;
+}
+
+.dynamic-experience-container .text-role-title {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+.dynamic-experience-container .text-role-subtitle {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.dynamic-experience-container .text-role-caption {
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+.dynamic-experience-container .text-role-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.dynamic-experience-container .container-direction-column {
+  flex-direction: column;
+  align-items: stretch;
+}
+.dynamic-experience-container .container-align-start { align-items: flex-start; }
+.dynamic-experience-container .container-align-center { align-items: center; }
+.dynamic-experience-container .container-align-end { align-items: flex-end; }
+.dynamic-experience-container .container-align-stretch { align-items: stretch; }
+.dynamic-experience-container .container-justify-center { justify-content: center; }
+.dynamic-experience-container .container-justify-end { justify-content: flex-end; }
+.dynamic-experience-container .container-justify-between { justify-content: space-between; }
+.dynamic-experience-container .container-gap-0 { gap: 0; }
+.dynamic-experience-container .container-gap-4 { gap: 4px; }
+.dynamic-experience-container .container-gap-8 { gap: 8px; }
+.dynamic-experience-container .container-gap-12 { gap: 12px; }
+.dynamic-experience-container .container-gap-16 { gap: 16px; }
+.dynamic-experience-container .container-gap-24 { gap: 24px; }
+.dynamic-experience-container .container-padding-0 { padding: 0; }
+.dynamic-experience-container .container-padding-4 { padding: 4px; }
+.dynamic-experience-container .container-padding-8 { padding: 8px; }
+.dynamic-experience-container .container-padding-12 { padding: 12px; }
+.dynamic-experience-container .container-padding-16 { padding: 16px; }
+.dynamic-experience-container .container-padding-24 { padding: 24px; }
+
+/* --- Part chrome --- */
+
+.dynamic-experience-container .der-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.dynamic-experience-container .der-field > span {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+.dynamic-experience-container .der-empty {
+  padding: 12px 0;
+  font-style: italic;
+  opacity: 0.6;
+}
+
+.dynamic-experience-container .checkbox-part {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.dynamic-experience-container .checkbox-part input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  min-width: 0;
+  accent-color: #3b82f6;
+}
+
+.dynamic-experience-container progress {
+  width: 100%;
+  height: 8px;
+  accent-color: #3b82f6;
+}
+
+.dynamic-experience-container hr.divider-part {
+  width: 100%;
+  border: none;
+  border-top: 1px solid #e4e7ec;
+  margin: 4px 0;
+}

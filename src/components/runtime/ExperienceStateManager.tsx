@@ -5,6 +5,7 @@
 
 import { Contract, OutputBinding } from '../../types/contract';
 import { ExperienceState } from '../../types/experience';
+import { applyBindingTransforms } from '../../services/operations/transforms';
 
 type StateChangeCallback = (newState: ExperienceState) => void;
 
@@ -134,8 +135,8 @@ export class ExperienceStateManager {
 
     // Update state based on operation outputs
     outputs.forEach(output => {
-      const resultValue = this.extractResultValue(result, output.name);
-      
+      const resultValue = applyBindingTransforms(this.extractResultValue(result, output.name), output);
+
       if (output.target === 'state') {
         // Update global state
         this.setData(output.targetId, resultValue);

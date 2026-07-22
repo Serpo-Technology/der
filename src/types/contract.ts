@@ -22,6 +22,30 @@ export interface UIElement {
   dataBindings: DataBinding[];
   eventBindings: EventBinding[];
   children?: UIElement[];
+  /** Declarative visibility; an array means every condition must hold. */
+  visibleWhen?: VisibilityCondition | VisibilityCondition[];
+}
+
+export type VisibilityOperator =
+  | 'truthy'
+  | 'falsy'
+  | 'empty'
+  | 'notEmpty'
+  | 'equals'
+  | 'notEquals'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte';
+
+export interface VisibilityCondition {
+  source: 'state' | 'item';
+  sourceId: string;
+  operator: VisibilityOperator;
+  /** Comparison value for equals/notEquals/gt/gte/lt/lte. */
+  value?: unknown;
+  /** Transform pipeline applied to the read value before comparison. */
+  transforms?: TransformFunction[];
 }
 
 export interface OperationBinding {
@@ -45,7 +69,11 @@ export interface DataBinding {
   property: string;
   source: 'operation' | 'state' | 'constant' | 'item';
   sourceId: string;
+  /** Typed literal for source 'constant'; sourceId stays the legacy string form. */
+  value?: unknown;
+  /** Single transform (legacy) or use `transforms` for an ordered pipeline. */
   transform?: TransformFunction;
+  transforms?: TransformFunction[];
 }
 
 export interface EventBinding {
@@ -58,7 +86,11 @@ export interface InputBinding {
   name: string;
   source: 'ui-element' | 'state' | 'constant' | 'item';
   sourceId: string;
+  /** Typed literal for source 'constant'; sourceId stays the legacy string form. */
+  value?: unknown;
+  /** Single transform (legacy) or use `transforms` for an ordered pipeline. */
   transform?: TransformFunction;
+  transforms?: TransformFunction[];
 }
 
 export interface OutputBinding {
@@ -66,7 +98,9 @@ export interface OutputBinding {
   target: 'ui-element' | 'state';
   targetId: string;
   property?: string;
+  /** Single transform (legacy) or use `transforms` for an ordered pipeline. */
   transform?: TransformFunction;
+  transforms?: TransformFunction[];
 }
 
 export interface TriggerSpec {

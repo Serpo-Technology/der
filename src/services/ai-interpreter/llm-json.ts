@@ -49,17 +49,23 @@ export function extractJson(text: string): string {
   throw new Error('Unbalanced JSON object in the response');
 }
 
-export interface GenerateJsonOptions {
+export interface GenerateJsonOptions<T = unknown> {
   /** Used in error messages, e.g. "Blueprint" or "Contract". */
   label: string;
   maxTokens?: number;
+  /**
+   * Post-parse semantic validation; returned problem strings count as a
+   * validation failure and feed the repair round. May mutate the parsed value
+   * to apply degradations; mutations only survive when no problems remain.
+   */
+  semanticCheck?: (value: T) => string[];
 }
 
 export async function generateValidatedJson<S extends z.ZodType>(
   llm: LLMClient,
   messages: LLMMessage[],
   schema: S,
-  options: GenerateJsonOptions
+  options: GenerateJsonOptions<z.output<S>>
 ): Promise<z.output<S>> {
   const attempt = async (conversation: LLMMessage[]) => {
     const response = await llm.sendMessage(conversation, {
@@ -84,6 +90,12 @@ export async function generateValidatedJson<S extends z.ZodType>(
     const result = schema.safeParse(candidate);
     if (!result.success) {
       return { ok: false, problem: `The JSON failed validation:\n${formatZodError(result.error)}` };
+    }
+    if (options.semanticCheck) {
+      const problems = options.semanticCheck(result.data);
+      if (problems.length > 0) {
+        return { ok: false, problem: `The JSON violates part manifests:\n${problems.join('\n')}` };
+      }
     }
     return { ok: true, value: result.data };
   };

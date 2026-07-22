@@ -8,7 +8,7 @@ import { ValidationResult, ValidationError, ValidationWarning } from '../../type
 import { LLMClient, LLMMessage } from './llm-client';
 import { ParsedIntentSchema } from '../../schemas/blueprint';
 import { generateValidatedJson } from './llm-json';
-import { BUILTIN_OPERATIONS, ELEMENT_CATALOG } from '../operations/registry';
+import { BUILTIN_OPERATIONS, ELEMENT_MANIFESTS } from '../operations/registry';
 
 export class NaturalLanguageParser {
   private llmClient: LLMClient;
@@ -94,8 +94,11 @@ export class NaturalLanguageParser {
   }
 
   private getIntentExtractionPrompt(): string {
-    const operationNames = Object.keys(BUILTIN_OPERATIONS).join(', ');
-    const elementTypes = Object.keys(ELEMENT_CATALOG).join(', ');
+    const operationNames = Object.values(BUILTIN_OPERATIONS)
+      .filter((def) => !def.hidden)
+      .map((def) => def.name)
+      .join(', ');
+    const elementTypes = Object.keys(ELEMENT_MANIFESTS).join(', ');
     return `You analyze a user's description of a small desktop app and extract structured intent.
 
 Return one JSON object only (no prose, no code fences) with exactly this shape:

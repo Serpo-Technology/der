@@ -26,7 +26,7 @@ function baseContract(overrides: Partial<Contract> = {}): Contract {
         id: 'op-1',
         operationName: 'todos.add',
         executionType: 'builtin',
-        inputs: [],
+        inputs: [{ name: 'title', source: 'constant', sourceId: 'buy milk' }],
         outputs: [],
         triggers: []
       }

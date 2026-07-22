@@ -42,12 +42,13 @@ Rust code under `src-tauri/` is outside the ESLint/tsc setup; build it with `car
 
 `AIInterpreterService` (`src/services/ai-interpreter/`) is the pipeline core, and generation is
 LLM-first end to end: `NaturalLanguageParser.extractIntent` asks the model for intent JSON and
-`ContractBuilder.generateFromBlueprint` asks it for the full contract, each validated against the
-zod schemas in `src/schemas/` through `generateValidatedJson` (`llm-json.ts`), which runs one
-repair round feeding validation errors back before failing. The contract prompt embeds the
-component catalog (from `src/services/operations/registry.ts` plus repository custom ops) and the
-runtime conventions. Post-processing dedupes ids, maps unknown element types to `container`, and
-drops operations that are neither builtins nor carry a runnable implementation.
+`ContractBuilder.generateFromBlueprint` asks it for the full contract, each validated through
+`generateValidatedJson` (`llm-json.ts`): zod structural validation plus a semantic
+`checkAgainstManifests` pass, with one repair round feeding all problems back before failing. The
+contract prompt is generated from the part manifests (knobs, howto, examples, transforms) plus
+repository custom ops. Post-processing dedupes ids, maps unknown element types to `container`,
+and resolves execution types; degradation warnings are exposed via
+`ContractBuilder.getLastWarnings()`.
 `DynamicExperienceRenderer` -> `ComponentRenderer` then render the contract live, with
 `ExperienceStateManager` holding per-experience state and `OperationExecutor` running operations.
 
@@ -108,26 +109,41 @@ settings, so the webview never holds secrets and CORS does not apply. Providers:
 Anthropic requests never send sampling parameters (modern Claude models reject them). Settings UI:
 `src/components/settings/SettingsView.tsx`; TS wrappers: `src/services/settings/llm-settings.ts`.
 
+### Composition-only part system
+
+Architectural constraint: **the model never writes code**; it composes prewritten parts. The part
+registry (`src/services/operations/registry.ts`) is the single source of truth: `ELEMENT_MANIFESTS`
+(typed knobs, bindable props, howto, validated examples) and `BUILTIN_OPERATIONS` (generic
+primitives `state.set`, `counter.add`, `list.append`/`updateWhere`/`removeWhere`/`toggleField`,
+`math.add`, `http.get`; todos.* survive as hidden compat parts). Structured inputs use dotted
+prefixes (`item.<field>`, `set.<field>`) grouped by `assembleStructured`; `list.append` generates
+ids itself. The shared transform registry (`src/services/operations/transforms.ts`) provides the
+declarative derivations (`count`, `sum`, `filterBy`, `sortBy`, `pick`, `parseNumber`, `round`,
+`format`, `map`, ...) used by binding `transforms` pipelines and `visibleWhen` conditions. The
+model's output schema (`LlmContractSchema`) rejects `local`/`implementation.code` as a parse error
+so the repair round teaches it; `checkAgainstManifests` (`src/schemas/contract.ts`) runs inside
+the repair loop (hard errors go back to the model; degradations apply with warnings). The `local`
+execution type still runs for human-edited contracts only.
+
 ### Runtime conventions
 
-One flat state map with three namespaces: plain app-state keys (e.g. `todos`), `element_${id}`
-for element values (inputs are auto-controlled and write there on change), and
-`operation_${opId}` mirrors of operation results. Contracts may carry `initialState`.
-`OperationExecutor` dispatches strictly on `executionType`: `builtin` runs real functions from
-`src/services/operations/registry.ts` (todos.* own the `todos` array via ctx), `local` runs
-`implementation.code` as a `(inputs, ctx)` function body, `remote` goes through Rust HTTP.
-Input bindings resolve declaratively (`ui-element`/`state`/`constant`/`item`); list elements
-repeat their children per bound item with an `item` binding scope, and event handlers pass the
-clicked item to the executor. `normalizeContract` (`src/schemas/contract.ts`) converts legacy
-`triggers` into event bindings before rendering.
+One flat state map with three namespaces: plain app-state keys, `element_${id}` for element values
+(inputs/selects/checkboxes are auto-controlled and write there on change, EXCEPT inside list
+templates where controlled state would be shared across rows), and `operation_${opId}` mirrors.
+Contracts may carry `initialState`. Constants can carry a typed `value` field (booleans/numbers);
+`sourceId` stays the legacy string form. Elements support declarative `visibleWhen` conditions
+(single or AND array; operators truthy/falsy/empty/notEmpty/equals/notEquals/gt/gte/lt/lte, with
+optional transform pipelines). Manifest knobs map to `type-knob-value` CSS classes via
+`applyKnobs` in the renderer (invalid enum values normalize to the manifest default). List
+elements repeat children per bound item with an `item` binding scope and support an `emptyText`
+knob. `normalizeContract` converts legacy `triggers` into event bindings before rendering.
 
 ### Component repository
 
 The shared `repositoryService` singleton is seeded once at startup in `App.tsx` via
-`registerBuiltins()` (`src/services/repository/builtins.ts`): UI elements (`button`, `text`,
-`input`, `container`, `list`) plus operation manifests derived from the builtin registry
-(`math.add`, `http.get`, `todos.add`, `todos.toggle`, `todos.remove`). Registration falls back to
-the in-memory index outside Tauri instead of throwing.
+`registerBuiltins()` (`src/services/repository/builtins.ts`); both element and operation manifests
+derive from the part registry. Registration falls back to the in-memory index outside Tauri
+instead of throwing.
 
 ## Conventions and gotchas
 
