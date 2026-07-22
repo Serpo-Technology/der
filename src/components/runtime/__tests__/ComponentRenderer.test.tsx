@@ -59,6 +59,77 @@ describe('ComponentRenderer', () => {
     expect(button).toBeInTheDocument();
     expect(button).toHaveTextContent('Click me');
     expect(button).toHaveAttribute('data-element-id', 'btn1');
+    // Typeless buttons must not become submit buttons inside forms.
+    expect(button).toHaveAttribute('type', 'button');
+  });
+
+  it('lets the contract request an explicit button type', () => {
+    const buttonElement: UIElement = {
+      id: 'btn-submit',
+      type: 'button',
+      properties: { text: 'Send', type: 'submit' },
+      dataBindings: [],
+      eventBindings: []
+    };
+
+    const RenderedComponent = componentRenderer.renderUIElement(
+      buttonElement,
+      mockExperienceState,
+      mockOnOperationExecute
+    );
+    render(<RenderedComponent />);
+
+    expect(screen.getByRole('button')).toHaveAttribute('type', 'submit');
+  });
+
+  it('runs click bindings on a button inside a form without navigating', async () => {
+    // The score-tracker shape: a form-wrapped entry row whose button chains
+    // two click operations. A native submit here reloads the webview.
+    const formElement: UIElement = {
+      id: 'entry',
+      type: 'form',
+      properties: {},
+      dataBindings: [],
+      eventBindings: [],
+      children: [
+        {
+          id: 'score-in',
+          type: 'input',
+          properties: {},
+          dataBindings: [],
+          eventBindings: []
+        },
+        {
+          id: 'add-btn',
+          type: 'button',
+          properties: { text: 'Add' },
+          dataBindings: [],
+          eventBindings: [
+            { event: 'click', operationId: 'op-add' },
+            { event: 'click', operationId: 'op-stats' }
+          ]
+        }
+      ]
+    };
+
+    const RenderedComponent = componentRenderer.renderUIElement(
+      formElement,
+      stateWithData({}),
+      mockOnOperationExecute
+    );
+    const { container } = render(<RenderedComponent />);
+
+    const button = screen.getByRole('button');
+    expect(button).toHaveAttribute('type', 'button');
+    fireEvent.click(button);
+    await vi.waitFor(() => expect(mockOnOperationExecute).toHaveBeenCalledTimes(2));
+    expect(mockOnOperationExecute).toHaveBeenNthCalledWith(1, 'op-add', { item: undefined });
+    expect(mockOnOperationExecute).toHaveBeenNthCalledWith(2, 'op-stats', { item: undefined });
+
+    // A submit fired any other way (e.g. Enter in the input) is swallowed.
+    const form = container.querySelector('form')!;
+    const notPrevented = fireEvent.submit(form);
+    expect(notPrevented).toBe(false);
   });
 
   it('renders input component correctly', () => {

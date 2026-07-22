@@ -8,6 +8,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { BookmarkManager } from '../BookmarkManager';
 import { bookmarkManager } from '../../../services/persistence';
+import type { BookmarkedExperience } from '../../../types/persistence';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('../../../services/persistence', () => ({
@@ -25,12 +26,12 @@ const sampleBookmark = {
   createdAt: new Date('2026-07-01T10:00:00Z'),
   lastAccessedAt: new Date('2026-07-02T10:00:00Z'),
   tags: []
-};
+} as unknown as BookmarkedExperience;
 
 describe('BookmarkManager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(bookmarkManager.getBookmarks).mockResolvedValue([sampleBookmark] as any);
+    vi.mocked(bookmarkManager.getBookmarks).mockResolvedValue([sampleBookmark]);
     vi.mocked(bookmarkManager.deleteBookmark).mockResolvedValue(undefined);
   });
 

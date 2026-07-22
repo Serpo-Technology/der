@@ -370,6 +370,21 @@ export class ComponentRenderer {
       };
     });
 
+    // A native form submit navigates the webview and wipes the app. Forms
+    // always swallow the navigation; a contract-defined submit binding still
+    // runs after the default is prevented.
+    if (element.type === 'form') {
+      const contractSubmit = handlers.onSubmit;
+      handlers.onSubmit = async (event: any) => {
+        if (typeof event?.preventDefault === 'function') {
+          event.preventDefault();
+        }
+        if (contractSubmit) {
+          await contractSubmit(event);
+        }
+      };
+    }
+
     return handlers;
   }
 
@@ -405,8 +420,15 @@ export class ComponentRenderer {
 }
 
 // Standard UI Components
-function ButtonComponent({ children, text, ...props }: any) {
-  return <button {...props}>{children || text}</button>;
+function ButtonComponent({ children, text, type, ...props }: any) {
+  // Inside a form a typeless button becomes type="submit" and navigates the
+  // webview away; operations wire through eventBindings, so default to a
+  // plain button unless the contract asks for a submit type explicitly.
+  return (
+    <button type={type ?? 'button'} {...props}>
+      {children || text}
+    </button>
+  );
 }
 
 function InputComponent({ label, ...props }: any) {

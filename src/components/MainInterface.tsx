@@ -23,6 +23,7 @@ import { Blueprint } from '../types/blueprint';
 import { Contract as ContractClass } from '../models/contract';
 import { ValidationResult, ValidationWarning } from '../types/contract';
 import { Experience } from '../types/experience';
+import { BookmarkedExperience } from '../types/persistence';
 
 // Import services
 import { BlueprintGenerator } from '../services/ai-interpreter/blueprint-generator';
@@ -51,7 +52,7 @@ interface MainInterfaceState {
     blueprint?: ValidationResult;
     contract?: ValidationResult;
   };
-  bookmarkedExperiences: any[];
+  bookmarkedExperiences: BookmarkedExperience[];
   contractWarnings: ValidationWarning[];
   shareTarget: { id: string; name: string } | null;
   showImportDialog: boolean;
