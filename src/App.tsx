@@ -7,6 +7,7 @@ import type { Contract as ContractType } from "./types/contract";
 import { integratedExperienceService } from "./services/IntegratedExperienceService";
 import { persistenceService } from "./services/persistence";
 import { repositoryService } from "./services/repository/repository-service";
+import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { registerBuiltins } from "./services/repository/builtins";
 
 function App() {
@@ -17,12 +18,26 @@ function App() {
     );
   }, []);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const injected = (globalThis as any).__DER_BOOTSTRAP as { experienceId?: string; contract?: ContractType } | undefined;
+  const injected = (globalThis as any).__DER_BOOTSTRAP as { experienceId?: string; contract?: ContractType | string } | undefined;
 
-  if (injected?.experienceId && injected?.contract) {
+  // Tolerate a double-encoded bootstrap contract from older windows.
+  const injectedContract: ContractType | undefined =
+    typeof injected?.contract === "string"
+      ? (() => {
+          try {
+            return JSON.parse(injected.contract) as ContractType;
+          } catch {
+            return undefined;
+          }
+        })()
+      : injected?.contract;
+
+  if (injected?.experienceId && injectedContract) {
     return (
       <div className="app" style={{ width: "100%", height: "100%" }}>
-        <ExperienceWindow initialExperienceId={injected.experienceId} initialContract={injected.contract} />
+        <ErrorBoundary fallback={<div style={{ padding: 16 }}>This window failed to render. Close it and reopen the experience.</div>}>
+          <ExperienceWindow initialExperienceId={injected.experienceId} initialContract={injectedContract} />
+        </ErrorBoundary>
       </div>
     );
   }

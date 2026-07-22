@@ -89,7 +89,17 @@ export class Contract implements IContractInterface {
   /**
    * Serializes the contract to JSON string
    */
-  toJSON(): string {
+  /**
+   * Called implicitly by JSON.stringify (including Tauri invoke argument
+   * serialization); must return the plain object so the contract crosses
+   * process boundaries as an object rather than a double-encoded string.
+   */
+  toJSON(): IContractInterface {
+    return this.toObject();
+  }
+
+  /** Pretty-printed JSON string of the contract. */
+  toJSONString(): string {
     return JSON.stringify(this.toObject(), null, 2);
   }
 

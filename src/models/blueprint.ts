@@ -90,9 +90,16 @@ export class Blueprint implements IBlueprintInterface {
   }
 
   /**
-   * Serializes the blueprint to JSON string
+   * Called implicitly by JSON.stringify (including Tauri invoke argument
+   * serialization); must return the plain object so the blueprint crosses
+   * process boundaries as an object rather than a double-encoded string.
    */
-  toJSON(): string {
+  toJSON(): IBlueprintInterface {
+    return this.toObject();
+  }
+
+  /** Pretty-printed JSON string of the blueprint. */
+  toJSONString(): string {
     return JSON.stringify(this.toObject(), null, 2);
   }
 

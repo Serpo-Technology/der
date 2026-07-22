@@ -255,13 +255,21 @@ export const MainInterface: React.FC = () => {
 
   // Load experience from bookmark
   const handleLoadExperience = useCallback(async (experience: Experience) => {
-    setState(prev => ({ 
-      ...prev, 
-      contract: ContractClass.fromObject(experience.contract),
-      currentExperienceId: experience.id,
-      currentMode: 'preview',
-      currentExperienceBookmarked: true
-    }));
+    try {
+      const contract = ContractClass.fromObject(experience.contract);
+      setState(prev => ({
+        ...prev,
+        contract,
+        currentExperienceId: experience.id,
+        currentMode: 'preview',
+        currentExperienceBookmarked: true
+      }));
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        error: `Could not open this bookmark: ${error instanceof Error ? error.message : String(error)}`
+      }));
+    }
   }, []);
 
   // Handle bookmark creation

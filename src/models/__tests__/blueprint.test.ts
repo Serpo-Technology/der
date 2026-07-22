@@ -81,10 +81,11 @@ describe('Blueprint Model', () => {
       });
     });
 
-    it('should serialize to JSON string', () => {
-      const json = blueprint.toJSON();
+    it('should serialize to a JSON string via toJSONString and a plain object via toJSON', () => {
+      expect(typeof blueprint.toJSON()).toBe('object');
+      const json = blueprint.toJSONString();
       expect(typeof json).toBe('string');
-      
+
       const parsed = JSON.parse(json);
       expect(parsed.description).toBe('Test app');
       expect(parsed.goal).toBe('Test interactions');
@@ -94,7 +95,7 @@ describe('Blueprint Model', () => {
     });
 
     it('should deserialize from JSON string', () => {
-      const json = blueprint.toJSON();
+      const json = blueprint.toJSONString();
       const restored = Blueprint.fromJSON(json);
       
       expect(restored.description).toBe(blueprint.description);
@@ -142,7 +143,7 @@ describe('Blueprint Model', () => {
 
     it('should handle user modifications with dates', () => {
       blueprint.recordUserModification('description', 'old', 'new');
-      const json = blueprint.toJSON();
+      const json = blueprint.toJSONString();
       const restored = Blueprint.fromJSON(json);
       
       expect(restored.userModifications).toHaveLength(1);

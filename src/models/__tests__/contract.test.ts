@@ -78,8 +78,9 @@ describe('Contract Model', () => {
             });
         });
 
-        it('should serialize to JSON string', () => {
-            const json = contract.toJSON();
+        it('should serialize to a JSON string via toJSONString and a plain object via toJSON', () => {
+            expect(typeof contract.toJSON()).toBe('object');
+            const json = contract.toJSONString();
             expect(typeof json).toBe('string');
 
             const parsed = JSON.parse(json);
@@ -90,7 +91,7 @@ describe('Contract Model', () => {
         });
 
         it('should deserialize from JSON string', () => {
-            const json = contract.toJSON();
+            const json = contract.toJSONString();
             const restored = Contract.fromJSON(json);
 
             expect(restored.name).toBe(contract.name);
@@ -121,7 +122,7 @@ describe('Contract Model', () => {
         });
 
         it('should handle metadata dates correctly', () => {
-            const json = contract.toJSON();
+            const json = contract.toJSONString();
             const restored = Contract.fromJSON(json);
 
             expect(restored.metadata.createdAt).toBeInstanceOf(Date);

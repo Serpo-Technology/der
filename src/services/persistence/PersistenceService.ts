@@ -15,6 +15,20 @@ import {
 } from '../../types/persistence';
 import { Experience, ExperienceUpdate } from '../../types/experience';
 
+/**
+ * Older records stored contracts double-encoded (a JSON string inside the
+ * JSON document); accept both shapes when reading.
+ */
+function parseMaybeJson<T>(value: unknown): T {
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return value as T;
+    }
+  }
+  return value as T;
+}
 
 export class PersistenceService implements PersistenceLayer {
   private schemaInitialized = false;
@@ -85,11 +99,11 @@ export class PersistenceService implements PersistenceLayer {
       );
       if (rows && rows.length > 0) {
         const row = rows[0];
-        const parsedContract = JSON.parse(row.contract);
+        const parsedContract = parseMaybeJson<any>(JSON.parse(row.contract));
         return {
           id: row.id,
           contract: parsedContract,
-          state: row.state ? JSON.parse(row.state) : {},
+          state: row.state ? parseMaybeJson(JSON.parse(row.state)) : {},
           metadata: {
             createdAt: row.created_at ? new Date(row.created_at) : new Date(),
             updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
@@ -102,8 +116,8 @@ export class PersistenceService implements PersistenceLayer {
       if (!experienceData) return null;
       return {
         id: experienceData.experienceId,
-        contract: experienceData.contract,
-        state: experienceData.state || {},
+        contract: parseMaybeJson(experienceData.contract),
+        state: parseMaybeJson(experienceData.state) || {},
         metadata: experienceData.metadata || {}
       };
     } catch (error) {
@@ -148,7 +162,7 @@ export class PersistenceService implements PersistenceLayer {
       // Convert bookmark data back to Experience format
       const experience: Experience = {
         id: bookmarkData.id,
-        contract: bookmarkData.contract,
+        contract: parseMaybeJson(bookmarkData.contract),
         reactComponent: () => null, // Will be populated by DER
         state: {
           data: {},
@@ -178,7 +192,7 @@ export class PersistenceService implements PersistenceLayer {
         id: bookmark.id,
         name: bookmark.name,
         description: bookmark.description ?? undefined,
-        contract: bookmark.contract,
+        contract: parseMaybeJson(bookmark.contract),
         createdAt: new Date(bookmark.created_at),
         lastAccessedAt: new Date(bookmark.last_accessed_at),
         tags: bookmark.tags ?? undefined,
