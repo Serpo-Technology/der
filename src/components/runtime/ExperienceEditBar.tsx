@@ -2,7 +2,7 @@
  * Edit bar for live experiences: type a change, the app updates in place.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import type { ValidationWarning } from '../../types/contract';
 
 interface ExperienceEditBarProps {
@@ -10,6 +10,39 @@ interface ExperienceEditBarProps {
   busy: boolean;
   warnings?: ValidationWarning[];
   onDismissWarnings?: () => void;
+}
+
+interface WarningGroup {
+  title: string;
+  singular: string;
+  plural: string;
+  entries: ValidationWarning[];
+}
+
+/**
+ * Notes come in three kinds with different meanings: adjustments the
+ * validator applied, assumptions the model recorded, and open questions it
+ * raised. Grouping keeps them from reading as one undifferentiated count.
+ */
+function groupWarnings(warnings: ValidationWarning[]): WarningGroup[] {
+  const groups: WarningGroup[] = [
+    { title: 'Adjustments', singular: 'adjustment', plural: 'adjustments', entries: [] },
+    { title: 'Assumptions', singular: 'assumption', plural: 'assumptions', entries: [] },
+    { title: 'Open questions', singular: 'open question', plural: 'open questions', entries: [] }
+  ];
+  for (const warning of warnings) {
+    if (warning.code === 'SPEC_ASSUMPTION') groups[1].entries.push(warning);
+    else if (warning.code === 'SPEC_QUESTION') groups[2].entries.push(warning);
+    else groups[0].entries.push(warning);
+  }
+  return groups.filter((group) => group.entries.length > 0);
+}
+
+/** A lone note has no group heading, so it carries its kind inline. */
+function labelWarning(warning: ValidationWarning): string {
+  if (warning.code === 'SPEC_ASSUMPTION') return `Assumed: ${warning.message}`;
+  if (warning.code === 'SPEC_QUESTION') return `Open question: ${warning.message}`;
+  return warning.message;
 }
 
 export const ExperienceEditBar: React.FC<ExperienceEditBarProps> = ({
@@ -20,6 +53,7 @@ export const ExperienceEditBar: React.FC<ExperienceEditBarProps> = ({
 }) => {
   const [instruction, setInstruction] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const warningGroups = useMemo(() => groupWarnings(warnings ?? []), [warnings]);
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent) => {
@@ -53,13 +87,39 @@ export const ExperienceEditBar: React.FC<ExperienceEditBarProps> = ({
         </button>
       </form>
       {error && <div className="der-edit-error">{error}</div>}
-      {warnings && warnings.length > 0 && (
+      {warnings && warnings.length === 1 && (
         <div className="der-edit-warnings">
-          <span>
-            {warnings.length === 1
-              ? warnings[0].message
-              : `${warnings.length} adjustments were made to fit the available parts`}
-          </span>
+          <span className="der-edit-warnings-single">{labelWarning(warnings[0])}</span>
+          {onDismissWarnings && (
+            <button type="button" onClick={onDismissWarnings} aria-label="Dismiss warnings">
+              Dismiss
+            </button>
+          )}
+        </div>
+      )}
+      {warnings && warnings.length > 1 && (
+        <div className="der-edit-warnings">
+          <details>
+            <summary>
+              {warningGroups
+                .map((group) =>
+                  `${group.entries.length} ${
+                    group.entries.length === 1 ? group.singular : group.plural
+                  }`
+                )
+                .join(', ')}
+            </summary>
+            {warningGroups.map((group) => (
+              <div key={group.title} className="der-warning-group">
+                <div className="der-warning-group-title">{group.title}</div>
+                <ul>
+                  {group.entries.map((warning, index) => (
+                    <li key={`${group.title}-${index}`}>{warning.message}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </details>
           {onDismissWarnings && (
             <button type="button" onClick={onDismissWarnings} aria-label="Dismiss warnings">
               Dismiss

@@ -1,9 +1,9 @@
 /**
  * Tests for semantic contract validation against the part manifests. Covers
- * the repairable hard errors (unknown operations, missing inputs, invalid
- * prefixes, unknown element references), the in-place degradations (dropped
- * inputs and outputs, defaulted knobs, removed transforms, seeded state
- * keys, deduplicated inputs), and the stricter LLM-facing schema.
+ * the repairable hard errors (unknown operations, inputs, outputs, and
+ * transforms, missing inputs, invalid prefixes, unknown element references),
+ * the cosmetic normalizations (defaulted knobs, seeded state keys,
+ * deduplicated inputs), and the stricter LLM-facing schema.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -184,9 +184,9 @@ describe('checkAgainstManifests hard errors', () => {
   });
 });
 
-describe('checkAgainstManifests degradations', () => {
-  it('drops unknown flat inputs with a warning', () => {
-    const { contract, result } = checkContract(
+describe('checkAgainstManifests vocabulary and normalizations', () => {
+  it('rejects inputs the operation does not declare, naming the accepted ones', () => {
+    const { result } = checkContract(
       rawContract({
         operations: [
           {
@@ -201,15 +201,14 @@ describe('checkAgainstManifests degradations', () => {
       })
     );
 
-    expect(result.errors).toHaveLength(0);
-    expect(result.warnings).toHaveLength(1);
-    expect(result.warnings[0].code).toBe('MANIFEST_ADJUSTED');
-    expect(result.warnings[0].message).toContain('bogus');
-    expect(contract.operations[0].inputs.map((input) => input.name)).toEqual(['key']);
+    expect(result.errors.map((e) => e.code)).toEqual(['UNKNOWN_INPUT']);
+    expect(result.errors[0].message).toContain('bogus');
+    expect(result.errors[0].message).toContain('it accepts:');
+    expect(result.warnings).toHaveLength(0);
   });
 
-  it('drops output bindings the operation does not declare', () => {
-    const { contract, result } = checkContract(
+  it('rejects output bindings the operation does not declare', () => {
+    const { result } = checkContract(
       rawContract({
         operations: [
           {
@@ -222,10 +221,10 @@ describe('checkAgainstManifests degradations', () => {
       })
     );
 
-    expect(result.errors).toHaveLength(0);
-    expect(result.warnings).toHaveLength(1);
-    expect(result.warnings[0].message).toContain('total');
-    expect(contract.operations[0].outputs).toEqual([]);
+    expect(result.errors.map((e) => e.code)).toEqual(['UNKNOWN_OUTPUT']);
+    expect(result.errors[0].message).toContain('total');
+    expect(result.errors[0].message).toContain('it provides:');
+    expect(result.warnings).toHaveLength(0);
   });
 
   it('resets an invalid knob value to the manifest default', () => {
@@ -241,8 +240,8 @@ describe('checkAgainstManifests degradations', () => {
     expect(contract.elements[0].properties.variant).toBe('default');
   });
 
-  it('removes unknown transforms from a pipeline', () => {
-    const { contract, result } = checkContract(
+  it('rejects unknown transforms in a pipeline', () => {
+    const { result } = checkContract(
       rawContract({
         initialState: { todos: [] },
         elements: [
@@ -265,10 +264,9 @@ describe('checkAgainstManifests degradations', () => {
       })
     );
 
-    expect(result.errors).toHaveLength(0);
-    expect(result.warnings).toHaveLength(1);
-    expect(result.warnings[0].message).toContain('sparkle');
-    expect(contract.elements[0].dataBindings[0].transforms?.map((t) => t.type)).toEqual(['count']);
+    expect(result.errors.map((e) => e.code)).toEqual(['UNKNOWN_TRANSFORM']);
+    expect(result.errors[0].message).toContain('sparkle');
+    expect(result.warnings).toHaveLength(0);
   });
 
   it('silently seeds a state key read through an items binding with an empty array', () => {

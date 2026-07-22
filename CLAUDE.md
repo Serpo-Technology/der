@@ -54,7 +54,7 @@ shared by the create/blueprint/edit modes, plus a short mode section block; the 
 to omit empty arrays, defaults, `executionType`, `layout`, `styling`, `metadata`, `triggers`,
 and empty-array seeds (`checkAgainstManifests` seeds read-only array keys silently; null seeds
 still warn). Post-processing dedupes ids, maps unknown element types to `container`, resolves
-execution types, and fills the default column layout; degradation warnings are exposed via
+execution types, and fills the default column layout; normalization warnings are exposed via
 `ContractBuilder.getLastWarnings()`.
 `DynamicExperienceRenderer` -> `ComponentRenderer` then render the contract live, with
 `ExperienceStateManager` holding per-experience state and `OperationExecutor` running operations.
@@ -134,8 +134,11 @@ declarative derivations (`count`, `sum`, `filterBy`, `sortBy`, `pick`, `parseNum
 `format`, `map`, ...) used by binding `transforms` pipelines and `visibleWhen` conditions. The
 model's output schema (`LlmContractSchema`) rejects `local`/`implementation.code` as a parse error
 so the repair round teaches it; `checkAgainstManifests` (`src/schemas/contract.ts`) runs inside
-the repair loop (hard errors go back to the model; degradations apply with warnings). The `local`
-execution type still runs for human-edited contracts only.
+the repair loop. Anything the parts cannot express (unknown operations, inputs, outputs,
+transforms) is a hard error: the model recomposes or generation fails, never silently ships
+less than asked. Warnings are cosmetic normalizations only (knob defaults, deduped inputs,
+seeded state keys); the edit bar shows them grouped apart from spec assumptions and open
+questions. The `local` execution type still runs for human-edited contracts only.
 
 ### Runtime conventions
 

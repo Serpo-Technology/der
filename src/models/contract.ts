@@ -162,11 +162,43 @@ export class Contract implements IContractInterface {
   }
 
   /**
+   * Finds the array (top level or a children list) holding an element id.
+   * Elements nest, so every id lookup must search the whole tree.
+   */
+  private findElementLocation(
+    elementId: string,
+    elements: UIElement[] = this.elements
+  ): { list: UIElement[]; index: number } | undefined {
+    for (let index = 0; index < elements.length; index++) {
+      if (elements[index].id === elementId) {
+        return { list: elements, index };
+      }
+      const children = elements[index].children;
+      if (children?.length) {
+        const found = this.findElementLocation(elementId, children);
+        if (found) return found;
+      }
+    }
+    return undefined;
+  }
+
+  /** Collects every element id in the tree, including nested children. */
+  private collectElementIds(elements: UIElement[] = this.elements, ids = new Set<string>()): Set<string> {
+    for (const element of elements) {
+      ids.add(element.id);
+      if (element.children?.length) {
+        this.collectElementIds(element.children, ids);
+      }
+    }
+    return ids;
+  }
+
+  /**
    * Adds a UI element to the contract
    */
   addElement(element: UIElement): void {
     // Validate element ID uniqueness
-    if (this.elements.some(el => el.id === element.id)) {
+    if (this.collectElementIds().has(element.id)) {
       throw new Error(`Element with ID '${element.id}' already exists`);
     }
 
@@ -175,12 +207,12 @@ export class Contract implements IContractInterface {
   }
 
   /**
-   * Removes a UI element by ID
+   * Removes a UI element by ID, wherever it nests
    */
   removeElement(elementId: string): boolean {
-    const index = this.elements.findIndex(el => el.id === elementId);
-    if (index !== -1) {
-      this.elements.splice(index, 1);
+    const location = this.findElementLocation(elementId);
+    if (location) {
+      location.list.splice(location.index, 1);
       this.updateMetadata({});
       return true;
     }
@@ -188,17 +220,17 @@ export class Contract implements IContractInterface {
   }
 
   /**
-   * Updates a UI element by ID
+   * Updates a UI element by ID, wherever it nests
    */
   updateElement(elementId: string, updates: Partial<UIElement>): boolean {
-    const index = this.elements.findIndex(el => el.id === elementId);
-    if (index !== -1) {
+    const location = this.findElementLocation(elementId);
+    if (location) {
       // Prevent ID changes that would create duplicates
-      if (updates.id && updates.id !== elementId && this.elements.some(el => el.id === updates.id)) {
+      if (updates.id && updates.id !== elementId && this.collectElementIds().has(updates.id)) {
         throw new Error(`Element with ID '${updates.id}' already exists`);
       }
 
-      this.elements[index] = { ...this.elements[index], ...updates };
+      location.list[location.index] = { ...location.list[location.index], ...updates };
       this.updateMetadata({});
       return true;
     }
@@ -206,10 +238,11 @@ export class Contract implements IContractInterface {
   }
 
   /**
-   * Gets a UI element by ID
+   * Gets a UI element by ID, wherever it nests
    */
   getElement(elementId: string): UIElement | undefined {
-    return this.elements.find(el => el.id === elementId);
+    const location = this.findElementLocation(elementId);
+    return location ? location.list[location.index] : undefined;
   }
 
   /**
@@ -559,15 +592,24 @@ export class Contract implements IContractInterface {
     const errors: any[] = [];
     const warnings: any[] = [];
 
-    const elementIds = new Set(this.elements.map(el => el.id));
+    // Element ids and bindings live at every nesting level, so both the id
+    // collection and the checks walk the whole tree.
+    const elementIds = new Set<string>();
+    const collectIds = (elements: UIElement[]) => {
+      for (const element of elements) {
+        elementIds.add(element.id);
+        if (element.children?.length) collectIds(element.children);
+      }
+    };
+    collectIds(this.elements);
     const operationIds = new Set(this.operations.map(op => op.id));
 
     // Validate element references
-    this.elements.forEach((element, elementIndex) => {
+    const visitElement = (element: UIElement, path: string) => {
       element.dataBindings.forEach((binding, bindingIndex) => {
         if (binding.source === 'operation' && !operationIds.has(binding.sourceId)) {
           errors.push({
-            path: `elements[${elementIndex}].dataBindings[${bindingIndex}].sourceId`,
+            path: `${path}.dataBindings[${bindingIndex}].sourceId`,
             message: `Referenced operation '${binding.sourceId}' does not exist`,
             code: 'INVALID_OPERATION_REFERENCE'
           });
@@ -577,13 +619,20 @@ export class Contract implements IContractInterface {
       element.eventBindings.forEach((binding, bindingIndex) => {
         if (!operationIds.has(binding.operationId)) {
           errors.push({
-            path: `elements[${elementIndex}].eventBindings[${bindingIndex}].operationId`,
+            path: `${path}.eventBindings[${bindingIndex}].operationId`,
             message: `Referenced operation '${binding.operationId}' does not exist`,
             code: 'INVALID_OPERATION_REFERENCE'
           });
         }
       });
-    });
+
+      element.children?.forEach((child, childIndex) =>
+        visitElement(child, `${path}.children[${childIndex}]`)
+      );
+    };
+    this.elements.forEach((element, elementIndex) =>
+      visitElement(element, `elements[${elementIndex}]`)
+    );
 
     // Validate operation references
     this.operations.forEach((operation, operationIndex) => {

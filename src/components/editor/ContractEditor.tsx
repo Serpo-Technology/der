@@ -55,22 +55,34 @@ export const ContractEditor: React.FC<ContractEditorProps> = ({
     onValidationChange?.(combinedValidation);
   }, [contract, onValidationChange]);
 
-  // Available sections for editing
-  const editingSections: EditingSection[] = useMemo(() => [
-    { type: 'metadata', title: 'Contract Metadata' },
-    { type: 'layout', title: 'Layout Configuration' },
-    { type: 'styling', title: 'Styling Configuration' },
-    ...contract.elements.map(element => ({
-      type: 'element' as const,
-      id: element.id,
-      title: `Element: ${element.id} (${element.type})`
-    })),
-    ...contract.operations.map(operation => ({
-      type: 'operation' as const,
-      id: operation.id,
-      title: `Operation: ${operation.id} (${operation.operationName})`
-    }))
-  ], [contract]);
+  // Available sections for editing. Elements nest, so the section list
+  // flattens the tree with indentation showing containment.
+  const editingSections: EditingSection[] = useMemo(() => {
+    const elementSections: EditingSection[] = [];
+    const collect = (elements: typeof contract.elements, depth: number) => {
+      for (const element of elements) {
+        elementSections.push({
+          type: 'element' as const,
+          id: element.id,
+          title: `${'  '.repeat(depth)}Element: ${element.id} (${element.type})`
+        });
+        if (element.children?.length) collect(element.children, depth + 1);
+      }
+    };
+    collect(contract.elements, 0);
+
+    return [
+      { type: 'metadata', title: 'Contract Metadata' },
+      { type: 'layout', title: 'Layout Configuration' },
+      { type: 'styling', title: 'Styling Configuration' },
+      ...elementSections,
+      ...contract.operations.map(operation => ({
+        type: 'operation' as const,
+        id: operation.id,
+        title: `Operation: ${operation.id} (${operation.operationName})`
+      }))
+    ];
+  }, [contract]);
 
   const handleContractChange = useCallback((newContract: Contract) => {
     onChange(newContract, contractEdits);

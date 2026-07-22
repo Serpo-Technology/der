@@ -113,12 +113,12 @@ export class IntegratedExperienceService {
         ...composed.warnings,
         ...composed.spec.assumptions.map((assumption) => ({
           path: 'spec',
-          message: `Assumed: ${assumption}`,
+          message: assumption,
           code: 'SPEC_ASSUMPTION'
         })),
         ...composed.spec.openQuestions.map((question) => ({
           path: 'spec',
-          message: `Open question: ${question}`,
+          message: question,
           code: 'SPEC_QUESTION'
         }))
       ];

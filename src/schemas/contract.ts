@@ -236,27 +236,28 @@ function walkElements(
 function checkPipeline(
   owner: string,
   binding: { transform?: { type: string }; transforms?: { type: string }[] },
-  warnings: ValidationWarning[]
+  fail: (path: string, message: string, code: string) => void
 ): void {
-  if (binding.transforms) {
-    const known = binding.transforms.filter((step) => {
-      if (TRANSFORMS[step.type]) return true;
-      warn(warnings, owner, `Unknown transform "${step.type}" removed`);
-      return false;
-    });
-    binding.transforms = known;
-  }
-  if (binding.transform && !TRANSFORMS[binding.transform.type]) {
-    warn(warnings, owner, `Unknown transform "${binding.transform.type}" removed`);
-    delete binding.transform;
+  const steps = [...(binding.transforms ?? []), ...(binding.transform ? [binding.transform] : [])];
+  for (const step of steps) {
+    if (!TRANSFORMS[step.type]) {
+      fail(
+        owner,
+        `Unknown transform "${step.type}". Use only transforms from the catalog.`,
+        'UNKNOWN_TRANSFORM'
+      );
+    }
   }
 }
 
 /**
  * Validates and normalizes a structurally valid contract against the part
- * manifests. Mutates the given contract for degradations (dropped unknown
- * inputs, defaulted knobs, seeded state keys); returns repairable errors and
- * the applied-degradation warnings.
+ * manifests. Anything the parts cannot express (unknown operations, inputs,
+ * outputs, or transforms) is a hard error: inside generation it feeds the
+ * repair round, and if the model cannot recompose, creation fails instead of
+ * silently shipping less than was asked. Mutations are limited to cosmetic
+ * normalizations (defaulted knob values, deduplicated inputs, seeded state
+ * keys), which are reported as warnings.
  */
 export function checkAgainstManifests(contract: ContractShape): ManifestCheckResult {
   const errors: ManifestError[] = [];
@@ -299,7 +300,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
 
     element.dataBindings.forEach((binding, bindingIndex) => {
       const bindingPath = `${path}.dataBindings.${bindingIndex}`;
-      checkPipeline(bindingPath, binding, warnings);
+      checkPipeline(bindingPath, binding, fail);
       if (binding.source === 'state' && binding.sourceId) {
         const existing = stateReads.get(binding.sourceId);
         // Array-shaped readers win so the seed becomes [] regardless of order.
@@ -319,7 +320,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
         ? [element.visibleWhen]
         : [];
     conditions.forEach((condition, conditionIndex) => {
-      checkPipeline(`${path}.visibleWhen.${conditionIndex}`, condition, warnings);
+      checkPipeline(`${path}.visibleWhen.${conditionIndex}`, condition, fail);
       if (condition.source === 'state') {
         if (!stateReads.has(condition.sourceId)) {
           stateReads.set(condition.sourceId, 'visibleWhen');
@@ -367,7 +368,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     for (let i = 0; i < op.inputs.length; i++) {
       const input = op.inputs[i] as InputBinding;
       const inputPath = `${opPath}.inputs.${i}`;
-      checkPipeline(inputPath, input, warnings);
+      checkPipeline(inputPath, input, fail);
 
       if (input.source === 'ui-element' && !elementIds.has(input.sourceId)) {
         fail(inputPath, `References unknown element "${input.sourceId}"`, 'UNKNOWN_ELEMENT');
@@ -381,6 +382,8 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
           .filter((spec) => !spec.name.includes('<'))
           .map((spec) => spec.name);
         const prefixes = def.structuredPrefixes ?? [];
+        const accepted =
+          [...flatNames, ...prefixes.map((p) => `${p}.<field>`)].join(', ') || 'none';
         const dot = input.name.indexOf('.');
         if (dot > 0) {
           const prefix = input.name.slice(0, dot);
@@ -395,14 +398,22 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
               );
               continue;
             }
-            warn(warnings, inputPath, `Unknown input "${input.name}" dropped`);
+            fail(
+              inputPath,
+              `${op.operationName} has no input "${input.name}"; it accepts: ${accepted}`,
+              'UNKNOWN_INPUT'
+            );
             continue;
           }
           if (input.name.slice(dot + 1).includes('.')) {
             warn(warnings, inputPath, `Nested field "${input.name}" flattened to a single level`);
           }
         } else if (!flatNames.includes(input.name)) {
-          warn(warnings, inputPath, `Unknown input "${input.name}" dropped`);
+          fail(
+            inputPath,
+            `${op.operationName} has no input "${input.name}"; it accepts: ${accepted}`,
+            'UNKNOWN_INPUT'
+          );
           continue;
         }
       }
@@ -436,22 +447,22 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       }
       // Outputs must exist on the manifest.
       const outputNames = new Set(def.outputs.map((spec) => spec.name));
-      op.outputs = op.outputs.filter((output, outputIndex) => {
+      op.outputs.forEach((output, outputIndex) => {
         if (!outputNames.has(output.name)) {
-          warn(
-            warnings,
+          fail(
             `${opPath}.outputs.${outputIndex}`,
-            `${op.operationName} has no output "${output.name}"; binding dropped`
+            `${op.operationName} has no output "${output.name}"; it provides: ${
+              [...outputNames].join(', ') || 'none'
+            }`,
+            'UNKNOWN_OUTPUT'
           );
-          return false;
         }
-        return true;
       });
     }
 
     // Output pipelines and element references apply to every execution type.
     op.outputs.forEach((output, outputIndex) => {
-      checkPipeline(`${opPath}.outputs.${outputIndex}`, output, warnings);
+      checkPipeline(`${opPath}.outputs.${outputIndex}`, output, fail);
       if (output.target === 'ui-element' && !elementIds.has(output.targetId)) {
         fail(
           `${opPath}.outputs.${outputIndex}`,

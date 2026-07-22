@@ -621,6 +621,112 @@ describe('Contract Model', () => {
             expect(result.isValid).toBe(false);
             expect(result.errors.some(e => e.code === 'INVALID_ELEMENT_REFERENCE')).toBe(true);
         });
+
+        it('should resolve references to elements nested inside containers', () => {
+            contract.addElement({
+                id: 'entry-row',
+                type: 'container',
+                properties: {},
+                dataBindings: [],
+                eventBindings: [],
+                children: [
+                    {
+                        id: 'desc-in',
+                        type: 'input',
+                        properties: {},
+                        dataBindings: [],
+                        eventBindings: []
+                    },
+                    {
+                        id: 'add-btn',
+                        type: 'button',
+                        properties: {},
+                        dataBindings: [],
+                        eventBindings: [{ event: 'click', operationId: 'op-add' }]
+                    }
+                ]
+            });
+
+            contract.addOperation({
+                id: 'op-add',
+                operationName: 'list.append',
+                inputs: [{ name: 'item.description', source: 'ui-element', sourceId: 'desc-in' }],
+                outputs: [{ name: 'reset', target: 'ui-element', targetId: 'desc-in' }],
+                triggers: []
+            });
+
+            const result = contract.validateReferences();
+            expect(result.errors).toEqual([]);
+            expect(result.isValid).toBe(true);
+        });
+
+        it('should check event bindings on nested elements', () => {
+            contract.addElement({
+                id: 'entry-row',
+                type: 'container',
+                properties: {},
+                dataBindings: [],
+                eventBindings: [],
+                children: [
+                    {
+                        id: 'ghost-btn',
+                        type: 'button',
+                        properties: {},
+                        dataBindings: [],
+                        eventBindings: [{ event: 'click', operationId: 'op-missing' }]
+                    }
+                ]
+            });
+
+            const result = contract.validateReferences();
+            expect(result.isValid).toBe(false);
+            expect(result.errors[0].path).toContain('children[0]');
+            expect(result.errors[0].message).toContain('op-missing');
+        });
+    });
+
+    describe('Nested element access', () => {
+        beforeEach(() => {
+            contract.addElement({
+                id: 'entry-row',
+                type: 'container',
+                properties: {},
+                dataBindings: [],
+                eventBindings: [],
+                children: [
+                    {
+                        id: 'desc-in',
+                        type: 'input',
+                        properties: { placeholder: 'Description' },
+                        dataBindings: [],
+                        eventBindings: []
+                    }
+                ]
+            });
+        });
+
+        it('gets, updates, and removes nested elements by id', () => {
+            expect(contract.getElement('desc-in')?.properties.placeholder).toBe('Description');
+
+            expect(contract.updateElement('desc-in', { properties: { placeholder: 'What for?' } })).toBe(true);
+            expect(contract.getElement('desc-in')?.properties.placeholder).toBe('What for?');
+
+            expect(contract.removeElement('desc-in')).toBe(true);
+            expect(contract.getElement('desc-in')).toBeUndefined();
+            expect(contract.getElement('entry-row')?.children).toHaveLength(0);
+        });
+
+        it('rejects adding a top-level element whose id exists in a nested child', () => {
+            expect(() =>
+                contract.addElement({
+                    id: 'desc-in',
+                    type: 'text',
+                    properties: {},
+                    dataBindings: [],
+                    eventBindings: []
+                })
+            ).toThrow("already exists");
+        });
     });
 
     describe('Utility Methods', () => {

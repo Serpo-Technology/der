@@ -252,12 +252,22 @@ export function validateContract(contract: Contract): ValidationResult {
   const errors = [...schemaResult.errors];
   const warnings = [...schemaResult.warnings];
 
-  // Additional business logic validation
-  const elementIds = new Set(contract.elements.map(el => el.id));
+  // Element ids and bindings live at every nesting level, so the id
+  // collection and the reference checks walk the whole tree.
+  const elementIds = new Set<string>();
+  let elementCount = 0;
+  const collectIds = (elements: UIElement[]) => {
+    for (const element of elements) {
+      elementCount += 1;
+      elementIds.add(element.id);
+      if (element.children?.length) collectIds(element.children);
+    }
+  };
+  collectIds(contract.elements);
   const operationIds = new Set(contract.operations.map(op => op.id));
 
   // Validate element ID uniqueness
-  if (elementIds.size !== contract.elements.length) {
+  if (elementIds.size !== elementCount) {
     errors.push({
       path: 'elements',
       message: 'Duplicate element IDs found',
@@ -275,11 +285,11 @@ export function validateContract(contract: Contract): ValidationResult {
   }
 
   // Validate data binding references
-  contract.elements.forEach((element, index) => {
+  const visitElement = (element: UIElement, path: string) => {
     element.dataBindings.forEach((binding, bindingIndex) => {
       if (binding.source === 'operation' && !operationIds.has(binding.sourceId)) {
         errors.push({
-          path: `elements[${index}].dataBindings[${bindingIndex}].sourceId`,
+          path: `${path}.dataBindings[${bindingIndex}].sourceId`,
           message: `Referenced operation '${binding.sourceId}' does not exist`,
           code: 'INVALID_REFERENCE'
         });
@@ -289,13 +299,18 @@ export function validateContract(contract: Contract): ValidationResult {
     element.eventBindings.forEach((binding, bindingIndex) => {
       if (!operationIds.has(binding.operationId)) {
         errors.push({
-          path: `elements[${index}].eventBindings[${bindingIndex}].operationId`,
+          path: `${path}.eventBindings[${bindingIndex}].operationId`,
           message: `Referenced operation '${binding.operationId}' does not exist`,
           code: 'INVALID_REFERENCE'
         });
       }
     });
-  });
+
+    element.children?.forEach((child, childIndex) =>
+      visitElement(child, `${path}.children[${childIndex}]`)
+    );
+  };
+  contract.elements.forEach((element, index) => visitElement(element, `elements[${index}]`));
 
   return {
     isValid: errors.length === 0,

@@ -289,7 +289,7 @@
 
 .der-edit-warnings {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
   font-size: 0.82rem;
@@ -298,6 +298,32 @@
   border: 1px solid #f2dfae;
   border-radius: 8px;
   padding: 6px 10px;
+}
+
+.der-edit-warnings details {
+  flex: 1;
+  min-width: 0;
+}
+
+.der-edit-warnings summary {
+  cursor: pointer;
+}
+
+.der-warning-group {
+  margin-top: 6px;
+}
+
+.der-warning-group-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.der-warning-group ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .der-edit-warnings button {
