@@ -30,6 +30,7 @@ import { LLMClient } from '../services/ai-interpreter/llm-client';
 import { repositoryService } from '../services/repository/repository-service';
 // import { persistenceService } from '../services/persistence';
 import { integratedExperienceService } from '../services/IntegratedExperienceService';
+import { isTauriRuntime } from '../services/tauri/TauriCommandService';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
@@ -489,7 +490,7 @@ export const MainInterface: React.FC = () => {
                   title: (state.contract && state.contract.name) || 'Experience'
                 };
                 // Prefer Tauri window if available
-                const hasTauri = typeof (window as any).__TAURI__ !== 'undefined';
+                const hasTauri = isTauriRuntime();
                 if (hasTauri) {
                   console.log('Invoking Tauri open_experience_window with', payload);
                   await invoke('open_experience_window', payload);
@@ -731,19 +732,6 @@ const PreviewView: React.FC<PreviewViewProps> = ({
   isBookmarked = false,
   isProcessing = false
 }) => {
-  React.useEffect(() => {
-    // Auto-open experience in a new window for debugging when preview mounts
-    if (onOpenWindow) {
-      try {
-        // Invoke and ignore return type
-        (onOpenWindow as () => unknown)();
-      } catch {
-        // Opening the standalone window is best-effort
-      }
-    }
-    // run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   return (
     <div className="preview-view">
       <div className="preview-header">

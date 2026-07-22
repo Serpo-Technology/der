@@ -28,6 +28,17 @@ export interface OperationResult {
   execution_time_ms: number;
 }
 
+/**
+ * True when running inside the Tauri webview. Tauri v2 injects
+ * `__TAURI_INTERNALS__`; `__TAURI__` only exists with `withGlobalTauri`
+ * (and is what tests set to force the native path).
+ */
+export function isTauriRuntime(): boolean {
+  if (typeof window === 'undefined') return false;
+  const w = window as unknown as Record<string, unknown>;
+  return Boolean(w.__TAURI_INTERNALS__ || w.__TAURI__);
+}
+
 export class TauriCommandService {
   private static instance: TauriCommandService;
   private isInitialized = false;
@@ -47,7 +58,7 @@ export class TauriCommandService {
 
     try {
       // Check if we're running in a Tauri environment
-      this.tauriAvailable = typeof window !== 'undefined' && !!(window as any).__TAURI__;
+      this.tauriAvailable = isTauriRuntime();
       this.isInitialized = true;
       
       if (this.tauriAvailable) {
