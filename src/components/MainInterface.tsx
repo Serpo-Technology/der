@@ -1,6 +1,7 @@
 /**
  * Main Interface - Primary user interface that integrates all components
- * Provides natural language input, blueprint editing, contract editing, and experience preview
+ * Provides natural language input, blueprint and contract editing, bookmarks,
+ * parts, and settings; created apps open in their own windows.
  */
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
@@ -9,8 +10,7 @@ import './MainInterface.css';
 // Import existing components
 import { BlueprintEditor } from './editor/BlueprintEditor';
 import { ContractEditor } from './editor/ContractEditor';
-import { DynamicExperienceRenderer } from './runtime/DynamicExperienceRenderer';
-import { ExperienceEditBar } from './runtime/ExperienceEditBar';
+import { ExperienceNotes } from './runtime/ExperienceEditBar';
 
 // Import persistence components
 import { BookmarkManager } from './bookmarks';
@@ -22,7 +22,7 @@ import { PartsView } from './parts/PartsView';
 import { Blueprint } from '../types/blueprint';
 import { Contract as ContractClass } from '../models/contract';
 import { ValidationResult, ValidationWarning } from '../types/contract';
-import { ExperienceState, Experience } from '../types/experience';
+import { Experience } from '../types/experience';
 
 // Import services
 import { BlueprintGenerator } from '../services/ai-interpreter/blueprint-generator';
@@ -36,7 +36,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
 // Navigation modes
-type ViewMode = 'create' | 'blueprint' | 'contract' | 'preview' | 'bookmarks' | 'import' | 'parts' | 'settings';
+type ViewMode = 'create' | 'blueprint' | 'contract' | 'bookmarks' | 'import' | 'parts' | 'settings';
 
 interface MainInterfaceState {
   currentMode: ViewMode;
@@ -44,18 +44,17 @@ interface MainInterfaceState {
   blueprint: Blueprint | null;
   contract: ContractClass | null;
   currentExperienceId?: string | null;
-  experienceState: ExperienceState | null;
   isProcessing: boolean;
   error: string | null;
+  notice: string | null;
   validationResults: {
     blueprint?: ValidationResult;
     contract?: ValidationResult;
   };
   bookmarkedExperiences: any[];
   contractWarnings: ValidationWarning[];
-  showSharingDialog: boolean;
+  shareTarget: { id: string; name: string } | null;
   showImportDialog: boolean;
-  currentExperienceBookmarked: boolean;
 }
 
 export const MainInterface: React.FC = () => {
@@ -65,15 +64,14 @@ export const MainInterface: React.FC = () => {
     blueprint: null,
     contract: null,
     currentExperienceId: null,
-    experienceState: null,
     isProcessing: false,
     error: null,
+    notice: null,
     validationResults: {},
     bookmarkedExperiences: [],
     contractWarnings: [],
-    showSharingDialog: false,
-    showImportDialog: false,
-    currentExperienceBookmarked: false
+    shareTarget: null,
+    showImportDialog: false
   });
 
   // Initialize services (provider and model come from the stored settings;
@@ -117,6 +115,30 @@ export const MainInterface: React.FC = () => {
     loadBookmarkedExperiences(); // Load on startup
   }, [loadBookmarkedExperiences]);
 
+  // Open an experience as its own app window.
+  const openExperienceWindow = useCallback(async (
+    experienceId: string,
+    contract: ContractClass,
+    title: string
+  ) => {
+    const payload = { experienceId, contract: contract.toObject(), title };
+    if (isTauriRuntime()) {
+      await invoke('open_experience_window', payload);
+      return;
+    }
+    // Browser fallback for debugging outside the desktop shell
+    const win = window.open('', '_blank', 'noopener,noreferrer');
+    if (!win) {
+      throw new Error('Popup blocked. Enable popups for this site.');
+    }
+    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${payload.title}</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;margin:0;padding:16px;background:#0b0e14;color:#e6e6e6} pre{white-space:pre-wrap;word-break:break-word;background:#121621;border:1px solid #2a2f3a;border-radius:8px;padding:12px}</style></head><body><h2>Experience (Debug Window)</h2><p>This is a debug view because Tauri is not available.</p><h3>Contract JSON</h3><pre>${
+      JSON.stringify(payload.contract, null, 2)
+    }</pre></body></html>`;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  }, []);
+
   // Handle natural language processing with integrated service
   const handleGenerateBlueprint = useCallback(async () => {
     if (!state.naturalLanguageInput.trim()) {
@@ -136,17 +158,21 @@ export const MainInterface: React.FC = () => {
           enableRealTimeUpdates: true
         }
       );
-      
+
       // Validate blueprint
       const validation = services.blueprintGenerator.validateBlueprint(result.blueprint);
-      
+
+      // The app is built; open it as its own window right away.
+      const title = result.contract.name || 'Experience';
+      await openExperienceWindow(result.experienceId, result.contract, title);
+
       setState(prev => ({
         ...prev,
         blueprint: result.blueprint,
         contract: result.contract,
         currentExperienceId: result.experienceId,
-        currentMode: 'preview',
-        currentExperienceBookmarked: false,
+        naturalLanguageInput: '',
+        notice: `"${title}" opened in its own window. Review its blueprint and contract from the tabs above.`,
         contractWarnings: result.warnings ?? [],
         validationResults: { ...prev.validationResults, blueprint: validation },
         isProcessing: false
@@ -154,11 +180,11 @@ export const MainInterface: React.FC = () => {
     } catch (error) {
       setState(prev => ({
         ...prev,
-        error: error instanceof Error ? error.message : 'Failed to generate blueprint',
+        error: error instanceof Error ? error.message : 'Failed to create the app',
         isProcessing: false
       }));
     }
-  }, [state.naturalLanguageInput, services]);
+  }, [state.naturalLanguageInput, services, openExperienceWindow]);
 
   // Handle blueprint to contract generation
   const handleGenerateContract = useCallback(async () => {
@@ -218,51 +244,13 @@ export const MainInterface: React.FC = () => {
     }));
   }, []);
 
-  // Handle experience state changes
-  const handleExperienceStateChange = useCallback((experienceState: ExperienceState) => {
-    setState(prev => ({ ...prev, experienceState }));
-  }, []);
-
-  // Live preview data carried across contract edits (recomputed only when
-  // the contract object changes, so typing does not re-seed the renderer).
-  const previewRehydrationData = useMemo(
-    () => ({ ...(state.experienceState?.data ?? {}) }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.contract]
-  );
-
-  // Apply a natural-language change to the previewed experience
-  const handleRefineExperience = useCallback(async (instruction: string) => {
-    if (!state.contract || !state.currentExperienceId) {
-      throw new Error('Generate an experience before editing it.');
-    }
-    setState(prev => ({ ...prev, isProcessing: true }));
-    try {
-      const result = await integratedExperienceService.refineExperience(
-        state.currentExperienceId,
-        instruction,
-        state.contract
-      );
-      setState(prev => ({
-        ...prev,
-        contract: result.contract,
-        contractWarnings: result.warnings,
-        isProcessing: false
-      }));
-    } catch (error) {
-      setState(prev => ({ ...prev, isProcessing: false }));
-      throw error;
-    }
-  }, [state.contract, state.currentExperienceId]);
-
-  // Handle experience errors
-  const handleExperienceError = useCallback((error: Error) => {
-    setState(prev => ({ ...prev, error: error.message }));
-  }, []);
-
   // Navigation handlers
   const handleModeChange = useCallback((mode: ViewMode) => {
     setState(prev => ({ ...prev, currentMode: mode, error: null }));
+  }, []);
+
+  const clearNotice = useCallback(() => {
+    setState(prev => ({ ...prev, notice: null, contractWarnings: [] }));
   }, []);
 
   // Clear error
@@ -277,77 +265,25 @@ export const MainInterface: React.FC = () => {
       naturalLanguageInput: '',
       blueprint: null,
       contract: null,
-      experienceState: null,
+      currentExperienceId: null,
       isProcessing: false,
       error: null,
+      notice: null,
       validationResults: {},
       bookmarkedExperiences: [],
       contractWarnings: [],
-      showSharingDialog: false,
-      showImportDialog: false,
-      currentExperienceBookmarked: false
+      shareTarget: null,
+      showImportDialog: false
     });
   }, []);
 
-  // Load experience from bookmark
-  const handleLoadExperience = useCallback(async (experience: Experience) => {
-    try {
-      const contract = ContractClass.fromObject(experience.contract);
-      setState(prev => ({
-        ...prev,
-        contract,
-        currentExperienceId: experience.id,
-        currentMode: 'preview',
-        currentExperienceBookmarked: true
-      }));
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        error: `Could not open this bookmark: ${error instanceof Error ? error.message : String(error)}`
-      }));
-    }
-  }, []);
-
-  // Handle bookmark creation
-  const handleBookmarkExperience = useCallback(async () => {
-    if (!state.contract) return;
-    const experienceId = state.currentExperienceId || `exp-${Date.now()}`;
-    if (!state.currentExperienceId) {
-      setState(prev => ({ ...prev, currentExperienceId: experienceId }));
-    }
-
-    setState(prev => ({ ...prev, isProcessing: true, error: null }));
-    try {
-      await persistenceService.bookmarkExperience({
-        id: experienceId,
-        contract: state.contract,
-        reactComponent: () => null,
-        state: { data: {}, loading: {}, errors: {}, lastUpdated: new Date() },
-        operations: new Map()
-      });
-
-      setState(prev => ({
-        ...prev,
-        currentExperienceBookmarked: true,
-        isProcessing: false
-      }));
-      await loadBookmarkedExperiences();
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        error: error instanceof Error ? error.message : 'Failed to bookmark experience',
-        isProcessing: false
-      }));
-    }
-  }, [state.contract, state.currentExperienceId, loadBookmarkedExperiences]);
-
-  // Handle sharing dialog
-  const handleShowSharingDialog = useCallback(() => {
-    setState(prev => ({ ...prev, showSharingDialog: true }));
+  // Handle sharing dialog (opened from a bookmark card)
+  const handleShareBookmark = useCallback((id: string, name: string) => {
+    setState(prev => ({ ...prev, shareTarget: { id, name } }));
   }, []);
 
   const handleCloseSharingDialog = useCallback(() => {
-    setState(prev => ({ ...prev, showSharingDialog: false }));
+    setState(prev => ({ ...prev, shareTarget: null }));
   }, []);
 
   // Handle import dialog
@@ -362,23 +298,26 @@ export const MainInterface: React.FC = () => {
   // Handle import success using integrated service
   const handleImportSuccess = useCallback(async (experience: Experience) => {
     setState(prev => ({ ...prev, isProcessing: true, error: null }));
-    
+
     try {
       // Convert Experience to Contract if needed
-      const contract = experience.contract instanceof ContractClass 
-        ? experience.contract 
+      const contract = experience.contract instanceof ContractClass
+        ? experience.contract
         : ContractClass.fromObject(experience.contract);
+
+      const title = contract.name || 'Imported experience';
+      await openExperienceWindow(experience.id, contract, title);
 
       setState(prev => ({
         ...prev,
         blueprint: experience.blueprint || null,
         contract: contract,
-        currentMode: 'preview',
-        currentExperienceBookmarked: false,
+        currentExperienceId: experience.id,
+        notice: `"${title}" opened in its own window.`,
         showImportDialog: false,
         isProcessing: false
       }));
-      
+
       await loadBookmarkedExperiences();
     } catch (error) {
       setState(prev => ({
@@ -388,7 +327,7 @@ export const MainInterface: React.FC = () => {
         isProcessing: false
       }));
     }
-  }, [loadBookmarkedExperiences]);
+  }, [loadBookmarkedExperiences, openExperienceWindow]);
 
   // Handle success/error messages
   const handleSuccess = useCallback((message: string) => {
@@ -429,13 +368,6 @@ export const MainInterface: React.FC = () => {
           disabled={!state.contract}
         >
           Contract {state.contract && '✓'}
-        </button>
-        <button
-          className={`nav-button ${state.currentMode === 'preview' ? 'active' : ''}`}
-          onClick={() => handleModeChange('preview')}
-          disabled={!state.contract}
-        >
-          Preview
         </button>
         <button
           className={`nav-button ${state.currentMode === 'bookmarks' ? 'active' : ''}`}
@@ -498,6 +430,9 @@ export const MainInterface: React.FC = () => {
             onInputChange={(input) => setState(prev => ({ ...prev, naturalLanguageInput: input }))}
             onGenerateBlueprint={handleGenerateBlueprint}
             isProcessing={state.isProcessing}
+            notice={state.notice}
+            warnings={state.contractWarnings}
+            onDismissNotice={clearNotice}
           />
         )}
 
@@ -521,58 +456,11 @@ export const MainInterface: React.FC = () => {
           />
         )}
 
-        {state.currentMode === 'preview' && state.contract && (
-          <PreviewView
-            contract={state.contract}
-            experienceId={state.currentExperienceId || 'preview'}
-            initialData={previewRehydrationData}
-            onRefine={handleRefineExperience}
-            warnings={state.contractWarnings}
-            onDismissWarnings={() => setState(prev => ({ ...prev, contractWarnings: [] }))}
-            onStateChange={handleExperienceStateChange}
-            onError={handleExperienceError}
-            onBookmark={handleBookmarkExperience}
-            onShare={handleShowSharingDialog}
-            isBookmarked={state.currentExperienceBookmarked}
-            isProcessing={state.isProcessing}
-            onOpenWindow={async () => {
-              try {
-                const payload = {
-                  experienceId: state.currentExperienceId || `exp-${Date.now()}`,
-                  contract: state.contract!.toObject(),
-                  title: (state.contract && state.contract.name) || 'Experience'
-                };
-                // Prefer Tauri window if available
-                const hasTauri = isTauriRuntime();
-                if (hasTauri) {
-                  console.log('Invoking Tauri open_experience_window with', payload);
-                  await invoke('open_experience_window', payload);
-                  console.log('Tauri open_experience_window success');
-                } else {
-                  // Browser fallback for debugging
-                  const win = window.open('', '_blank', 'noopener,noreferrer');
-                  if (!win) {
-                    throw new Error('Popup blocked. Enable popups for this site.');
-                  }
-                  const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${payload.title}</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;margin:0;padding:16px;background:#0b0e14;color:#e6e6e6} pre{white-space:pre-wrap;word-break:break-word;background:#121621;border:1px solid #2a2f3a;border-radius:8px;padding:12px}</style></head><body><h2>Experience (Debug Window)</h2><p>This is a debug view because Tauri is not available.</p><h3>Contract JSON</h3><pre>${
-                    JSON.stringify(payload.contract, null, 2)
-                  }</pre></body></html>`;
-                  win.document.open();
-                  win.document.write(html);
-                  win.document.close();
-                }
-              } catch (e) {
-                console.error('Failed to open window', e);
-                setState(prev => ({ ...prev, error: e instanceof Error ? e.message : 'Failed to open window' }));
-              }
-            }}
-          />
-        )}
-
         {state.currentMode === 'bookmarks' && (
           <BookmarkManager
-            onLoadExperience={handleLoadExperience}
             onError={handleError}
+            onShare={handleShareBookmark}
+            onBookmarksChanged={loadBookmarkedExperiences}
           />
         )}
 
@@ -601,11 +489,11 @@ export const MainInterface: React.FC = () => {
       </footer>
 
       {/* Sharing Dialog */}
-      {state.contract && state.currentExperienceId && (
+      {state.shareTarget && (
         <SharingDialog
-          experienceId={state.currentExperienceId}
-          experienceName={state.contract.name || 'Unnamed Experience'}
-          isOpen={state.showSharingDialog}
+          experienceId={state.shareTarget.id}
+          experienceName={state.shareTarget.name}
+          isOpen={true}
           onClose={handleCloseSharingDialog}
           onError={handleError}
           onSuccess={handleSuccess}
@@ -630,13 +518,19 @@ interface CreateViewProps {
   onInputChange: (input: string) => void;
   onGenerateBlueprint: () => void;
   isProcessing: boolean;
+  notice?: string | null;
+  warnings?: ValidationWarning[];
+  onDismissNotice?: () => void;
 }
 
 const CreateView: React.FC<CreateViewProps> = ({
   naturalLanguageInput,
   onInputChange,
   onGenerateBlueprint,
-  isProcessing
+  isProcessing,
+  notice,
+  warnings,
+  onDismissNotice
 }) => {
   const examplePrompts = [
     "Create a todo list app with add, delete, and mark complete functionality",
@@ -673,6 +567,18 @@ const CreateView: React.FC<CreateViewProps> = ({
           </button>
         </div>
       </div>
+
+      {notice && (
+        <div className="create-notice">
+          <span>{notice}</span>
+          {onDismissNotice && (
+            <button type="button" onClick={onDismissNotice} aria-label="Dismiss notice">
+              Dismiss
+            </button>
+          )}
+        </div>
+      )}
+      {warnings && warnings.length > 0 && <ExperienceNotes warnings={warnings} />}
 
       <div className="examples-section">
         <h3>Example Prompts</h3>
@@ -764,98 +670,3 @@ const ContractView: React.FC<ContractViewProps> = ({
     </div>
   );
 };
-
-// Preview View Component
-interface PreviewViewProps {
-  contract: ContractClass;
-  experienceId: string;
-  initialData?: Record<string, unknown>;
-  onRefine?: (instruction: string) => Promise<void>;
-  warnings?: ValidationWarning[];
-  onDismissWarnings?: () => void;
-  onStateChange: (state: ExperienceState) => void;
-  onError: (error: Error) => void;
-  onBookmark?: () => void;
-  onShare?: () => void;
-  onOpenWindow?: () => void;
-  isBookmarked?: boolean;
-  isProcessing?: boolean;
-}
-
-const PreviewView: React.FC<PreviewViewProps> = ({
-  contract,
-  experienceId,
-  initialData,
-  onRefine,
-  warnings,
-  onDismissWarnings,
-  onStateChange,
-  onError,
-  onBookmark,
-  onShare,
-  onOpenWindow,
-  isBookmarked = false,
-  isProcessing = false
-}) => {
-  return (
-    <div className="preview-view">
-      <div className="preview-header">
-        <div className="preview-title">
-          <h2>{contract.name || 'Your app'}</h2>
-          {contract.metadata?.description && <p>{contract.metadata.description}</p>}
-        </div>
-        <div className="preview-actions">
-          {onBookmark && (
-            <button
-              className={`bookmark-button ${isBookmarked ? 'bookmarked' : ''}`}
-              onClick={onBookmark}
-              disabled={isProcessing}
-              title={isBookmarked ? 'Remove bookmark' : 'Bookmark this experience'}
-            >
-              {isBookmarked ? 'Bookmarked' : 'Bookmark'}
-            </button>
-          )}
-          {onShare && (
-            <button
-              className="share-button"
-              onClick={onShare}
-              disabled={isProcessing}
-              title="Share this experience"
-            >
-              Share
-            </button>
-          )}
-          {onOpenWindow && (
-            <button
-              className="open-window-button"
-              onClick={onOpenWindow}
-              disabled={isProcessing}
-              title="Open in new window"
-            >
-              Open in window
-            </button>
-          )}
-        </div>
-      </div>
-
-      {onRefine && (
-        <ExperienceEditBar
-          onSubmit={onRefine}
-          busy={isProcessing}
-          warnings={warnings}
-          onDismissWarnings={onDismissWarnings}
-        />
-      )}
-      <div className="preview-container">
-        <DynamicExperienceRenderer
-          contract={contract}
-          initialData={initialData}
-          experienceId={experienceId}
-          onStateChange={onStateChange}
-          onError={onError}
-        />
-      </div>
-    </div>
-  );
-};
-

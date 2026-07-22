@@ -5,19 +5,20 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { BookmarkedExperience } from '../../types/persistence';
-import { Experience } from '../../types/experience';
 import { bookmarkManager, BookmarkFilter, BookmarkSortOptions } from '../../services/persistence';
 import { invoke } from '@tauri-apps/api/core';
 import './BookmarkManager.css';
 
 interface BookmarkManagerProps {
-  onLoadExperience?: (experience: Experience) => void;
   onError?: (error: string) => void;
+  onShare?: (id: string, name: string) => void;
+  onBookmarksChanged?: () => void;
 }
 
 export const BookmarkManager: React.FC<BookmarkManagerProps> = ({
-  onLoadExperience,
-  onError
+  onError,
+  onShare,
+  onBookmarksChanged
 }) => {
   const [bookmarks, setBookmarks] = useState<BookmarkedExperience[]>([]);
   const [filteredBookmarks, setFilteredBookmarks] = useState<BookmarkedExperience[]>([]);
@@ -64,35 +65,6 @@ export const BookmarkManager: React.FC<BookmarkManagerProps> = ({
     return Array.from(tagSet).sort();
   }, [bookmarks]);
 
-  // Handle bookmark loading
-  const handleLoadBookmark = useCallback(async (bookmarkId: string) => {
-    setIsLoading(true);
-    try {
-      const experience = await bookmarkManager.getBookmark(bookmarkId);
-      if (experience) {
-        // Convert BookmarkedExperience to Experience
-        const fullExperience: Experience = {
-          id: experience.id,
-          contract: experience.contract,
-          reactComponent: () => null, // Will be populated by DER
-          state: {
-            data: {},
-            loading: {},
-            errors: {},
-            lastUpdated: experience.lastAccessedAt
-          },
-          operations: new Map()
-        };
-        onLoadExperience?.(fullExperience);
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load bookmark';
-      onError?.(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [onLoadExperience, onError]);
-
   // Open a bookmark as its own app window
   const handleOpenAsApp = useCallback(async (bookmarkId: string) => {
     try {
@@ -111,23 +83,20 @@ export const BookmarkManager: React.FC<BookmarkManagerProps> = ({
     }
   }, [onError]);
 
-  // Handle bookmark deletion
+  // Handle bookmark deletion (confirmation happens on the card itself)
   const handleDeleteBookmark = useCallback(async (bookmarkId: string) => {
-    if (!confirm('Are you sure you want to delete this bookmark?')) {
-      return;
-    }
-
     setIsLoading(true);
     try {
       await bookmarkManager.deleteBookmark(bookmarkId);
       await loadBookmarks(); // Refresh the list
+      onBookmarksChanged?.();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to delete bookmark';
       onError?.(errorMessage);
     } finally {
       setIsLoading(false);
     }
-  }, [loadBookmarks, onError]);
+  }, [loadBookmarks, onError, onBookmarksChanged]);
 
   // Handle tag toggle
   const handleTagToggle = useCallback((tag: string) => {
@@ -255,8 +224,8 @@ export const BookmarkManager: React.FC<BookmarkManagerProps> = ({
               <BookmarkCard
                 key={bookmark.id}
                 bookmark={bookmark}
-                onLoad={() => handleLoadBookmark(bookmark.id)}
                 onOpenWindow={() => handleOpenAsApp(bookmark.id)}
+                onShare={onShare ? () => onShare(bookmark.id, bookmark.name) : undefined}
                 onDelete={() => handleDeleteBookmark(bookmark.id)}
                 isLoading={isLoading}
               />
@@ -271,19 +240,37 @@ export const BookmarkManager: React.FC<BookmarkManagerProps> = ({
 // Bookmark Card Component
 interface BookmarkCardProps {
   bookmark: BookmarkedExperience;
-  onLoad: () => void;
   onOpenWindow: () => void;
+  onShare?: () => void;
   onDelete: () => void;
   isLoading: boolean;
 }
 
 const BookmarkCard: React.FC<BookmarkCardProps> = ({
   bookmark,
-  onLoad,
   onOpenWindow,
+  onShare,
   onDelete,
   isLoading
 }) => {
+  // First click arms the delete, second click performs it; the armed state
+  // falls back after a few seconds.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  useEffect(() => {
+    if (!confirmingDelete) return;
+    const timer = setTimeout(() => setConfirmingDelete(false), 4000);
+    return () => clearTimeout(timer);
+  }, [confirmingDelete]);
+
+  const handleDeleteClick = () => {
+    if (confirmingDelete) {
+      setConfirmingDelete(false);
+      onDelete();
+    } else {
+      setConfirmingDelete(true);
+    }
+  };
+
   const formatDate = (date: Date) => {
     return new Intl.DateTimeFormat('en-US', {
       year: 'numeric',
@@ -336,21 +323,23 @@ const BookmarkCard: React.FC<BookmarkCardProps> = ({
           >
             Open app
           </button>
+          {onShare && (
+            <button
+              className="load-button"
+              onClick={onShare}
+              disabled={isLoading}
+              title="Share this app"
+            >
+              Share
+            </button>
+          )}
           <button
-            className="load-button"
-            onClick={onLoad}
+            className={`delete-button danger ${confirmingDelete ? 'confirming' : ''}`}
+            onClick={handleDeleteClick}
             disabled={isLoading}
-            title="Open inline in this window"
+            title={confirmingDelete ? 'Click again to delete' : 'Delete bookmark'}
           >
-            Preview here
-          </button>
-          <button
-            className="delete-button danger"
-            onClick={onDelete}
-            disabled={isLoading}
-            title="Delete bookmark"
-          >
-            Delete
+            {confirmingDelete ? 'Click again to delete' : 'Delete'}
           </button>
         </div>
       </div>

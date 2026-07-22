@@ -372,6 +372,11 @@
   cursor: not-allowed;
 }
 
+.delete-button.confirming {
+  background: var(--danger-color, #dc3545);
+  color: white;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .bookmark-manager {

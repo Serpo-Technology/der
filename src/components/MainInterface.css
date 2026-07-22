@@ -700,3 +700,29 @@
     justify-content: center;
   }
 }
+.create-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #e7f4ea;
+  color: #1d6b34;
+  border: 1px solid #bfe3c8;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+
+.create-notice button {
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.create-view .der-edit-warnings {
+  margin-top: 0.75rem;
+}

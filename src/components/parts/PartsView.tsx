@@ -68,11 +68,22 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
     }
   }, [staged, forceDowngrade, refresh, onError]);
 
+  // The webview has no native confirm dialog: the first click arms removal,
+  // the second performs it, and the armed state falls back after a moment.
+  const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null);
+  useEffect(() => {
+    if (!confirmingRemove) return;
+    const timer = setTimeout(() => setConfirmingRemove(null), 4000);
+    return () => clearTimeout(timer);
+  }, [confirmingRemove]);
+
   const handleRemove = useCallback(
-    async (id: string, name: string) => {
-      if (!confirm(`Remove the part "${name}"? Apps composed with it will stop working.`)) {
+    async (id: string) => {
+      if (confirmingRemove !== id) {
+        setConfirmingRemove(id);
         return;
       }
+      setConfirmingRemove(null);
       setBusy(true);
       try {
         await fragmentsService.remove(id);
@@ -83,7 +94,7 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
         setBusy(false);
       }
     },
-    [refresh, onError]
+    [confirmingRemove, refresh, onError]
   );
 
   return (
@@ -192,10 +203,15 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
                 </div>
                 <button
                   className="danger"
-                  onClick={() => handleRemove(part.manifest.id, part.manifest.name)}
+                  onClick={() => handleRemove(part.manifest.id)}
                   disabled={busy}
+                  title={
+                    confirmingRemove === part.manifest.id
+                      ? 'Click again to remove'
+                      : 'Apps composed with this part will stop working'
+                  }
                 >
-                  Remove
+                  {confirmingRemove === part.manifest.id ? 'Click again to remove' : 'Remove'}
                 </button>
               </div>
               <p>{part.manifest.description}</p>

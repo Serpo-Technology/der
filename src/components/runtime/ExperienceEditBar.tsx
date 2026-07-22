@@ -45,6 +45,65 @@ function labelWarning(warning: ValidationWarning): string {
   return warning.message;
 }
 
+interface ExperienceNotesProps {
+  warnings: ValidationWarning[];
+  onDismiss?: () => void;
+}
+
+/**
+ * Build notes for an experience: adjustments the validator applied, plus the
+ * assumptions and open questions the model recorded. Shown under the edit bar
+ * and in the create view after an app opens.
+ */
+export const ExperienceNotes: React.FC<ExperienceNotesProps> = ({ warnings, onDismiss }) => {
+  const groups = useMemo(() => groupWarnings(warnings), [warnings]);
+  if (warnings.length === 0) return null;
+
+  if (warnings.length === 1) {
+    return (
+      <div className="der-edit-warnings">
+        <span className="der-edit-warnings-single">{labelWarning(warnings[0])}</span>
+        {onDismiss && (
+          <button type="button" onClick={onDismiss} aria-label="Dismiss warnings">
+            Dismiss
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="der-edit-warnings">
+      <details>
+        <summary>
+          {groups
+            .map((group) =>
+              `${group.entries.length} ${
+                group.entries.length === 1 ? group.singular : group.plural
+              }`
+            )
+            .join(', ')}
+        </summary>
+        {groups.map((group) => (
+          <div key={group.title} className="der-warning-group">
+            <div className="der-warning-group-title">{group.title}</div>
+            <ul>
+              {group.entries.map((warning, index) => (
+                <li key={`${group.title}-${index}`}>{warning.message}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </details>
+      {onDismiss && (
+        <button type="button" onClick={onDismiss} aria-label="Dismiss warnings">
+          Dismiss
+        </button>
+      )}
+    </div>
+  );
+};
+
 export const ExperienceEditBar: React.FC<ExperienceEditBarProps> = ({
   onSubmit,
   busy,
@@ -53,7 +112,6 @@ export const ExperienceEditBar: React.FC<ExperienceEditBarProps> = ({
 }) => {
   const [instruction, setInstruction] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const warningGroups = useMemo(() => groupWarnings(warnings ?? []), [warnings]);
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent) => {
@@ -87,45 +145,8 @@ export const ExperienceEditBar: React.FC<ExperienceEditBarProps> = ({
         </button>
       </form>
       {error && <div className="der-edit-error">{error}</div>}
-      {warnings && warnings.length === 1 && (
-        <div className="der-edit-warnings">
-          <span className="der-edit-warnings-single">{labelWarning(warnings[0])}</span>
-          {onDismissWarnings && (
-            <button type="button" onClick={onDismissWarnings} aria-label="Dismiss warnings">
-              Dismiss
-            </button>
-          )}
-        </div>
-      )}
-      {warnings && warnings.length > 1 && (
-        <div className="der-edit-warnings">
-          <details>
-            <summary>
-              {warningGroups
-                .map((group) =>
-                  `${group.entries.length} ${
-                    group.entries.length === 1 ? group.singular : group.plural
-                  }`
-                )
-                .join(', ')}
-            </summary>
-            {warningGroups.map((group) => (
-              <div key={group.title} className="der-warning-group">
-                <div className="der-warning-group-title">{group.title}</div>
-                <ul>
-                  {group.entries.map((warning, index) => (
-                    <li key={`${group.title}-${index}`}>{warning.message}</li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </details>
-          {onDismissWarnings && (
-            <button type="button" onClick={onDismissWarnings} aria-label="Dismiss warnings">
-              Dismiss
-            </button>
-          )}
-        </div>
+      {warnings && warnings.length > 0 && (
+        <ExperienceNotes warnings={warnings} onDismiss={onDismissWarnings} />
       )}
     </div>
   );
