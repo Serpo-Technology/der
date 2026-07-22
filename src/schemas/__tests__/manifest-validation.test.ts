@@ -227,6 +227,31 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
     expect(result.warnings).toHaveLength(0);
   });
 
+  it('normalizes unknown themes and accents with a warning', () => {
+    const { contract, result } = checkContract(
+      rawContract({ styling: { theme: 'neon', accent: 'plaid' } })
+    );
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.warnings.map((w) => w.path).sort()).toEqual([
+      'styling.accent',
+      'styling.theme'
+    ]);
+    expect(contract.styling?.theme).toBe('default');
+    expect((contract.styling as { accent?: string }).accent).toBeUndefined();
+  });
+
+  it('accepts a known theme and accent silently', () => {
+    const { contract, result } = checkContract(
+      rawContract({ styling: { theme: 'terminal', accent: 'green' } })
+    );
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.warnings).toHaveLength(0);
+    expect(contract.styling?.theme).toBe('terminal');
+    expect((contract.styling as { accent?: string }).accent).toBe('green');
+  });
+
   it('resets an invalid knob value to the manifest default', () => {
     const { contract, result } = checkContract(
       rawContract({

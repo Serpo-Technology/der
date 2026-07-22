@@ -611,6 +611,10 @@ export const ELEMENT_CATALOG: Record<string, { description: string; properties: 
   );
 
 /** Plain HTML tags the renderer also accepts as element types. */
+/** App-level looks a contract can pick via styling.theme / styling.accent. */
+export const STYLE_THEMES = ['default', 'dark', 'paper', 'terminal'] as const;
+export const STYLE_ACCENTS = ['blue', 'green', 'violet', 'rose', 'amber'] as const;
+
 export const INTRINSIC_ELEMENT_TYPES = new Set([
   'div',
   'span',

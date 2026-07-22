@@ -116,6 +116,7 @@ export interface LayoutSpec {
 
 export interface StyleSpec {
   theme: string;
+  accent?: string;
   customStyles?: Record<string, any>;
 }
 

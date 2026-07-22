@@ -31,6 +31,8 @@ import {
   ELEMENT_MANIFESTS,
   FRAGMENT_OPERATIONS,
   INTRINSIC_ELEMENT_TYPES,
+  STYLE_ACCENTS,
+  STYLE_THEMES,
   getOperationDef,
   isKnownElementType,
 } from '../operations/registry';
@@ -459,9 +461,10 @@ CONTRACT SHAPE (omit every field marked ?, every empty array or object, and ever
   "version": "1.0.0",
   "initialState"?: { "<stateKey>": <seed> },
   "elements": [ { "id", "type", "properties"?, "dataBindings"?, "eventBindings"?, "visibleWhen"?, "children"? } ],
-  "operations": [ { "id", "operationName", "inputs"?, "outputs"?, "implementation"? } ]
+  "operations": [ { "id", "operationName", "inputs"?, "outputs"?, "implementation"? } ],
+  "styling"?: { "theme": ${STYLE_THEMES.map((t) => `"${t}"`).join(' | ')}, "accent"?: ${STYLE_ACCENTS.map((a) => `"${a}"`).join(' | ')} }
 }
-Never emit "metadata", "triggers", "executionType", "layout", or "styling": the runtime derives them (executionType from the operation name, or remote when "implementation" carries an endpoint; the default layout is a padded 12px column).
+Never emit "metadata", "triggers", "executionType", or "layout": the runtime derives them (executionType from the operation name, or remote when "implementation" carries an endpoint; the default layout is a padded 12px column). Omit "styling" for the standard light look; set a theme or accent when the user asks for one or the app's character clearly calls for it, e.g. "terminal" for a developer tool or "paper" for a journal.
 
 RUNTIME RULES (follow exactly):
 1. State is a flat map. Operations write it; display elements read it with dataBindings {"property", "source": "state", "sourceId": "<stateKey>"}. Unwritten keys start empty (arrays read as []); add an "initialState" entry only when a key needs a non-empty start, e.g. a default tab name or preset options.

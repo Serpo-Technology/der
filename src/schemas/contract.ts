@@ -15,7 +15,12 @@ import type {
   ValidationResult,
   ValidationWarning,
 } from '../types/contract';
-import { ELEMENT_MANIFESTS, getOperationDef } from '../services/operations/registry';
+import {
+  ELEMENT_MANIFESTS,
+  STYLE_ACCENTS,
+  STYLE_THEMES,
+  getOperationDef,
+} from '../services/operations/registry';
 import { TRANSFORMS } from '../services/operations/transforms';
 
 export const TransformFunctionSchema = z.object({
@@ -119,6 +124,7 @@ export const LayoutSpecSchema = z.object({
 
 export const StyleSpecSchema = z.object({
   theme: z.string().default('default'),
+  accent: z.string().optional(),
   customStyles: z.record(z.string(), z.any()).optional(),
 });
 
@@ -264,6 +270,27 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
   const warnings: ValidationWarning[] = [];
   const fail = (path: string, message: string, code: string) =>
     errors.push({ path, message, code });
+
+  // Styling is cosmetic vocabulary: unknown values normalize with a warning.
+  if (contract.styling) {
+    const styling = contract.styling as { theme?: string; accent?: string };
+    if (styling.theme && !(STYLE_THEMES as readonly string[]).includes(styling.theme)) {
+      warn(
+        warnings,
+        'styling.theme',
+        `"${styling.theme}" is not one of ${STYLE_THEMES.join('|')}; using "default"`
+      );
+      styling.theme = 'default';
+    }
+    if (styling.accent && !(STYLE_ACCENTS as readonly string[]).includes(styling.accent)) {
+      warn(
+        warnings,
+        'styling.accent',
+        `"${styling.accent}" is not one of ${STYLE_ACCENTS.join('|')}; accent removed`
+      );
+      delete styling.accent;
+    }
+  }
 
   // Collect element ids, state reads, and state writes.
   const elementIds = new Set<string>();

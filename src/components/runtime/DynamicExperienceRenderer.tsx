@@ -12,6 +12,7 @@ import { ExperienceStateManager } from './ExperienceStateManager';
 import { OperationExecutor, EventContext } from './OperationExecutor';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { normalizeContract } from '../../schemas/contract';
+import { STYLE_ACCENTS, STYLE_THEMES } from '../../services/operations/registry';
 
 interface DynamicExperienceRendererProps {
   contract: Contract;
@@ -160,9 +161,29 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
     }
   }, [normalizedContract]);
 
+  // App-level look from the contract; unknown values fall back to default.
+  const styling = (normalizedContract.styling ?? { theme: 'default' }) as {
+    theme?: string;
+    accent?: string;
+  };
+  const theme = (STYLE_THEMES as readonly string[]).includes(styling.theme ?? '')
+    ? styling.theme
+    : 'default';
+  const accent =
+    styling.accent && (STYLE_ACCENTS as readonly string[]).includes(styling.accent)
+      ? styling.accent
+      : undefined;
+  const containerClassName = [
+    'dynamic-experience-container',
+    `der-theme-${theme}`,
+    accent ? `der-accent-${accent}` : null
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <div
-      className="dynamic-experience-container"
+      className={containerClassName}
       style={layoutStyles as React.CSSProperties}
       data-experience-id={experienceId}
       data-contract-name={normalizedContract.name}

@@ -12,6 +12,7 @@ import { fragmentsService } from "./services/fragments/FragmentsService";
 import { repositoryService } from "./services/repository/repository-service";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { registerBuiltins } from "./services/repository/builtins";
+import { STYLE_ACCENTS, STYLE_THEMES } from "./services/operations/registry";
 
 function App() {
   // Seed the shared component catalog once at startup. Installed parts load
@@ -141,6 +142,8 @@ const ExperienceWindow: React.FC<{
     };
   }, [flushState]);
 
+  // The webview shows no native alert, so bookmark feedback lives inline.
+  const [bookmarkNote, setBookmarkNote] = useState<string | null>(null);
   const handleBookmark = useCallback(async () => {
     try {
       await persistenceService.bookmarkExperience({
@@ -150,10 +153,11 @@ const ExperienceWindow: React.FC<{
         state: { data: {}, loading: {}, errors: {}, lastUpdated: new Date() },
         operations: new Map()
       });
-      alert("Bookmarked");
+      setBookmarkNote('Bookmarked');
     } catch (e) {
-      alert(`Bookmark failed: ${(e as Error).message}`);
+      setBookmarkNote(`Bookmark failed: ${(e as Error).message}`);
     }
+    setTimeout(() => setBookmarkNote(null), 3000);
   }, [initialExperienceId, currentContract]);
 
   // Cross-window subscription to updates via Tauri events
@@ -172,11 +176,28 @@ const ExperienceWindow: React.FC<{
     return () => { if (unlisten) unlisten(); };
   }, [initialExperienceId]);
 
+  // The window chrome follows the app's theme so the whole window reads as
+  // one surface.
+  const styling = (currentContract?.styling ?? {}) as { theme?: string; accent?: string };
+  const themeClass = `der-theme-${
+    styling.theme && (STYLE_THEMES as readonly string[]).includes(styling.theme)
+      ? styling.theme
+      : 'default'
+  }`;
+  const accentClass =
+    styling.accent && (STYLE_ACCENTS as readonly string[]).includes(styling.accent)
+      ? ` der-accent-${styling.accent}`
+      : '';
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid #eee" }}>
+    <div
+      className={`der-window ${themeClass}${accentClass}`}
+      style={{ display: "flex", flexDirection: "column", height: "100%" }}
+    >
+      <header className="der-window-header">
         <div style={{ fontWeight: 600 }}>{title}</div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {bookmarkNote && <span style={{ fontSize: "0.82rem", opacity: 0.75 }}>{bookmarkNote}</span>}
           <button onClick={handleBookmark}>Bookmark</button>
         </div>
       </header>

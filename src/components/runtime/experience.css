@@ -1,9 +1,140 @@
 /* Default styling for rendered experiences. Scoped to the runtime container
-   so generated apps look reasonable without contract-level styling. */
+   so generated apps look reasonable without contract-level styling.
+
+   Colors, radii, and the font route through CSS variables; a der-theme-*
+   class on the container swaps the whole look and der-accent-* swaps the
+   accent trio. The values below are the "default" theme. */
+
+.dynamic-experience-container,
+.der-window {
+  --der-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --der-bg: #ffffff;
+  --der-surface: #ffffff;
+  --der-surface-2: #f2f4f7;
+  --der-surface-3: #e9edf2;
+  --der-chrome: #fafbfc;
+  --der-text: #1f2430;
+  --der-border: #e4e7ec;
+  --der-border-strong: #d0d5dd;
+  --der-border-strong-hover: #b8c0cc;
+  --der-accent: #3b82f6;
+  --der-accent-strong: #2f6fe0;
+  --der-on-accent: #ffffff;
+  --der-accent-soft: rgba(59, 130, 246, 0.15);
+  --der-danger: #b91c1c;
+  --der-danger-border: #f0b4b4;
+  --der-danger-border-strong: #dc8a8a;
+  --der-danger-soft: #fef2f2;
+  --der-radius: 8px;
+  --der-radius-lg: 10px;
+}
+
+/* --- Themes (later blocks win over the defaults above) --- */
+
+.der-theme-dark {
+  --der-bg: #10141f;
+  --der-surface: #1a2130;
+  --der-surface-2: #232c3f;
+  --der-surface-3: #2a3549;
+  --der-chrome: #151b28;
+  --der-text: #e7ebf2;
+  --der-border: #283147;
+  --der-border-strong: #38445c;
+  --der-border-strong-hover: #4a5a78;
+  --der-accent: #60a5fa;
+  --der-accent-strong: #7cb4fb;
+  --der-on-accent: #0b1020;
+  --der-accent-soft: rgba(96, 165, 250, 0.22);
+  --der-danger: #f08a8a;
+  --der-danger-border: #6b3a3a;
+  --der-danger-border-strong: #8a4a4a;
+  --der-danger-soft: #2a1c1f;
+}
+
+.der-theme-paper {
+  --der-bg: #f7f2e9;
+  --der-surface: #fffdf8;
+  --der-surface-2: #f3ecdd;
+  --der-surface-3: #ece3d0;
+  --der-chrome: #f3ede1;
+  --der-text: #3d3428;
+  --der-border: #e4dac5;
+  --der-border-strong: #d4c6a8;
+  --der-border-strong-hover: #bfae8c;
+  --der-accent: #a16207;
+  --der-accent-strong: #8a5406;
+  --der-on-accent: #fffdf8;
+  --der-accent-soft: rgba(161, 98, 7, 0.15);
+  --der-danger: #9f1d1d;
+  --der-danger-border: #e0b4a8;
+  --der-danger-border-strong: #c98f80;
+  --der-danger-soft: #f9ece5;
+  --der-radius: 6px;
+  --der-radius-lg: 8px;
+}
+
+.der-theme-terminal {
+  --der-font: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --der-bg: #0b0f0c;
+  --der-surface: #101710;
+  --der-surface-2: #172117;
+  --der-surface-3: #1d2a1d;
+  --der-chrome: #0e140f;
+  --der-text: #c9ecc9;
+  --der-border: #1e2f1f;
+  --der-border-strong: #2c452d;
+  --der-border-strong-hover: #3d5c3e;
+  --der-accent: #34d399;
+  --der-accent-strong: #59dfae;
+  --der-on-accent: #06130c;
+  --der-accent-soft: rgba(52, 211, 153, 0.2);
+  --der-danger: #f28b6b;
+  --der-danger-border: #4a2c22;
+  --der-danger-border-strong: #6b3d2e;
+  --der-danger-soft: #221512;
+  --der-radius: 4px;
+  --der-radius-lg: 6px;
+}
+
+/* --- Accents (override the accent trio of any theme) --- */
+
+.der-accent-blue {
+  --der-accent: #3b82f6;
+  --der-accent-strong: #2f6fe0;
+  --der-on-accent: #ffffff;
+  --der-accent-soft: rgba(59, 130, 246, 0.15);
+}
+.der-accent-green {
+  --der-accent: #16a34a;
+  --der-accent-strong: #12813b;
+  --der-on-accent: #ffffff;
+  --der-accent-soft: rgba(22, 163, 74, 0.15);
+}
+.der-accent-violet {
+  --der-accent: #7c3aed;
+  --der-accent-strong: #6a2fd0;
+  --der-on-accent: #ffffff;
+  --der-accent-soft: rgba(124, 58, 237, 0.15);
+}
+.der-accent-rose {
+  --der-accent: #e11d48;
+  --der-accent-strong: #c2183d;
+  --der-on-accent: #ffffff;
+  --der-accent-soft: rgba(225, 29, 72, 0.15);
+}
+.der-accent-amber {
+  --der-accent: #d97706;
+  --der-accent-strong: #b96506;
+  --der-on-accent: #ffffff;
+  --der-accent-soft: rgba(217, 119, 6, 0.16);
+}
+
+/* --- Base experience styles --- */
 
 .dynamic-experience-container {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  color: #1f2430;
+  font-family: var(--der-font);
+  color: var(--der-text);
+  background: var(--der-bg);
   box-sizing: border-box;
 }
 
@@ -26,10 +157,11 @@
 
 .dynamic-experience-container button {
   padding: 8px 16px;
-  border: 1px solid #d0d5dd;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #1f2430;
+  border: 1px solid var(--der-border-strong);
+  border-radius: var(--der-radius);
+  background: var(--der-surface);
+  color: var(--der-text);
+  font-family: var(--der-font);
   font-size: 0.9rem;
   cursor: pointer;
   white-space: nowrap;
@@ -37,32 +169,33 @@
 }
 
 .dynamic-experience-container button:hover {
-  background: #f2f4f7;
-  border-color: #b8c0cc;
+  background: var(--der-surface-2);
+  border-color: var(--der-border-strong-hover);
 }
 
 .dynamic-experience-container button:active {
-  background: #e9edf2;
+  background: var(--der-surface-3);
 }
 
 .dynamic-experience-container input,
 .dynamic-experience-container textarea,
 .dynamic-experience-container select {
   padding: 9px 12px;
-  border: 1px solid #d0d5dd;
-  border-radius: 8px;
+  border: 1px solid var(--der-border-strong);
+  border-radius: var(--der-radius);
+  font-family: var(--der-font);
   font-size: 0.95rem;
   min-width: 220px;
-  background: #ffffff;
-  color: #1f2430;
+  background: var(--der-surface);
+  color: var(--der-text);
 }
 
 .dynamic-experience-container input:focus,
 .dynamic-experience-container textarea:focus,
 .dynamic-experience-container select:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  border-color: var(--der-accent);
+  box-shadow: 0 0 0 3px var(--der-accent-soft);
 }
 
 /* :where() keeps this base at low specificity so the container knob classes
@@ -97,9 +230,9 @@
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border: 1px solid #e4e7ec;
-  border-radius: 10px;
-  background: #ffffff;
+  border: 1px solid var(--der-border);
+  border-radius: var(--der-radius-lg);
+  background: var(--der-surface);
 }
 
 .dynamic-experience-container li span[data-element-id] {
@@ -115,7 +248,7 @@
 
 .dynamic-experience-container img {
   max-width: 100%;
-  border-radius: 8px;
+  border-radius: var(--der-radius);
 }
 
 /* Convention used by generated contracts for completed items */
@@ -129,29 +262,29 @@
 /* --- Knob variants (class scheme: type-knob-value) --- */
 
 .dynamic-experience-container .button-variant-primary {
-  background: #3b82f6;
-  border-color: #3b82f6;
-  color: #ffffff;
+  background: var(--der-accent);
+  border-color: var(--der-accent);
+  color: var(--der-on-accent);
 }
 .dynamic-experience-container .button-variant-primary:hover {
-  background: #2f6fe0;
-  border-color: #2f6fe0;
+  background: var(--der-accent-strong);
+  border-color: var(--der-accent-strong);
 }
 .dynamic-experience-container .button-variant-danger {
-  background: #ffffff;
-  border-color: #f0b4b4;
-  color: #b91c1c;
+  background: var(--der-surface);
+  border-color: var(--der-danger-border);
+  color: var(--der-danger);
 }
 .dynamic-experience-container .button-variant-danger:hover {
-  background: #fef2f2;
-  border-color: #dc8a8a;
+  background: var(--der-danger-soft);
+  border-color: var(--der-danger-border-strong);
 }
 .dynamic-experience-container .button-variant-ghost {
   background: transparent;
   border-color: transparent;
 }
 .dynamic-experience-container .button-variant-ghost:hover {
-  background: #f2f4f7;
+  background: var(--der-surface-2);
 }
 .dynamic-experience-container .button-size-sm {
   padding: 5px 10px;
@@ -235,13 +368,44 @@
   width: 16px;
   height: 16px;
   min-width: 0;
-  accent-color: #3b82f6;
+  accent-color: var(--der-accent);
 }
 
 .dynamic-experience-container progress {
   width: 100%;
   height: 8px;
-  accent-color: #3b82f6;
+  accent-color: var(--der-accent);
+}
+
+/* --- Standalone window chrome (header + edit bar share the theme) --- */
+
+.der-window {
+  background: var(--der-bg);
+  color: var(--der-text);
+  font-family: var(--der-font);
+}
+
+.der-window-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--der-border);
+  background: var(--der-chrome);
+}
+
+.der-window-header button {
+  padding: 6px 12px;
+  border: 1px solid var(--der-border-strong);
+  border-radius: var(--der-radius);
+  background: var(--der-surface);
+  color: var(--der-text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.der-window-header button:hover {
+  background: var(--der-surface-2);
 }
 
 /* --- Edit bar --- */
@@ -251,8 +415,8 @@
   flex-direction: column;
   gap: 6px;
   padding: 8px 12px;
-  border-bottom: 1px solid #e4e7ec;
-  background: #fafbfc;
+  border-bottom: 1px solid var(--der-border, #e4e7ec);
+  background: var(--der-chrome, #fafbfc);
 }
 
 .der-edit-form {
@@ -263,23 +427,25 @@
 .der-edit-form input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid #d0d5dd;
-  border-radius: 8px;
+  border: 1px solid var(--der-border-strong, #d0d5dd);
+  border-radius: var(--der-radius, 8px);
+  background: var(--der-surface, #ffffff);
+  color: var(--der-text, #1f2430);
   font-size: 0.9rem;
 }
 
 .der-edit-form input:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  border-color: var(--der-accent, #3b82f6);
+  box-shadow: 0 0 0 3px var(--der-accent-soft, rgba(59, 130, 246, 0.15));
 }
 
 .der-edit-form button {
   padding: 8px 16px;
-  border: 1px solid #3b82f6;
-  border-radius: 8px;
-  background: #3b82f6;
-  color: #ffffff;
+  border: 1px solid var(--der-accent, #3b82f6);
+  border-radius: var(--der-radius, 8px);
+  background: var(--der-accent, #3b82f6);
+  color: var(--der-on-accent, #ffffff);
   font-size: 0.9rem;
   cursor: pointer;
   white-space: nowrap;
@@ -292,7 +458,7 @@
 
 .der-edit-error {
   font-size: 0.82rem;
-  color: #b91c1c;
+  color: var(--der-danger, #b91c1c);
 }
 
 .der-edit-warnings {
@@ -304,7 +470,7 @@
   color: #92600a;
   background: #fef7e6;
   border: 1px solid #f2dfae;
-  border-radius: 8px;
+  border-radius: var(--der-radius, 8px);
   padding: 6px 10px;
 }
 
@@ -346,6 +512,6 @@
 .dynamic-experience-container hr.divider-part {
   width: 100%;
   border: none;
-  border-top: 1px solid #e4e7ec;
+  border-top: 1px solid var(--der-border);
   margin: 4px 0;
 }

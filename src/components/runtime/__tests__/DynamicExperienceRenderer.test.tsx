@@ -113,6 +113,38 @@ describe('DynamicExperienceRenderer', () => {
     });
   });
 
+  it('applies theme and accent classes from contract styling', async () => {
+    const themed: Contract = {
+      ...mockContract,
+      styling: { theme: 'dark', accent: 'green' }
+    };
+    act(() => {
+      render(<DynamicExperienceRenderer contract={themed} experienceId="themed-exp" />);
+    });
+
+    await waitFor(() => {
+      const container = screen.getByTestId('dynamic-experience-container');
+      expect(container).toHaveClass('der-theme-dark');
+      expect(container).toHaveClass('der-accent-green');
+    });
+  });
+
+  it('falls back to the default theme for unknown styling values', async () => {
+    const themed: Contract = {
+      ...mockContract,
+      styling: { theme: 'neon', accent: 'plaid' }
+    };
+    act(() => {
+      render(<DynamicExperienceRenderer contract={themed} experienceId="fallback-exp" />);
+    });
+
+    await waitFor(() => {
+      const container = screen.getByTestId('dynamic-experience-container');
+      expect(container).toHaveClass('der-theme-default');
+      expect(container.className).not.toContain('der-accent-');
+    });
+  });
+
   it('handles different layout types', async () => {
     const gridContract = {
       ...mockContract,
