@@ -65,8 +65,10 @@
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
+/* :where() keeps this base at low specificity so the container knob classes
+   (container-align-*, container-gap-*, ...) can override it. */
 .dynamic-experience-container form,
-.dynamic-experience-container div[data-element-id] {
+.dynamic-experience-container :where(div[data-element-id]) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
