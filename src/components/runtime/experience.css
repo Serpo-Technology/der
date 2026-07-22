@@ -1,0 +1,119 @@
+/* Default styling for rendered experiences. Scoped to the runtime container
+   so generated apps look reasonable without contract-level styling. */
+
+.dynamic-experience-container {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #1f2430;
+  box-sizing: border-box;
+}
+
+.dynamic-experience-container *,
+.dynamic-experience-container *::before,
+.dynamic-experience-container *::after {
+  box-sizing: inherit;
+}
+
+.dynamic-experience-container h1,
+.dynamic-experience-container h2,
+.dynamic-experience-container h3 {
+  margin: 0 0 4px 0;
+  line-height: 1.25;
+}
+
+.dynamic-experience-container span[data-element-id] {
+  line-height: 1.4;
+}
+
+.dynamic-experience-container button {
+  padding: 8px 16px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2430;
+  font-size: 0.9rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.dynamic-experience-container button:hover {
+  background: #f2f4f7;
+  border-color: #b8c0cc;
+}
+
+.dynamic-experience-container button:active {
+  background: #e9edf2;
+}
+
+.dynamic-experience-container input,
+.dynamic-experience-container textarea,
+.dynamic-experience-container select {
+  padding: 9px 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  min-width: 220px;
+  background: #ffffff;
+  color: #1f2430;
+}
+
+.dynamic-experience-container input:focus,
+.dynamic-experience-container textarea:focus,
+.dynamic-experience-container select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.dynamic-experience-container form,
+.dynamic-experience-container div[data-element-id] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.dynamic-experience-container ul,
+.dynamic-experience-container ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.dynamic-experience-container li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid #e4e7ec;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.dynamic-experience-container li span[data-element-id] {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dynamic-experience-container li button {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+.dynamic-experience-container img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+/* Convention used by generated contracts for completed items */
+.dynamic-experience-container .todo-done,
+.dynamic-experience-container .completed,
+.dynamic-experience-container .done {
+  text-decoration: line-through;
+  opacity: 0.55;
+}

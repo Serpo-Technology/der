@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import './experience.css';
 import { Contract, UIElement } from '../../types/contract';
 import { ExperienceState } from '../../types/experience';
 import { ComponentRenderer } from './ComponentRenderer';
@@ -97,29 +98,24 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
     [stateManager]
   );
 
-  // Render UI elements recursively, containing render failures per element
+  // Render UI elements recursively, containing render failures per element.
+  // Elements render as direct JSX so component identity stays stable across
+  // state updates (inputs keep focus while typing).
   const renderUIElements = useCallback((elements: UIElement[]): React.ReactNode => {
-    return elements.map((element) => {
-      const RenderedComponent = componentRenderer.renderUIElement(
-        element,
-        experienceState,
-        handleOperationExecution,
-        { setElementValue }
-      );
-
-      return (
-        <ErrorBoundary
-          key={element.id}
-          fallback={
-            <div style={{ color: '#b91c1c', fontSize: '0.85rem' }}>
-              Element "{element.id}" failed to render
-            </div>
-          }
-        >
-          <RenderedComponent />
-        </ErrorBoundary>
-      );
-    });
+    return elements.map((element) => (
+      <ErrorBoundary
+        key={element.id}
+        fallback={
+          <div style={{ color: '#b91c1c', fontSize: '0.85rem' }}>
+            Element "{element.id}" failed to render
+          </div>
+        }
+      >
+        {componentRenderer.renderElement(element, experienceState, handleOperationExecution, {
+          setElementValue
+        })}
+      </ErrorBoundary>
+    ));
   }, [componentRenderer, experienceState, handleOperationExecution, setElementValue]);
 
   // Apply layout styling

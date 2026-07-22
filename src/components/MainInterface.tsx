@@ -28,7 +28,7 @@ import { BlueprintGenerator } from '../services/ai-interpreter/blueprint-generat
 import { ContractBuilder } from '../services/ai-interpreter/contract-builder';
 import { LLMClient } from '../services/ai-interpreter/llm-client';
 import { repositoryService } from '../services/repository/repository-service';
-// import { persistenceService } from '../services/persistence';
+import { persistenceService } from '../services/persistence';
 import { integratedExperienceService } from '../services/IntegratedExperienceService';
 import { isTauriRuntime } from '../services/tauri/TauriCommandService';
 import { invoke } from '@tauri-apps/api/core';
@@ -89,7 +89,7 @@ export const MainInterface: React.FC = () => {
   // Load bookmarked experiences
   const loadBookmarkedExperiences = useCallback(async () => {
     try {
-      const experiences = await invoke<any[]>('list_bookmarked_experiences');
+      const experiences = await persistenceService.listBookmarkedExperiences();
       setState(prev => ({ ...prev, bookmarkedExperiences: experiences }));
     } catch (error) {
       console.error('Failed to load bookmarked experiences:', error);
@@ -143,7 +143,8 @@ export const MainInterface: React.FC = () => {
         blueprint: result.blueprint,
         contract: result.contract,
         currentExperienceId: result.experienceId,
-        currentMode: 'blueprint',
+        currentMode: 'preview',
+        currentExperienceBookmarked: false,
         validationResults: { ...prev.validationResults, blueprint: validation },
         isProcessing: false
       }));
@@ -273,15 +274,13 @@ export const MainInterface: React.FC = () => {
 
     setState(prev => ({ ...prev, isProcessing: true, error: null }));
     try {
-      await integratedExperienceService.bookmarkExperience(
-        state.currentExperienceId,
-        'current-user', // TODO: Get from auth service
-        {
-          personalNote: 'Created from natural language',
-          tags: ['custom', 'generated'],
-          collection: 'My Experiences'
-        }
-      );
+      await persistenceService.bookmarkExperience({
+        id: state.currentExperienceId,
+        contract: state.contract,
+        reactComponent: () => null,
+        state: { data: {}, loading: {}, errors: {}, lastUpdated: new Date() },
+        operations: new Map()
+      });
 
       setState(prev => ({
         ...prev,
@@ -392,7 +391,7 @@ export const MainInterface: React.FC = () => {
           onClick={() => handleModeChange('preview')}
           disabled={!state.contract}
         >
-          Preview {state.contract && '▶'}
+          Preview
         </button>
         <button
           className={`nav-button ${state.currentMode === 'bookmarks' ? 'active' : ''}`}
@@ -437,7 +436,7 @@ export const MainInterface: React.FC = () => {
       {state.isProcessing && (
         <div className="processing-indicator">
           <div className="spinner"></div>
-          <span>Processing...</span>
+          <span>Building your app...</span>
         </div>
       )}
 
@@ -592,8 +591,8 @@ const CreateView: React.FC<CreateViewProps> = ({
   return (
     <div className="create-view">
       <div className="create-header">
-        <h2>Describe Your Experience</h2>
-        <p>Tell us what you want to build in natural language. Be as specific as possible about the functionality and interface you need.</p>
+        <h2>What do you want to build?</h2>
+        <p>Describe the app in plain language and it opens ready to use. The blueprint and contract behind it stay editable from the tabs above.</p>
       </div>
 
       <div className="input-section">
@@ -612,7 +611,7 @@ const CreateView: React.FC<CreateViewProps> = ({
             onClick={onGenerateBlueprint}
             disabled={!naturalLanguageInput.trim() || isProcessing}
           >
-            Generate Blueprint
+            Create app
           </button>
         </div>
       </div>
@@ -736,8 +735,8 @@ const PreviewView: React.FC<PreviewViewProps> = ({
     <div className="preview-view">
       <div className="preview-header">
         <div className="preview-title">
-          <h2>Experience Preview</h2>
-          <p>This is how your experience will look and behave:</p>
+          <h2>{contract.name || 'Your app'}</h2>
+          {contract.metadata?.description && <p>{contract.metadata.description}</p>}
         </div>
         <div className="preview-actions">
           {onBookmark && (
@@ -747,7 +746,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               disabled={isProcessing}
               title={isBookmarked ? 'Remove bookmark' : 'Bookmark this experience'}
             >
-              {isBookmarked ? '🔖 Bookmarked' : '📑 Bookmark'}
+              {isBookmarked ? 'Bookmarked' : 'Bookmark'}
             </button>
           )}
           {onShare && (
@@ -757,7 +756,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               disabled={isProcessing}
               title="Share this experience"
             >
-              📤 Share
+              Share
             </button>
           )}
           {onOpenWindow && (
@@ -767,7 +766,7 @@ const PreviewView: React.FC<PreviewViewProps> = ({
               disabled={isProcessing}
               title="Open in new window"
             >
-              🪟 Open Window
+              Open in window
             </button>
           )}
         </div>

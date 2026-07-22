@@ -241,7 +241,7 @@ EXAMPLE (todo app with add and toggle):
       "eventBindings": [],
       "children": [
         { "id": "row", "type": "container", "properties": {}, "dataBindings": [], "eventBindings": [], "children": [
-          { "id": "row-title", "type": "text", "properties": {}, "dataBindings": [ { "property": "content", "source": "item", "sourceId": "title" } ], "eventBindings": [] },
+          { "id": "row-title", "type": "text", "properties": {}, "dataBindings": [ { "property": "content", "source": "item", "sourceId": "title" }, { "property": "className", "source": "item", "sourceId": "completed", "transform": { "type": "map", "parameters": { "mapping": { "true": "todo-done", "false": "" } } } } ], "eventBindings": [] },
           { "id": "row-toggle", "type": "button", "properties": { "text": "Done" }, "dataBindings": [], "eventBindings": [ { "event": "click", "operationId": "op-toggle" } ] }
         ] }
       ] }

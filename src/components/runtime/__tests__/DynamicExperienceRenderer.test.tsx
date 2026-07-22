@@ -33,7 +33,10 @@ vi.mock('../OperationExecutor', () => ({
 
 vi.mock('../ComponentRenderer', () => ({
   ComponentRenderer: vi.fn().mockImplementation(() => ({
-    renderUIElement: vi.fn().mockReturnValue(() => React.createElement('div', { 'data-testid': 'mock-component' }, 'Mock Component'))
+    renderUIElement: vi.fn().mockReturnValue(() => React.createElement('div', { 'data-testid': 'mock-component' }, 'Mock Component')),
+    renderElement: vi.fn().mockImplementation((element: { id: string }) =>
+      React.createElement('div', { 'data-testid': 'mock-component', key: element.id }, 'Mock Component')
+    )
   }))
 }));
 

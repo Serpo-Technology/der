@@ -52,60 +52,73 @@ export type OperationExecuteHandler = (
 ) => Promise<void>;
 
 export class ComponentRenderer {
+  /**
+   * Back-compat wrapper returning a component. Prefer renderElement: a fresh
+   * component type per render makes React remount the subtree (inputs lose
+   * focus on every keystroke).
+   */
   renderUIElement(
     element: UIElement,
     experienceState: ExperienceState,
     onOperationExecute: OperationExecuteHandler,
     options: RenderOptions = {}
   ): React.ComponentType {
-    return () => {
-      const resolvedProps = this.resolveDataBindings(element, experienceState, options.scope);
-      const eventHandlers = this.createEventHandlers(element, onOperationExecute, options.scope);
+    return () => this.renderElement(element, experienceState, onOperationExecute, options);
+  }
 
-      const finalProps: Record<string, any> = {
-        ...element.properties,
-        ...resolvedProps,
-        ...eventHandlers,
-        'data-element-id': element.id
-      };
+  /** Renders a contract element directly as JSX (stable element identity). */
+  renderElement(
+    element: UIElement,
+    experienceState: ExperienceState,
+    onOperationExecute: OperationExecuteHandler,
+    options: RenderOptions = {}
+  ): React.ReactElement {
+    const resolvedProps = this.resolveDataBindings(element, experienceState, options.scope);
+    const eventHandlers = this.createEventHandlers(element, onOperationExecute, options.scope);
 
-      this.applyControlledInput(element, experienceState, finalProps, options);
-
-      // A list with children repeats them per item of the bound array.
-      if (element.type === 'list' && element.children && element.children.length > 0) {
-        return this.renderListTemplate(element, experienceState, onOperationExecute, options, finalProps);
-      }
-
-      const ComponentType = UI_COMPONENTS[element.type as keyof typeof UI_COMPONENTS];
-
-      // If known component type
-      if (ComponentType) {
-        return (
-          <ComponentType key={element.id} {...finalProps}>
-            {element.children && element.children.map(child => {
-              const ChildComponent = this.renderUIElement(child, experienceState, onOperationExecute, options);
-              return <ChildComponent key={child.id} />;
-            })}
-          </ComponentType>
-        );
-      }
-
-      // If intrinsic HTML element (supported lowercase tag), render directly
-      if (typeof element.type === 'string' && INTRINSIC_TAGS.has(element.type)) {
-        const { content, text, children: _ignored, ...rest } = finalProps as any;
-        const mappedChildren = (element.children || []).map(child => {
-          const ChildComponent = this.renderUIElement(child, experienceState, onOperationExecute, options);
-          return <ChildComponent key={child.id} />;
-        });
-        const children = [] as any[];
-        if (content || text) children.push(content ?? text);
-        children.push(...mappedChildren);
-        return React.createElement(element.type, { key: element.id, ...rest }, children.length > 0 ? children : undefined);
-      }
-
-      // Unknown custom component type fallback
-      return <UnknownComponent element={element} />;
+    const finalProps: Record<string, any> = {
+      ...element.properties,
+      ...resolvedProps,
+      ...eventHandlers,
+      'data-element-id': element.id
     };
+
+    this.applyControlledInput(element, experienceState, finalProps, options);
+
+    // A list with children repeats them per item of the bound array.
+    if (element.type === 'list' && element.children && element.children.length > 0) {
+      return this.renderListTemplate(element, experienceState, onOperationExecute, options, finalProps);
+    }
+
+    const renderChildren = (): React.ReactNode =>
+      element.children?.map(child => (
+        <React.Fragment key={child.id}>
+          {this.renderElement(child, experienceState, onOperationExecute, options)}
+        </React.Fragment>
+      ));
+
+    const ComponentType = UI_COMPONENTS[element.type as keyof typeof UI_COMPONENTS];
+
+    // If known component type
+    if (ComponentType) {
+      return (
+        <ComponentType key={element.id} {...finalProps}>
+          {renderChildren()}
+        </ComponentType>
+      );
+    }
+
+    // If intrinsic HTML element (supported lowercase tag), render directly
+    if (typeof element.type === 'string' && INTRINSIC_TAGS.has(element.type)) {
+      const { content, text, children: _ignored, ...rest } = finalProps as any;
+      const children = [] as any[];
+      if (content || text) children.push(content ?? text);
+      children.push(renderChildren());
+      return React.createElement(element.type, { key: element.id, ...rest }, children.length > 0 ? children : undefined);
+    }
+
+    // Unknown custom component type fallback
+    return <UnknownComponent key={element.id} element={element} />;
   }
 
   private renderListTemplate(
@@ -129,13 +142,11 @@ export class ComponentRenderer {
               : String(index);
           return (
             <li key={key}>
-              {element.children!.map(child => {
-                const ChildComponent = this.renderUIElement(child, experienceState, onOperationExecute, {
-                  ...options,
-                  scope
-                });
-                return <ChildComponent key={child.id} />;
-              })}
+              {element.children!.map(child => (
+                <React.Fragment key={child.id}>
+                  {this.renderElement(child, experienceState, onOperationExecute, { ...options, scope })}
+                </React.Fragment>
+              ))}
             </li>
           );
         })}

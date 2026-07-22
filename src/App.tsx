@@ -82,8 +82,8 @@ const ExperienceWindow: React.FC<{ initialExperienceId: string; initialContract:
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid #eee" }}>
         <div style={{ fontWeight: 600 }}>{title}</div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={handleEdit}>✏️ Edit</button>
-          <button onClick={handleBookmark}>🔖 Bookmark</button>
+          <button onClick={handleEdit}>Edit</button>
+          <button onClick={handleBookmark}>Bookmark</button>
         </div>
       </header>
       <div style={{ flex: 1, minHeight: 0 }}>
