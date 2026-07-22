@@ -352,10 +352,21 @@ export class ComponentRenderer {
   ): Record<string, any> {
     const handlers: Record<string, any> = {};
 
-    element.eventBindings.forEach(binding => {
+    // Several bindings may share one event (e.g. click -> add, then click ->
+    // recompute); they run sequentially in contract order.
+    const byHandler = new Map<string, EventBinding[]>();
+    for (const binding of element.eventBindings) {
       const handlerName = this.getEventHandlerName(binding.event);
-      handlers[handlerName] = (event: any) => {
-        this.handleEvent(binding, event, onOperationExecute, scope);
+      const list = byHandler.get(handlerName) ?? [];
+      list.push(binding);
+      byHandler.set(handlerName, list);
+    }
+
+    byHandler.forEach((bindings, handlerName) => {
+      handlers[handlerName] = async (event: any) => {
+        for (const binding of bindings) {
+          await this.handleEvent(binding, event, onOperationExecute, scope);
+        }
       };
     });
 

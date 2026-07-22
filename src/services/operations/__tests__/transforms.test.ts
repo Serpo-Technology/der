@@ -240,3 +240,28 @@ describe('applyTransformPipeline', () => {
     expect(result).toBe(2);
   });
 });
+
+describe('pluck', () => {
+  it('projects a field across an array of objects', () => {
+    const result = TRANSFORMS.pluck.apply(
+      [{ value: 5 }, { value: 7 }, { other: 1 }],
+      { field: 'value' }
+    );
+    expect(result).toEqual([5, 7, undefined]);
+  });
+
+  it('is null-safe and returns [] for non-arrays', () => {
+    expect(TRANSFORMS.pluck.apply(undefined, { field: 'value' })).toEqual([]);
+    expect(TRANSFORMS.pluck.apply({ value: 5 }, { field: 'value' })).toEqual([]);
+  });
+
+  it('feeds numeric pipelines from object lists', () => {
+    const result = applyBindingTransforms([{ value: 2 }, { value: 4 }], {
+      transforms: [
+        { type: 'pluck', parameters: { field: 'value' } },
+        { type: 'sum', parameters: {} }
+      ]
+    });
+    expect(result).toBe(6);
+  });
+});

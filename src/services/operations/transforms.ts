@@ -89,9 +89,16 @@ export const TRANSFORMS: Record<string, TransformDef> = {
   },
   pick: {
     name: 'pick',
-    description: 'Reads a field (dot path allowed) from an object.',
+    description: 'Reads a field (dot path allowed) from a single object.',
     parameters: [{ name: 'field', type: 'string', description: 'Field to read' }],
     apply: (value, parameters) => fieldOf(value, parameters.field),
+  },
+  pluck: {
+    name: 'pluck',
+    description:
+      'Field values across an array of objects (turns [{value: 5}, ...] into [5, ...]; use before count/sum or numeric part inputs).',
+    parameters: [{ name: 'field', type: 'string', description: 'Field to project' }],
+    apply: (value, parameters) => asArray(value).map((item) => fieldOf(item, parameters.field)),
   },
   equals: {
     name: 'equals',

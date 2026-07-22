@@ -5,7 +5,7 @@
  * the input label knob.
  */
 
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ComponentRenderer } from '../ComponentRenderer';
 import { UIElement, VisibilityCondition } from '../../../types/contract';
@@ -484,5 +484,31 @@ describe('ComponentRenderer knobs and visibility', () => {
       expect(input).toHaveAttribute('placeholder', 'Type a name');
       expect(input.closest('label')).toHaveClass('der-field');
     });
+  });
+});
+
+describe('chained event bindings', () => {
+  it('runs every binding for the same event in contract order', async () => {
+    const renderer = new ComponentRenderer();
+    const calls: string[] = [];
+    const onOp = vi.fn(async (id: string) => {
+      calls.push(id);
+    });
+    const element = {
+      id: 'add-btn',
+      type: 'button',
+      properties: { text: 'Add' },
+      dataBindings: [],
+      eventBindings: [
+        { event: 'click', operationId: 'op-add' },
+        { event: 'click', operationId: 'op-stats' }
+      ]
+    } as any;
+
+    render(renderer.renderElement(element, stateWithData({}), onOp as any, {}));
+    fireEvent.click(screen.getByText('Add'));
+    await waitFor(() => expect(onOp).toHaveBeenCalledTimes(2));
+
+    expect(calls).toEqual(['op-add', 'op-stats']);
   });
 });

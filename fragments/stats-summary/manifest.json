@@ -23,23 +23,63 @@
         }
       ],
       "outputs": [
-        { "name": "count", "type": "number", "description": "How many numbers were read" },
-        { "name": "sum", "type": "number", "description": "Total of the numbers" },
-        { "name": "mean", "type": "number", "description": "Average of the numbers" },
-        { "name": "min", "type": "number", "description": "Smallest number" },
-        { "name": "max", "type": "number", "description": "Largest number" }
+        {
+          "name": "count",
+          "type": "number",
+          "description": "How many numbers were read"
+        },
+        {
+          "name": "sum",
+          "type": "number",
+          "description": "Total of the numbers"
+        },
+        {
+          "name": "mean",
+          "type": "number",
+          "description": "Average of the numbers"
+        },
+        {
+          "name": "min",
+          "type": "number",
+          "description": "Smallest number"
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "description": "Largest number"
+        }
       ],
-      "howto": "Bind values from a state key that already holds an array of numbers, seeded in initialState or written by other operations. No transform extracts one field from every item of an array, so when list items are objects, keep the numeric series in its own state key. Route each output you need to a state key with an output binding and bind text elements to those keys. An empty list returns zeros instead of an error.",
+      "howto": "Keep the entries with list.append (items become objects like {id, value}) and bind \"values\" from that state array with a pluck transform, e.g. transforms [{\"type\": \"pluck\", \"parameters\": {\"field\": \"value\"}}]. To refresh the stats when an entry is added, put a second click binding for this operation on the same button; bindings on one event run in order. Route each output you need to a state key. An empty list returns zeros instead of an error.",
       "example": {
         "id": "op-score-summary",
         "operationName": "stats.summary",
         "executionType": "builtin",
         "inputs": [
-          { "name": "values", "source": "state", "sourceId": "scores" }
+          {
+            "name": "values",
+            "source": "state",
+            "sourceId": "scores",
+            "transforms": [
+              {
+                "type": "pluck",
+                "parameters": {
+                  "field": "value"
+                }
+              }
+            ]
+          }
         ],
         "outputs": [
-          { "name": "mean", "target": "state", "targetId": "average" },
-          { "name": "count", "target": "state", "targetId": "entries" }
+          {
+            "name": "mean",
+            "target": "state",
+            "targetId": "mean"
+          },
+          {
+            "name": "max",
+            "target": "state",
+            "targetId": "max"
+          }
         ],
         "triggers": []
       }
@@ -62,19 +102,44 @@
         }
       ],
       "outputs": [
-        { "name": "value", "type": "number", "description": "The interpolated percentile value" }
+        {
+          "name": "value",
+          "type": "number",
+          "description": "The interpolated percentile value"
+        }
       ],
-      "howto": "Bind values the same way as stats.summary. Bind p as a constant with a typed numeric value, for example value 95 for the 95th percentile. The operation sorts the numbers and interpolates linearly between the two closest ranks, so p 50 is the median. Route the value output to a state key. An empty list is an error, and p outside 0 to 100 is an error.",
+      "howto": "Bind values like stats.summary (a pluck transform projects a field across an array of objects). Bind p as a constant with a typed numeric value, for example value 95 for the 95th percentile; p 50 is the median. Route the value output to a state key. An empty list is an error, and p outside 0 to 100 is an error.",
       "example": {
         "id": "op-score-p95",
         "operationName": "stats.percentile",
         "executionType": "builtin",
         "inputs": [
-          { "name": "values", "source": "state", "sourceId": "scores" },
-          { "name": "p", "source": "constant", "sourceId": "95", "value": 95 }
+          {
+            "name": "values",
+            "source": "state",
+            "sourceId": "scores",
+            "transforms": [
+              {
+                "type": "pluck",
+                "parameters": {
+                  "field": "value"
+                }
+              }
+            ]
+          },
+          {
+            "name": "p",
+            "source": "constant",
+            "sourceId": "95",
+            "value": 95
+          }
         ],
         "outputs": [
-          { "name": "value", "target": "state", "targetId": "p95" }
+          {
+            "name": "value",
+            "target": "state",
+            "targetId": "p95"
+          }
         ],
         "triggers": []
       }
