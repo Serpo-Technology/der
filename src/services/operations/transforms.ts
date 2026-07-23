@@ -83,13 +83,17 @@ export const TRANSFORMS: Record<string, TransformDef> = {
   filterBy: {
     name: 'filterBy',
     output: 'array',
-    description: 'Keeps array entries whose field equals the given value.',
+    description:
+      'Keeps array entries whose field equals the given value; an empty value keeps everything, so an "All" dropdown option can use value "".',
     parameters: [
       { name: 'field', type: 'string', description: 'Field to compare' },
       { name: 'value', type: 'string', description: 'Value to match' },
     ],
-    apply: (value, parameters) =>
-      asArray(value).filter((item) => looseEquals(fieldOf(item, parameters.field), parameters.value)),
+    apply: (value, parameters) => {
+      const wanted = parameters.value;
+      if (wanted === '' || wanted === null || wanted === undefined) return asArray(value);
+      return asArray(value).filter((item) => looseEquals(fieldOf(item, parameters.field), wanted));
+    },
   },
   filterContains: {
     name: 'filterContains',
@@ -161,9 +165,11 @@ export const TRANSFORMS: Record<string, TransformDef> = {
   pick: {
     name: 'pick',
     output: 'any',
-    description: 'Reads a field (dot path allowed) from a single object.',
+    description:
+      'Reads a field (dot path allowed) from an object; an array reads from its first entry, so filterBy then pick gives the matched entry\'s field.',
     parameters: [{ name: 'field', type: 'string', description: 'Field to read' }],
-    apply: (value, parameters) => fieldOf(value, parameters.field),
+    apply: (value, parameters) =>
+      fieldOf(Array.isArray(value) ? value[0] : value, parameters.field),
   },
   pluck: {
     name: 'pluck',

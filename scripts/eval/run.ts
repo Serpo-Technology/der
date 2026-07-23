@@ -1,17 +1,21 @@
 /**
- * Eval runner: generates every canned prompt against one provider and scores
- * first-attempt results with the real pipeline judgment.
+ * Eval runner: generates every canned prompt against one provider, scores
+ * first-attempt results with the real pipeline judgment, then runs each
+ * passing contract's scripted behavior for one end-to-end score.
  *
  *   npx tsx scripts/eval/run.ts --provider mercury
  *   npx tsx scripts/eval/run.ts --base-url http://localhost:11434/v1 --model qwen2.5-coder:7b
  *
- * --provider mercury reads the key from the app's stored credentials. Results
- * land in evals/results-<label>-<timestamp>.json plus a printed table.
+ * --provider mercury reads the key from the app's stored credentials.
+ * --only <id> runs one prompt; --static-only skips the behavior stage.
+ * Results land in evals/results-<label>-<timestamp>.json plus a printed
+ * table, with behavior verdicts merged into the same file.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { ContractBuilder } from '../../src/services/ai-interpreter/contract-builder';
 import { repositoryService } from '../../src/services/repository/repository-service';
 import { registerBuiltins } from '../../src/services/repository/builtins';
@@ -46,6 +50,8 @@ interface EvalResult {
   fragmentsUsed?: string[];
   errors?: string;
   contract?: unknown;
+  behavior?: 'pass' | 'fail';
+  behaviorError?: string;
 }
 
 function arg(name: string): string | undefined {
@@ -192,6 +198,87 @@ async function main() {
   const out = `evals/results-${label}-${stamp}.json`;
   writeFileSync(out, JSON.stringify({ label, model, results }, null, 2) + '\n');
   process.stdout.write(`wrote ${out}\n`);
+
+  if (!process.argv.includes('--static-only')) {
+    process.stdout.write('\nrunning behaviors...\n');
+    const outcomes = runBehaviorStage(out);
+    for (const result of results) {
+      const outcome = outcomes.get(result.id);
+      if (!outcome || outcome.status === 'skipped') continue;
+      result.behavior = outcome.status;
+      if (outcome.status === 'fail') {
+        result.behaviorError = outcome.message?.slice(0, 300);
+      }
+      process.stdout.write(
+        `${result.id.padEnd(16)} ${outcome.status === 'pass' ? 'behaves' : 'BROKEN'}` +
+          `${outcome.status === 'fail' ? `  ${outcome.message?.slice(0, 120) ?? ''}` : ''}\n`
+      );
+    }
+    writeFileSync(out, JSON.stringify({ label, model, results }, null, 2) + '\n');
+    const behaved = results.filter((r) => r.behavior);
+    const working = behaved.filter((r) => r.behavior === 'pass').length;
+    const endToEnd = results.filter(
+      (r) => r.verdict === 'pass' && r.behavior !== 'fail'
+    ).length;
+    process.stdout.write(
+      `\n${label}: ${endToEnd}/${results.length} end to end ` +
+        `(${passes}/${results.length} compose, ${working}/${behaved.length} of those behave)\n`
+    );
+  }
+}
+
+interface BehaviorOutcome {
+  status: 'pass' | 'fail' | 'skipped';
+  message?: string;
+}
+
+/** Runs the behavioral suite against a results file and maps outcomes by
+ * prompt id. The suite lives under vitest for its jsdom and CSS handling;
+ * the JSON reporter bridges its verdicts back here. */
+function runBehaviorStage(resultsPath: string): Map<string, BehaviorOutcome> {
+  const reportPath = join(tmpdir(), `der-behavior-${Date.now()}.json`);
+  const spawned = spawnSync(
+    'npx',
+    [
+      'vitest',
+      'run',
+      '--config',
+      'vitest.evals.config.ts',
+      '--reporter=json',
+      `--outputFile=${reportPath}`,
+    ],
+    {
+      env: { ...process.env, EVAL_RESULTS: resultsPath },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }
+  );
+  let report: {
+    testResults?: Array<{
+      assertionResults?: Array<{ title: string; status: string; failureMessages?: string[] }>;
+    }>;
+  };
+  try {
+    report = JSON.parse(readFileSync(reportPath, 'utf8'));
+  } catch {
+    throw new Error(
+      `Behavior stage produced no report; vitest said: ${(spawned.stderr ?? '').slice(-500)}`
+    );
+  } finally {
+    rmSync(reportPath, { force: true });
+  }
+  const outcomes = new Map<string, BehaviorOutcome>();
+  for (const file of report.testResults ?? []) {
+    for (const test of file.assertionResults ?? []) {
+      const status =
+        test.status === 'passed' ? 'pass' : test.status === 'failed' ? 'fail' : 'skipped';
+      outcomes.set(test.title, {
+        status,
+        message: test.failureMessages?.[0]?.split('\n')[0],
+      });
+    }
+  }
+  return outcomes;
 }
 
 function median(values: number[]): number {

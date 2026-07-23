@@ -54,7 +54,8 @@ describe(`behavior against ${resultsPath}`, () => {
     const scenario = scenarios.get(entry.id);
     if (!scenario) continue;
     if (entry.verdict !== 'pass' || !entry.contract) {
-      it.skip(`${entry.id} (no passing contract in this run)`, () => {});
+      // Title stays the bare id so the eval runner can map outcomes back.
+      it.skip(entry.id, () => {});
       continue;
     }
     it(entry.id, async () => {

@@ -18,8 +18,8 @@ the authoritative source for intent and architecture; read
 ## Commands
 
 ```bash
-npm run eval -- --provider mercury   # Score the canned prompt suite (evals/prompts.json) against a provider; --only <id> runs one prompt
-npm run eval:behave    # Render the newest eval results (or EVAL_RESULTS=<path>) and run each prompt's scripted interactions
+npm run eval -- --provider mercury   # Generate the prompt suite (evals/prompts.json) and score end to end: compose + scripted behavior. --only <id> one prompt; --static-only skips behaviors
+npm run eval:behave    # Rerun just the behaviors against the newest eval results (or EVAL_RESULTS=<path>)
 npm run tauri dev      # Run the full desktop app (Rust backend + Vite frontend). Use this to exercise invoke().
 npm run dev            # Vite frontend only on port 1420. Tauri invoke() calls fail here (no Rust backend).
 npm run build          # tsc (type-check, excludes tests) then vite build

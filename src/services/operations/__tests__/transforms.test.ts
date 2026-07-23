@@ -62,6 +62,16 @@ describe('TRANSFORMS', () => {
       ]);
     });
 
+    it('keeps everything when the value is empty, the All dropdown case', () => {
+      const rows = [
+        { id: 1, category: 'food' },
+        { id: 2, category: 'travel' },
+      ];
+
+      expect(apply('filterBy', rows, { field: 'category', value: '' })).toEqual(rows);
+      expect(apply('filterBy', rows, { field: 'category', value: undefined })).toEqual(rows);
+    });
+
     it('returns an empty array for non-arrays', () => {
       expect(apply('filterBy', 'nope', { field: 'completed', value: 'false' })).toEqual([]);
       expect(apply('filterBy', undefined, { field: 'completed', value: 'false' })).toEqual([]);
@@ -105,6 +115,15 @@ describe('TRANSFORMS', () => {
     it('reads a field through a dot path', () => {
       expect(apply('pick', { user: { name: 'Ada' } }, { field: 'user.name' })).toBe('Ada');
       expect(apply('pick', { user: {} }, { field: 'user.name' })).toBeUndefined();
+    });
+
+    it('reads from the first entry of an array, the filterBy then pick shape', () => {
+      expect(
+        apply('pick', [{ email: 'ada@example.dev' }, { email: 'other@example.dev' }], {
+          field: 'email'
+        })
+      ).toBe('ada@example.dev');
+      expect(apply('pick', [], { field: 'email' })).toBeUndefined();
     });
   });
 
@@ -306,14 +325,14 @@ describe('dynamic parameters and filterContains', () => {
     expect(out).toEqual([{ cat: 'b' }]);
   });
 
-  it('treats references as undefined when no lookup is provided', () => {
+  it('treats an unresolvable reference as an unset filter that keeps everything', () => {
     const rows = [{ cat: 'a' }];
     const out = applyBindingTransforms(rows, {
       transforms: [
         { type: 'filterBy', parameters: { field: 'cat', value: { source: 'state', sourceId: 'x' } } }
       ]
     });
-    expect(out).toEqual([]);
+    expect(out).toEqual(rows);
   });
 });
 
