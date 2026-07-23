@@ -149,8 +149,12 @@ async function main() {
   await registerBuiltins(repositoryService);
   loadDistParts('fragments/dist');
   const builder = new ContractBuilder(repositoryService);
+  const only = arg('--only');
   const cases = (JSON.parse(readFileSync('evals/prompts.json', 'utf8')) as { prompts: EvalCase[] })
-    .prompts;
+    .prompts.filter((c) => !only || c.id === only);
+  if (only && cases.length === 0) {
+    throw new Error(`No prompt with id "${only}" in evals/prompts.json`);
+  }
 
   const results: EvalResult[] = [];
   for (const evalCase of cases) {

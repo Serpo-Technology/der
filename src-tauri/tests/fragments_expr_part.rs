@@ -93,7 +93,7 @@ fn evaluates_with_variables_from_structured_inputs() {
 fn manifest_declares_the_var_prefix() {
     let raw = std::fs::read(EXPR_BUNDLE).unwrap();
     let verified = verify_bundle(&raw).expect("verifies");
-    assert_eq!(verified.manifest.version, "1.1.1");
+    assert_eq!(verified.manifest.version, "1.1.2");
     assert_eq!(
         verified.manifest.operations[0].structured_prefixes,
         vec!["var".to_string()]

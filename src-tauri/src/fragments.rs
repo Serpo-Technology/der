@@ -655,6 +655,7 @@ impl wasmtime::ResourceLimiter for StoreData {
 pub struct LoadedFragment {
     pub manifest: Manifest,
     module: Module,
+    bundle_sha256: String,
 }
 
 struct StagedBundle {
@@ -713,17 +714,22 @@ impl FragmentsState {
         Ok(module)
     }
 
-    /// Loads (verify + compile) an installed fragment, caching per session.
+    /// Loads (verify + compile) an installed fragment. The cache is keyed by
+    /// the bundle bytes on disk, so an updated file swaps the compiled guest
+    /// on the next call even when the update bypassed the install command.
     pub fn load(&self, dir: &Path, id: &str) -> FragmentResult<Arc<LoadedFragment>> {
         if !id_ok(id) {
             return Err(fail(FragmentErrorKind::NotInstalled, "Invalid part id"));
         }
-        if let Some(found) = self.loaded.lock().unwrap().get(id) {
-            return Ok(found.clone());
-        }
         let path = dir.join(format!("{}.derpart", id));
         let raw = std::fs::read(&path)
             .map_err(|_| fail(FragmentErrorKind::NotInstalled, format!("Part {} is not installed", id)))?;
+        let digest = hex_lower(&Sha256::digest(&raw));
+        if let Some(found) = self.loaded.lock().unwrap().get(id) {
+            if found.bundle_sha256 == digest {
+                return Ok(found.clone());
+            }
+        }
         let verified = verify_bundle(&raw)?;
         if verified.manifest.id != id {
             return Err(fail(FragmentErrorKind::VerifyFailed, "Bundle id does not match its filename"));
@@ -738,6 +744,7 @@ impl FragmentsState {
         let loaded = Arc::new(LoadedFragment {
             manifest: verified.manifest,
             module,
+            bundle_sha256: digest,
         });
         self.loaded.lock().unwrap().insert(id.to_string(), loaded.clone());
         Ok(loaded)
@@ -1363,6 +1370,36 @@ fn substitute_placeholders(template: &str, inputs: &serde_json::Map<String, Valu
     out
 }
 
+/// Applies a remote projection. A path that resolves to nothing fails the
+/// whole call: a silent null would flow downstream as data and surface far
+/// from its cause (an upstream response missing an expected field must stop
+/// the operation here, where the response can still be described).
+pub fn apply_projection(
+    body: &Value,
+    projection: &std::collections::BTreeMap<String, String>,
+    input_map: &serde_json::Map<String, Value>,
+) -> Result<Value, String> {
+    let mut out = serde_json::Map::new();
+    for (name, path) in projection {
+        let resolved = substitute_placeholders(path, input_map);
+        let value = project_path(body, &resolved);
+        if value.is_null() {
+            let shape = match body {
+                Value::Object(map) => {
+                    format!("fields: {}", map.keys().cloned().collect::<Vec<_>>().join(", "))
+                }
+                other => format!("{}", other.to_string().chars().take(120).collect::<String>()),
+            };
+            return Err(format!(
+                "The service response had no value at \"{}\" (needed for \"{}\"); it contains {}",
+                resolved, name, shape
+            ));
+        }
+        out.insert(name.clone(), value);
+    }
+    Ok(Value::Object(out))
+}
+
 /// Resolves a dot path (array indices as numerals) into a JSON value.
 pub fn project_path(value: &Value, path: &str) -> Value {
     let mut current = value;
@@ -1503,14 +1540,8 @@ pub async fn execute_part_remote(
     }
 
     let data = match &remote.project {
-        Some(projection) => {
-            let mut out = serde_json::Map::new();
-            for (name, path) in projection {
-                let resolved = substitute_placeholders(path, input_map);
-                out.insert(name.clone(), project_path(&body, &resolved));
-            }
-            Value::Object(out)
-        }
+        Some(projection) => apply_projection(&body, projection, input_map)
+            .map_err(|message| fail(FragmentErrorKind::Io, message))?,
         None => body,
     };
 
@@ -1584,5 +1615,32 @@ mod remote_tests {
         assert_eq!(project_path(&body, "weather.0.description"), json!("clear sky"));
         assert_eq!(project_path(&body, "name"), json!("Istanbul"));
         assert_eq!(project_path(&body, "missing.path"), serde_json::Value::Null);
+    }
+
+    #[test]
+    fn projection_collects_named_values() {
+        let body = json!({"rates": {"EUR": 0.87}, "date": "2026-07-23"});
+        let mut projection = std::collections::BTreeMap::new();
+        projection.insert("rate".to_string(), "rates.{to}".to_string());
+        projection.insert("date".to_string(), "date".to_string());
+        let mut inputs = serde_json::Map::new();
+        inputs.insert("to".to_string(), json!("EUR"));
+        let data = super::apply_projection(&body, &projection, &inputs).unwrap();
+        assert_eq!(data, json!({"rate": 0.87, "date": "2026-07-23"}));
+    }
+
+    #[test]
+    fn projection_miss_fails_and_names_the_path() {
+        // A response without the expected field (base currency omitted from
+        // its own rates table, an upstream serving a default payload) must
+        // fail the call, never hand a null downstream.
+        let body = json!({"amount": 1.0, "base": "EUR", "date": "2026-07-23", "rates": {"USD": 1.16}});
+        let mut projection = std::collections::BTreeMap::new();
+        projection.insert("rate".to_string(), "rates.{to}".to_string());
+        let mut inputs = serde_json::Map::new();
+        inputs.insert("to".to_string(), json!("EUR"));
+        let err = super::apply_projection(&body, &projection, &inputs).unwrap_err();
+        assert!(err.contains("rates.EUR"), "path missing from: {}", err);
+        assert!(err.contains("rates"), "fields missing from: {}", err);
     }
 }

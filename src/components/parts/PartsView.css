@@ -127,7 +127,22 @@
 .parts-version {
   margin-left: 8px;
   font-size: 0.8rem;
-  color: #667085;
+  color: var(--app-text-dim);
+}
+
+.parts-update {
+  margin-left: 8px;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--app-accent-soft);
+  color: var(--app-accent);
+}
+
+.parts-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .parts-meta {

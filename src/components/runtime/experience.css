@@ -240,10 +240,26 @@
   background: var(--der-surface);
 }
 
+/* A template row wrapped in its own container must still fill the li;
+   left unsized it collapses to min-content and its texts wrap letter by
+   letter. */
+.dynamic-experience-container li > div[data-element-id] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .dynamic-experience-container li span[data-element-id] {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* Caption texts in rows are metadata (amounts, categories, dates): they hug
+   their content and stay on one line while body text takes the leftover
+   width. */
+.dynamic-experience-container li span[data-element-id].text-role-caption {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .dynamic-experience-container li button {

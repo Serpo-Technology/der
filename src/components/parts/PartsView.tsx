@@ -84,6 +84,18 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
     }
   }, [registryUrl, onError]);
 
+  // A saved registry is checked quietly when the view opens, so newer part
+  // versions show up without anyone remembering to fetch. Failures stay
+  // silent here; the manual Fetch button reports them.
+  useEffect(() => {
+    const url = localStorage.getItem('der-registry-url')?.trim();
+    if (!url) return;
+    fragmentsService
+      .fetchRegistryIndex(url)
+      .then((index) => setRegistryParts(index.parts))
+      .catch(() => {});
+  }, []);
+
   const handleInstallFromRegistry = useCallback(
     async (entry: RegistryPartEntry) => {
       setBusy(true);
@@ -222,7 +234,8 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
           <div className="parts-list">
             {registryParts.map((entry) => {
               const installedPart = installed.find((p) => p.manifest.id === entry.id);
-              const upToDate = installedPart?.manifest.version === entry.version;
+              const hasUpdate =
+                !!installedPart && versionNewer(entry.version, installedPart.manifest.version);
               return (
                 <div key={entry.id} className="parts-card">
                   <div className="parts-card-header">
@@ -232,18 +245,18 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
                     </div>
                     <button
                       onClick={() => handleInstallFromRegistry(entry)}
-                      disabled={busy || upToDate}
+                      disabled={busy || (!!installedPart && !hasUpdate)}
                       title={
-                        upToDate
+                        installedPart && !hasUpdate
                           ? 'Already installed'
                           : 'Download and review before installing'
                       }
                     >
-                      {upToDate
-                        ? 'Installed'
-                        : installedPart
+                      {installedPart
+                        ? hasUpdate
                           ? `Update to ${entry.version}`
-                          : 'Install'}
+                          : 'Installed'
+                        : 'Install'}
                     </button>
                   </div>
                   <p>{entry.description}</p>
@@ -336,25 +349,43 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
         </div>
       ) : (
         <div className="parts-list">
-          {installed.map((part) => (
+          {installed.map((part) => {
+            const registryEntry = registryParts?.find((e) => e.id === part.manifest.id);
+            const update =
+              registryEntry && versionNewer(registryEntry.version, part.manifest.version)
+                ? registryEntry
+                : null;
+            return (
             <div key={part.manifest.id} className="parts-card">
               <div className="parts-card-header">
                 <div>
                   <strong>{part.manifest.name}</strong>
                   <span className="parts-version">v{part.manifest.version}</span>
+                  {update && <span className="parts-update">update available</span>}
                 </div>
-                <button
-                  className="danger"
-                  onClick={() => handleRemove(part.manifest.id)}
-                  disabled={busy}
-                  title={
-                    confirmingRemove === part.manifest.id
-                      ? 'Click again to remove'
-                      : 'Apps composed with this part will stop working'
-                  }
-                >
-                  {confirmingRemove === part.manifest.id ? 'Click again to remove' : 'Remove'}
-                </button>
+                <div className="parts-card-actions">
+                  {update && (
+                    <button
+                      onClick={() => handleInstallFromRegistry(update)}
+                      disabled={busy}
+                      title="Download and review before installing"
+                    >
+                      Update to {update.version}
+                    </button>
+                  )}
+                  <button
+                    className="danger"
+                    onClick={() => handleRemove(part.manifest.id)}
+                    disabled={busy}
+                    title={
+                      confirmingRemove === part.manifest.id
+                        ? 'Click again to remove'
+                        : 'Apps composed with this part will stop working'
+                    }
+                  >
+                    {confirmingRemove === part.manifest.id ? 'Click again to remove' : 'Remove'}
+                  </button>
+                </div>
               </div>
               <p>{part.manifest.description}</p>
               <div className="parts-meta">
@@ -404,12 +435,25 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
                 ))}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
   );
 };
+
+/** True when version a is newer than b (dotted numeric segments). */
+export function versionNewer(a: string, b: string): boolean {
+  const pa = a.split('.').map((s) => parseInt(s, 10));
+  const pb = b.split('.').map((s) => parseInt(s, 10));
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const na = Number.isFinite(pa[i]) ? pa[i] : 0;
+    const nb = Number.isFinite(pb[i]) ? pb[i] : 0;
+    if (na !== nb) return na > nb;
+  }
+  return false;
+}
 
 function describeInvokeError(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {

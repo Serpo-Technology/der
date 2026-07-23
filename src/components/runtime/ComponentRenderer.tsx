@@ -394,7 +394,10 @@ export class ComponentRenderer {
     byHandler.forEach((bindings, handlerName) => {
       handlers[handlerName] = async (event: any) => {
         for (const binding of bindings) {
-          await this.handleEvent(binding, event, onOperationExecute, scope);
+          const ok = await this.handleEvent(binding, event, onOperationExecute, scope);
+          // Later bindings usually consume the failed operation's outputs;
+          // running them would bury the root error under follow-on noise.
+          if (!ok) break;
         }
       };
     });
@@ -436,14 +439,16 @@ export class ComponentRenderer {
     event: any,
     onOperationExecute: OperationExecuteHandler,
     scope?: ItemScope
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (binding.event === 'submit' && typeof event?.preventDefault === 'function') {
       event.preventDefault();
     }
     try {
       await onOperationExecute(binding.operationId, { item: scope?.item });
+      return true;
     } catch (error) {
       console.error(`Error handling event ${binding.event} for operation ${binding.operationId}:`, error);
+      return false;
     }
   }
 }

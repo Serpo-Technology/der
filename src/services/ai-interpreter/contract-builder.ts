@@ -419,7 +419,7 @@ export class ContractBuilder {
       ...(uiFragmentLines.length
         ? [
             '',
-            'COMPOSED UI FRAGMENTS (single elements the runtime expands; params go in "properties"). Prefer these over hand-building the same pattern from raw elements:',
+            'COMPOSED UI FRAGMENTS (single elements the runtime expands; params go in "properties"). Prefer these over hand-building the same pattern from raw elements. Give every dashboard or summary number its own stat_tile in a row container instead of running them together as plain text:',
             ...uiFragmentLines,
           ]
         : []),

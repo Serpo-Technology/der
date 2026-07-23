@@ -102,6 +102,9 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
           setOperationError(message);
         }
         onError?.(error as Error);
+        // Callers running a chain of operations need the failure to stop the
+        // rest; the error is already recorded and displayed above.
+        throw error;
       } finally {
         stateManager.setLoading(operationId, false);
       }
