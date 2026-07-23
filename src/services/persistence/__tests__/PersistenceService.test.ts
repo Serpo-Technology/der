@@ -29,7 +29,15 @@ describe('PersistenceService', () => {
     mockContract = {
       name: 'Test Experience',
       version: '1.0.0',
-      elements: [],
+      elements: [
+        {
+          id: 'title',
+          type: 'text',
+          properties: { content: 'Test' },
+          dataBindings: [],
+          eventBindings: []
+        }
+      ],
       operations: [],
       layout: { type: 'flex', properties: {} },
       styling: { theme: 'default' },
@@ -396,7 +404,7 @@ describe('PersistenceService', () => {
 
       expect(result.success).toBe(false);
       expect(result.errors).toBeDefined();
-      expect(result.errors![0]).toContain('Failed to import experience');
+      expect(result.errors![0]).toContain('not valid JSON');
     });
   });
 });

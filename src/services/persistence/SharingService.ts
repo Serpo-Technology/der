@@ -6,6 +6,7 @@
 import { ShareableContract, ShareMetadata, ImportResult, ExportFormat } from '../../types/persistence';
 import { Experience } from '../../types/experience';
 import { persistenceService } from './PersistenceService';
+import { ParsedShare, parseShareableText } from './share-format';
 
 export interface ShareOptions {
   title?: string;
@@ -101,6 +102,16 @@ export class SharingService {
         errors: [`Failed to import shared experience: ${error}`]
       };
     }
+  }
+
+  /**
+   * Parses and validates import text in one pass: JSON, envelope hydration
+   * (dates become Date instances), and the embedded contract checked against
+   * the installed part vocabulary exactly like a recipe. The dialog renders
+   * only what this returns.
+   */
+  validateSharedExperienceText(text: string): ParsedShare {
+    return parseShareableText(text);
   }
 
   /**

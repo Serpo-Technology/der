@@ -1,0 +1,94 @@
+/**
+ * The import dialog must never take the window down: pasted data (whose
+ * dates are strings after the JSON round trip) validates and previews
+ * without a render crash, and a share that cannot open here shows its
+ * problems with the import blocked.
+ */
+
+import { describe, it, expect, vi } from 'vitest';
+import React from 'react';
+import { render, fireEvent, screen } from '@testing-library/react';
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+
+import { ImportDialog } from '../ImportDialog';
+
+const COUNTER_CONTRACT = {
+  name: 'counter',
+  version: '1.0.0',
+  elements: [
+    {
+      id: 'count-text',
+      type: 'text',
+      dataBindings: [{ property: 'content', source: 'state', sourceId: 'clicks' }],
+    },
+    {
+      id: 'click-btn',
+      type: 'button',
+      properties: { text: 'Click' },
+      eventBindings: [{ event: 'click', operationId: 'op-add' }],
+    },
+  ],
+  operations: [
+    {
+      id: 'op-add',
+      operationName: 'counter.add',
+      inputs: [{ name: 'key', source: 'constant', sourceId: 'clicks' }],
+    },
+  ],
+};
+
+function shareJson(contract: unknown = COUNTER_CONTRACT): string {
+  return JSON.stringify({
+    contract,
+    metadata: {
+      title: 'Click Counter',
+      createdAt: '2026-07-20T10:00:00.000Z',
+      sharedAt: '2026-07-21T10:00:00.000Z',
+    },
+    version: '1.0.0',
+    checksum: 'abc123',
+  });
+}
+
+function openAndValidate(data: string, onError = vi.fn()) {
+  render(
+    <ImportDialog isOpen={true} onClose={() => undefined} onError={onError} />
+  );
+  fireEvent.change(screen.getByLabelText('Shared Experience Data'), {
+    target: { value: data },
+  });
+  fireEvent.click(screen.getByText('Validate & Preview'));
+  return onError;
+}
+
+describe('ImportDialog', () => {
+  it('previews a pasted share with string dates without crashing', () => {
+    openAndValidate(shareJson());
+
+    expect(screen.getByText('Ready to import')).toBeInTheDocument();
+    expect(screen.getByText('Click Counter')).toBeInTheDocument();
+    // Hydrated dates render; the raw ISO strings do not.
+    expect(screen.queryByText(/2026-07-20T10:00:00/)).not.toBeInTheDocument();
+    expect(screen.getByText('Import Experience')).toBeEnabled();
+  });
+
+  it('shows the problems and blocks import for a share that cannot open here', () => {
+    const contract = JSON.parse(JSON.stringify(COUNTER_CONTRACT));
+    contract.operations[0].operationName = 'wizardry.cast';
+    openAndValidate(shareJson(contract));
+
+    expect(screen.getByText('This share cannot open here')).toBeInTheDocument();
+    expect(screen.getByText(/wizardry\.cast/)).toBeInTheDocument();
+    expect(screen.getByText('Import Experience')).toBeDisabled();
+  });
+
+  it('reports unparseable data as a problem instead of crashing', () => {
+    openAndValidate('{{{');
+
+    // Parsing problems show on the validation step like any other problem.
+    expect(screen.getByText('This share cannot open here')).toBeInTheDocument();
+    expect(screen.getByText(/not valid JSON/)).toBeInTheDocument();
+    expect(screen.queryByText('Import Experience')).toBeDisabled();
+  });
+});

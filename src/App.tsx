@@ -69,7 +69,16 @@ function App() {
 
   return (
     <div className="app">
-      <MainInterface />
+      <ErrorBoundary
+        fallback={
+          <div style={{ padding: 24 }}>
+            <h2>Something went wrong in this view.</h2>
+            <p>Reopen the window from the tray to continue; your apps and their data are safe.</p>
+          </div>
+        }
+      >
+        <MainInterface />
+      </ErrorBoundary>
     </div>
   );
 }

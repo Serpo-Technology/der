@@ -13,6 +13,7 @@ import {
   ExportFormat
 } from '../../types/persistence';
 import { Experience, ExperienceUpdate } from '../../types/experience';
+import { finalizeSharedContract, parseShareableText } from './share-format';
 
 /**
  * Older records stored contracts double-encoded (a JSON string inside the
@@ -357,29 +358,27 @@ export class PersistenceService implements PersistenceLayer {
    */
   async importExperience(data: string, format: ExportFormat = { format: 'json' }): Promise<ImportResult> {
     try {
-      let shareableContract: ShareableContract;
-
-      switch (format.format) {
-        case 'json':
-          shareableContract = JSON.parse(data);
-          break;
-        case 'yaml':
-          // For now, try JSON parsing - YAML support can be added later
-          shareableContract = JSON.parse(data);
-          break;
-        case 'binary':
-          // For now, try JSON parsing - binary support can be added later
-          shareableContract = JSON.parse(data);
-          break;
-        default:
-          return {
-            success: false,
-            errors: [`Unsupported import format: ${format.format}`]
-          };
+      if (format.format !== 'json' && format.format !== 'yaml' && format.format !== 'binary') {
+        return {
+          success: false,
+          errors: [`Unsupported import format: ${format.format}`]
+        };
       }
 
+      // Every import passes the same gate as a recipe: envelope hydration,
+      // the composable contract schema, and the manifest check; what gets
+      // saved is the normalized contract, never the raw bytes.
+      const parsed = parseShareableText(data);
+      if (!parsed.shareable || parsed.problems.length > 0) {
+        return { success: false, errors: parsed.problems };
+      }
+      const shareableContract: ShareableContract = {
+        ...parsed.shareable,
+        contract: finalizeSharedContract(parsed)
+      };
+
       const experience = await this.importSharedExperience(shareableContract);
-      
+
       return {
         success: true,
         experienceId: experience.id

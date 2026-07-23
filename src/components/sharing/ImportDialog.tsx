@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { ShareableContract, ExportFormat } from '../../types/persistence';
+import { ExportFormat } from '../../types/persistence';
 import { sharingService } from '../../services/persistence';
+import { ParsedShare } from '../../services/persistence/share-format';
 import { Experience } from '../../types/experience';
 import './ImportDialog.css';
 
@@ -28,12 +29,7 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
   const [importData, setImportData] = useState('');
   const [importFormat, setImportFormat] = useState<ExportFormat>({ format: 'json' });
   const [isProcessing, setIsProcessing] = useState(false);
-  const [validationResult, setValidationResult] = useState<{
-    isValid: boolean;
-    errors: string[];
-    warnings: string[];
-    contract?: ShareableContract;
-  } | null>(null);
+  const [validationResult, setValidationResult] = useState<ParsedShare | null>(null);
   const [currentStep, setCurrentStep] = useState<'input' | 'validate' | 'import'>('input');
 
   // Handle file upload
@@ -57,8 +53,9 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
     reader.readAsText(file);
   }, []);
 
-  // Validate import data
-  const handleValidate = useCallback(async () => {
+  // Validate import data: parsing, hydration, and the vocabulary check all
+  // happen in the service; this component renders only the result.
+  const handleValidate = useCallback(() => {
     if (!importData.trim()) {
       onError?.('Please provide data to import');
       return;
@@ -66,22 +63,7 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
 
     setIsProcessing(true);
     try {
-      // Try to parse the data
-      let shareableContract: ShareableContract;
-      
-      try {
-        shareableContract = JSON.parse(importData);
-      } catch {
-        throw new Error('Invalid JSON format. Please check your data.');
-      }
-
-      // Validate the contract structure
-      const validation = await sharingService.validateShareableContract(shareableContract);
-      
-      setValidationResult({
-        ...validation,
-        contract: shareableContract
-      });
+      setValidationResult(sharingService.validateSharedExperienceText(importData));
       setCurrentStep('validate');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to validate import data';
@@ -93,17 +75,17 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
 
   // Perform import
   const handleImport = useCallback(async () => {
-    if (!validationResult?.contract) return;
+    if (!validationResult?.shareable || validationResult.problems.length > 0) return;
 
     setIsProcessing(true);
     try {
       const result = await sharingService.importSharedExperience(importData, importFormat);
-      
+
       if (result.success && result.experienceId) {
         // Create a basic Experience object for the callback
         const experience: Experience = {
           id: result.experienceId,
-          contract: validationResult.contract.contract,
+          contract: validationResult.shareable.contract,
           reactComponent: () => null,
           state: {
             data: {},
@@ -113,7 +95,7 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
           },
           operations: new Map()
         };
-        
+
         onImportSuccess?.(experience);
         onSuccess?.('Experience imported successfully!');
         handleClose();
@@ -246,23 +228,29 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
           {currentStep === 'validate' && validationResult && (
             <div className="validation-step">
               <h3>Import Validation</h3>
-              
-              <div className={`validation-result ${validationResult.isValid ? 'valid' : 'invalid'}`}>
+
+              <div
+                className={`validation-result ${
+                  validationResult.problems.length === 0 ? 'valid' : 'invalid'
+                }`}
+              >
                 <div className="validation-header">
                   <span className="validation-icon">
-                    {validationResult.isValid ? '✅' : '❌'}
+                    {validationResult.problems.length === 0 ? '✅' : '❌'}
                   </span>
                   <h4>
-                    {validationResult.isValid ? 'Valid Experience' : 'Validation Failed'}
+                    {validationResult.problems.length === 0
+                      ? 'Ready to import'
+                      : 'This share cannot open here'}
                   </h4>
                 </div>
 
-                {validationResult.errors.length > 0 && (
+                {validationResult.problems.length > 0 && (
                   <div className="validation-errors">
-                    <h5>Errors:</h5>
+                    <h5>Problems:</h5>
                     <ul>
-                      {validationResult.errors.map((error, index) => (
-                        <li key={index} className="error-item">{error}</li>
+                      {validationResult.problems.map((problem, index) => (
+                        <li key={index} className="error-item">{problem}</li>
                       ))}
                     </ul>
                   </div>
@@ -270,7 +258,7 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
 
                 {validationResult.warnings.length > 0 && (
                   <div className="validation-warnings">
-                    <h5>Warnings:</h5>
+                    <h5>Notes:</h5>
                     <ul>
                       {validationResult.warnings.map((warning, index) => (
                         <li key={index} className="warning-item">{warning}</li>
@@ -280,52 +268,54 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
                 )}
               </div>
 
-              {validationResult.contract && (
+              {validationResult.shareable && (
                 <div className="contract-preview">
                   <h4>Experience Preview</h4>
                   <div className="contract-details">
                     <div className="detail-row">
                       <strong>Title:</strong>
-                      <span>{validationResult.contract.metadata.title}</span>
+                      <span>{validationResult.shareable.metadata.title}</span>
                     </div>
                     <div className="detail-row">
                       <strong>Version:</strong>
-                      <span>{validationResult.contract.version}</span>
+                      <span>{validationResult.shareable.version}</span>
                     </div>
-                    {validationResult.contract.metadata.author && (
+                    {validationResult.shareable.metadata.author && (
                       <div className="detail-row">
                         <strong>Author:</strong>
-                        <span>{validationResult.contract.metadata.author}</span>
+                        <span>{validationResult.shareable.metadata.author}</span>
                       </div>
                     )}
-                    {validationResult.contract.metadata.description && (
+                    {validationResult.shareable.metadata.description && (
                       <div className="detail-row">
                         <strong>Description:</strong>
-                        <span>{validationResult.contract.metadata.description}</span>
+                        <span>{validationResult.shareable.metadata.description}</span>
                       </div>
                     )}
                     <div className="detail-row">
                       <strong>Created:</strong>
-                      <span>{validationResult.contract.metadata.createdAt.toLocaleDateString()}</span>
+                      <span>{validationResult.shareable.metadata.createdAt.toLocaleDateString()}</span>
                     </div>
                     <div className="detail-row">
                       <strong>Shared:</strong>
-                      <span>{validationResult.contract.metadata.sharedAt.toLocaleDateString()}</span>
+                      <span>{validationResult.shareable.metadata.sharedAt.toLocaleDateString()}</span>
                     </div>
-                    {validationResult.contract.metadata.tags && validationResult.contract.metadata.tags.length > 0 && (
+                    {(validationResult.shareable.metadata.tags ?? []).length > 0 && (
                       <div className="detail-row">
                         <strong>Tags:</strong>
                         <div className="tags">
-                          {validationResult.contract.metadata.tags.map(tag => (
+                          {(validationResult.shareable.metadata.tags ?? []).map(tag => (
                             <span key={tag} className="tag">{tag}</span>
                           ))}
                         </div>
                       </div>
                     )}
-                    <div className="detail-row">
-                      <strong>Checksum:</strong>
-                      <span className="checksum">{validationResult.contract.checksum}</span>
-                    </div>
+                    {validationResult.shareable.checksum && (
+                      <div className="detail-row">
+                        <strong>Checksum:</strong>
+                        <span className="checksum">{validationResult.shareable.checksum}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -341,7 +331,11 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
                 <button
                   className="import-button primary"
                   onClick={handleImport}
-                  disabled={!validationResult.isValid || isProcessing}
+                  disabled={
+                    !validationResult.shareable ||
+                    validationResult.problems.length > 0 ||
+                    isProcessing
+                  }
                 >
                   {isProcessing ? 'Importing...' : 'Import Experience'}
                 </button>
