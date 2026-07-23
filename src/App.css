@@ -110,8 +110,8 @@ button {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
+  color: var(--app-text);
+  background-color: var(--app-surface);
   transition: border-color 0.25s;
   box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
 }
@@ -139,7 +139,7 @@ button {
 
 @media (prefers-color-scheme: dark) {
   :root {
-    color: #f6f6f6;
+    color: var(--app-on-accent);
     background-color: #2f2f2f;
   }
 
@@ -149,7 +149,7 @@ button {
 
   input,
   button {
-    color: #ffffff;
+    color: var(--app-on-accent);
     background-color: #0f0f0f98;
   }
   button:active {

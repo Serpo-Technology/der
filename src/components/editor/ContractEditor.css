@@ -6,7 +6,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #f8f9fa;
+  background: var(--app-surface-2);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -16,13 +16,13 @@
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  background: #fff;
-  border-bottom: 1px solid #e9ecef;
+  background: var(--app-surface);
+  border-bottom: 1px solid var(--app-border);
 }
 
 .contract-editor-header h3 {
   margin: 0;
-  color: #212529;
+  color: var(--app-text);
   font-size: 1.25rem;
   font-weight: 600;
 }
@@ -34,9 +34,9 @@
 
 .mode-button {
   padding: 8px 16px;
-  border: 1px solid #dee2e6;
-  background: #fff;
-  color: #495057;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+  color: var(--app-text-dim);
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.875rem;
@@ -44,14 +44,14 @@
 }
 
 .mode-button:hover {
-  background: #f8f9fa;
-  border-color: #adb5bd;
+  background: var(--app-surface-2);
+  border-color: var(--app-border-strong);
 }
 
 .mode-button.active {
-  background: #007bff;
-  color: #fff;
-  border-color: #007bff;
+  background: var(--app-accent);
+  color: var(--app-on-accent);
+  border-color: var(--app-accent);
 }
 
 .contract-editor-content {
@@ -62,8 +62,8 @@
 
 .contract-sidebar {
   width: 300px;
-  background: #fff;
-  border-right: 1px solid #e9ecef;
+  background: var(--app-surface);
+  border-right: 1px solid var(--app-border);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -71,12 +71,12 @@
 
 .contract-summary {
   padding: 16px;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .contract-summary h4 {
   margin: 0 0 12px 0;
-  color: #212529;
+  color: var(--app-text);
   font-size: 1rem;
   font-weight: 600;
 }
@@ -84,11 +84,11 @@
 .summary-item {
   margin-bottom: 8px;
   font-size: 0.875rem;
-  color: #495057;
+  color: var(--app-text-dim);
 }
 
 .summary-item strong {
-  color: #212529;
+  color: var(--app-text);
 }
 
 .section-list {
@@ -99,7 +99,7 @@
 .section-list h4 {
   margin: 0 0 12px 0;
   padding: 0 16px;
-  color: #212529;
+  color: var(--app-text);
   font-size: 1rem;
   font-weight: 600;
 }
@@ -115,17 +115,17 @@
 }
 
 .section-item:hover {
-  background: #f8f9fa;
+  background: var(--app-surface-2);
 }
 
 .section-item.selected {
   background: #e3f2fd;
-  border-left-color: #2196f3;
+  border-left-color: var(--app-accent);
 }
 
 .section-title {
   font-size: 0.875rem;
-  color: #495057;
+  color: var(--app-text-dim);
   flex: 1;
 }
 
@@ -141,13 +141,13 @@
 }
 
 .regenerate-button:hover {
-  background: #dee2e6;
+  background: var(--app-surface-3);
   opacity: 1;
 }
 
 .add-controls {
   padding: 16px;
-  border-top: 1px solid #e9ecef;
+  border-top: 1px solid var(--app-border);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -156,7 +156,7 @@
 .add-button {
   padding: 8px 12px;
   border: 1px solid #28a745;
-  background: #fff;
+  background: var(--app-surface);
   color: #28a745;
   border-radius: 4px;
   cursor: pointer;
@@ -166,12 +166,12 @@
 
 .add-button:hover {
   background: #28a745;
-  color: #fff;
+  color: var(--app-on-accent);
 }
 
 .contract-main {
   flex: 1;
-  background: #fff;
+  background: var(--app-surface);
   overflow-y: auto;
   padding: 20px;
 }
@@ -181,7 +181,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #6c757d;
+  color: var(--app-text-dim);
   font-style: italic;
 }
 
@@ -201,22 +201,22 @@
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 12px;
-  border-bottom: 2px solid #e9ecef;
+  border-bottom: 2px solid var(--app-border);
 }
 
 .element-header h4,
 .operation-header h4 {
   margin: 0;
-  color: #212529;
+  color: var(--app-text);
   font-size: 1.125rem;
   font-weight: 600;
 }
 
 .remove-button {
   padding: 6px 12px;
-  border: 1px solid #dc3545;
-  background: #fff;
-  color: #dc3545;
+  border: 1px solid var(--app-danger);
+  background: var(--app-surface);
+  color: var(--app-danger);
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.875rem;
@@ -224,8 +224,8 @@
 }
 
 .remove-button:hover {
-  background: #dc3545;
-  color: #fff;
+  background: var(--app-danger);
+  color: var(--app-on-accent);
 }
 
 .element-fields,
@@ -246,7 +246,7 @@
 
 .field-group label {
   font-weight: 600;
-  color: #212529;
+  color: var(--app-text);
   font-size: 0.875rem;
 }
 
@@ -254,7 +254,7 @@
 .field-group select,
 .field-group textarea {
   padding: 8px 12px;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--app-border);
   border-radius: 4px;
   font-size: 0.875rem;
   font-family: inherit;
@@ -272,7 +272,7 @@
 .field-group input[readonly],
 .field-group select[disabled],
 .field-group textarea[readonly] {
-  background-color: #e9ecef;
+  background-color: var(--app-surface-3);
   opacity: 1;
 }
 
@@ -284,8 +284,8 @@
 
 /* Validation Display */
 .validation-display {
-  background: #fff;
-  border-top: 1px solid #e9ecef;
+  background: var(--app-surface);
+  border-top: 1px solid var(--app-border);
   padding: 16px 20px;
 }
 
@@ -299,7 +299,7 @@
 }
 
 .validation-status.invalid {
-  color: #dc3545;
+  color: var(--app-danger);
 }
 
 .validation-errors,
@@ -315,7 +315,7 @@
 }
 
 .validation-errors h5 {
-  color: #dc3545;
+  color: var(--app-danger);
 }
 
 .validation-warnings h5 {
@@ -331,9 +331,9 @@
 }
 
 .validation-error {
-  background: #f8d7da;
-  color: #721c24;
-  border: 1px solid #f5c6cb;
+  background: var(--app-danger-soft);
+  color: var(--app-danger);
+  border: 1px solid var(--app-danger-soft);
 }
 
 .validation-warning {

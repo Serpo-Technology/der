@@ -6,7 +6,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #ffffff;
+  background: var(--app-surface);
   border: 1px solid #e1e5e9;
   border-radius: 8px;
 }
@@ -17,7 +17,7 @@
   align-items: center;
   padding: 16px 20px;
   border-bottom: 1px solid #e1e5e9;
-  background: #f8f9fa;
+  background: var(--app-surface-2);
 }
 
 .editor-header h2 {
@@ -37,7 +37,7 @@
   padding: 6px 12px;
   border: 1px solid #cbd5e0;
   border-radius: 4px;
-  background: #ffffff;
+  background: var(--app-surface);
   color: #4a5568;
   cursor: pointer;
   font-size: 14px;
@@ -59,7 +59,7 @@
 .preview-panel {
   width: 40%;
   border-left: 1px solid #e1e5e9;
-  background: #f8f9fa;
+  background: var(--app-surface-2);
   overflow-y: auto;
 }
 
@@ -153,7 +153,7 @@
 .add-capability button {
   padding: 6px 12px;
   background: #3182ce;
-  color: white;
+  color:  var(--app-on-accent);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -167,7 +167,7 @@
 /* Validation Panel */
 .validation-panel {
   border-top: 1px solid #e1e5e9;
-  background: #ffffff;
+  background: var(--app-surface);
 }
 
 .validation-panel.success {
@@ -272,7 +272,7 @@
 .operation-preview,
 .ambiguity-preview,
 .modification-preview {
-  background: #ffffff;
+  background: var(--app-surface);
   border: 1px solid #e1e5e9;
   border-radius: 4px;
   padding: 12px;
@@ -374,7 +374,7 @@
   align-items: center;
   padding: 12px 20px;
   border-bottom: 1px solid #e1e5e9;
-  background: #f8f9fa;
+  background: var(--app-surface-2);
 }
 
 .json-editor-header h4 {
@@ -394,7 +394,7 @@
   padding: 4px 8px;
   border: 1px solid #cbd5e0;
   border-radius: 4px;
-  background: #ffffff;
+  background: var(--app-surface);
   color: #4a5568;
   cursor: pointer;
   font-size: 12px;
@@ -501,23 +501,23 @@
 @media (prefers-color-scheme: dark) {
   .blueprint-editor { background: #0f1115; border-color: #2a2f3a; }
   .editor-header { background: #151821; border-bottom-color: #2a2f3a; }
-  .editor-header h2 { color: #e6e6e6; }
+  .editor-header h2 { color: var(--app-text-dim); }
   .mode-toggle,
-  .preview-toggle { background: #0f1115; color: #e6e6e6; border-color: #2f3643; }
+  .preview-toggle { background: #0f1115; color: var(--app-text-dim); border-color: #2f3643; }
   .mode-toggle:hover,
   .preview-toggle:hover { background: #181c25; border-color: #465063; }
   .preview-panel { background: #121621; border-left-color: #2a2f3a; }
-  .form-section label { color: #e6e6e6; }
+  .form-section label { color: var(--app-text-dim); }
   .form-section input,
-  .form-section textarea { background: #0f1115; border-color: #2f3643; color: #e6e6e6; }
-  .capability-item { background: #1a2030; color: #e6e6e6; }
+  .form-section textarea { background: #0f1115; border-color: #2f3643; color: var(--app-text-dim); }
+  .capability-item { background: #1a2030; color: var(--app-text-dim); }
   .json-editor-header { background: #151821; border-bottom-color: #2a2f3a; }
-  .json-editor-header h4 { color: #e6e6e6; }
-  .json-editor-controls button { background: #0f1115; color: #e6e6e6; border-color: #2f3643; }
+  .json-editor-header h4 { color: var(--app-text-dim); }
+  .json-editor-controls button { background: #0f1115; color: var(--app-text-dim); border-color: #2f3643; }
   .json-editor-controls button:hover:not(:disabled) { background: #181c25; }
   .json-editor-content { background: transparent; }
-  .json-textarea { background: #0b0e14; color: #e6e6e6; border-color: #2f3643; }
+  .json-textarea { background: #0b0e14; color: var(--app-text-dim); border-color: #2f3643; }
   .json-error { background: rgba(229, 62, 62, 0.15); color: #ff8484; border-top-color: rgba(229, 62, 62, 0.3); }
-  .schema-help h5 { color: #e6e6e6; }
+  .schema-help h5 { color: var(--app-text-dim); }
   .schema-help pre { background: #0b0e14; border-color: #2a2f3a; }
 }

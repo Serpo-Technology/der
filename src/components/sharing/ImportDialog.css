@@ -15,7 +15,7 @@
 }
 
 .import-dialog {
-  background: white;
+  background: var(--app-surface);
   border-radius: 8px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
   width: 100%;
@@ -31,13 +31,13 @@
   justify-content: space-between;
   align-items: center;
   padding: 1.5rem;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  background: var(--background-secondary, #f8f9fa);
+  border-bottom: 1px solid var(--border-color, var(--app-border));
+  background: var(--background-secondary, var(--app-surface-2));
 }
 
 .import-header h2 {
   margin: 0;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
   font-size: 1.5rem;
   font-weight: 600;
 }
@@ -46,7 +46,7 @@
   background: none;
   border: none;
   font-size: 1.5rem;
-  color: var(--text-secondary, #666666);
+  color: var(--text-secondary, var(--app-text-dim));
   cursor: pointer;
   padding: 0.25rem;
   border-radius: 4px;
@@ -54,8 +54,8 @@
 }
 
 .close-button:hover {
-  background: var(--background-hover, #e9ecef);
-  color: var(--text-primary, #333333);
+  background: var(--background-hover, var(--app-surface-3));
+  color: var(--text-primary, var(--app-text));
 }
 
 .import-content {
@@ -68,7 +68,7 @@
 .import-input-step h3,
 .validation-step h3 {
   margin: 0 0 1.5rem 0;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
   font-size: 1.25rem;
   font-weight: 600;
 }
@@ -85,15 +85,15 @@
   display: flex;
   flex-direction: column;
   padding: 1rem;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .method-option:hover {
-  border-color: var(--border-hover, #ced4da);
-  background: var(--background-hover, #f8f9fa);
+  border-color: var(--border-hover, var(--app-border));
+  background: var(--background-hover, var(--app-surface-2));
 }
 
 .method-option input[type="radio"] {
@@ -104,17 +104,17 @@
 
 .method-option span {
   font-weight: 500;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
   margin-bottom: 0.25rem;
 }
 
 .method-option small {
-  color: var(--text-secondary, #666666);
+  color: var(--text-secondary, var(--app-text-dim));
   font-size: 0.75rem;
 }
 
 .method-option:has(input:checked) {
-  border-color: var(--primary-color, #007bff);
+  border-color: var(--primary-color, var(--app-accent));
   background: rgba(0, 123, 255, 0.05);
 }
 
@@ -127,25 +127,25 @@
 
 .paste-input label {
   font-weight: 500;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
   font-size: 0.875rem;
 }
 
 .paste-input textarea {
   width: 100%;
   padding: 0.75rem;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 4px;
   font-size: 0.75rem;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  background: var(--background-secondary, #f8f9fa);
+  background: var(--background-secondary, var(--app-surface-2));
   resize: vertical;
   min-height: 200px;
 }
 
 .paste-input textarea:focus {
   outline: none;
-  border-color: var(--primary-color, #007bff);
+  border-color: var(--primary-color, var(--app-accent));
   box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
@@ -157,16 +157,16 @@
 
 .format-selection label {
   font-weight: 500;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
   font-size: 0.875rem;
 }
 
 .format-selection select {
   padding: 0.5rem;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 4px;
   font-size: 0.875rem;
-  background: white;
+  background: var(--app-surface);
 }
 
 /* File Input */
@@ -178,34 +178,34 @@
 
 .file-input label {
   font-weight: 500;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
   font-size: 0.875rem;
 }
 
 .file-input input[type="file"] {
   padding: 0.75rem;
-  border: 2px dashed var(--border-color, #e0e0e0);
+  border: 2px dashed var(--border-color, var(--app-border));
   border-radius: 6px;
-  background: var(--background-secondary, #f8f9fa);
+  background: var(--background-secondary, var(--app-surface-2));
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .file-input input[type="file"]:hover {
-  border-color: var(--primary-color, #007bff);
+  border-color: var(--primary-color, var(--app-accent));
   background: rgba(0, 123, 255, 0.05);
 }
 
 .file-preview {
-  background: var(--background-secondary, #f8f9fa);
-  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--background-secondary, var(--app-surface-2));
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 6px;
   padding: 1rem;
 }
 
 .file-preview h4 {
   margin: 0 0 0.75rem 0;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
   font-size: 1rem;
   font-weight: 600;
 }
@@ -215,7 +215,7 @@
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 0.75rem;
   line-height: 1.4;
-  color: var(--text-secondary, #666666);
+  color: var(--text-secondary, var(--app-text-dim));
   white-space: pre-wrap;
   word-break: break-all;
 }
@@ -250,7 +250,7 @@
 
 .validation-header h4 {
   margin: 0;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
   font-size: 1rem;
   font-weight: 600;
 }
@@ -268,7 +268,7 @@
 }
 
 .validation-errors h5 {
-  color: var(--danger-color, #dc3545);
+  color: var(--danger-color, var(--app-danger));
 }
 
 .validation-warnings h5 {
@@ -282,7 +282,7 @@
 }
 
 .error-item {
-  color: var(--danger-color, #dc3545);
+  color: var(--danger-color, var(--app-danger));
   font-size: 0.875rem;
   margin-bottom: 0.25rem;
 }
@@ -295,8 +295,8 @@
 
 /* Contract Preview */
 .contract-preview {
-  background: var(--background-secondary, #f8f9fa);
-  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--background-secondary, var(--app-surface-2));
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 6px;
   padding: 1rem;
   margin-bottom: 1.5rem;
@@ -304,7 +304,7 @@
 
 .contract-preview h4 {
   margin: 0 0 1rem 0;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
   font-size: 1rem;
   font-weight: 600;
 }
@@ -323,13 +323,13 @@
 
 .detail-row strong {
   min-width: 80px;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
   font-size: 0.875rem;
   font-weight: 600;
 }
 
 .detail-row span {
-  color: var(--text-secondary, #666666);
+  color: var(--text-secondary, var(--app-text-dim));
   font-size: 0.875rem;
   flex: 1;
 }
@@ -348,11 +348,11 @@
 
 .tag {
   padding: 0.125rem 0.5rem;
-  background: white;
-  color: var(--text-secondary, #666666);
+  background: var(--app-surface);
+  color: var(--text-secondary, var(--app-text-dim));
   border-radius: 12px;
   font-size: 0.75rem;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--app-border));
 }
 
 /* Step Actions */
@@ -361,14 +361,14 @@
   gap: 1rem;
   justify-content: flex-end;
   padding-top: 1rem;
-  border-top: 1px solid var(--border-color, #e0e0e0);
+  border-top: 1px solid var(--border-color, var(--app-border));
 }
 
 .back-button,
 .validate-button,
 .import-button {
   padding: 0.75rem 1.5rem;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.875rem;
@@ -377,26 +377,26 @@
 }
 
 .back-button {
-  background: white;
-  color: var(--text-secondary, #666666);
+  background: var(--app-surface);
+  color: var(--text-secondary, var(--app-text-dim));
 }
 
 .back-button:hover:not(:disabled) {
-  background: var(--background-hover, #e9ecef);
-  color: var(--text-primary, #333333);
+  background: var(--background-hover, var(--app-surface-3));
+  color: var(--text-primary, var(--app-text));
 }
 
 .validate-button.primary,
 .import-button.primary {
-  background: var(--primary-color, #007bff);
-  color: white;
-  border-color: var(--primary-color, #007bff);
+  background: var(--primary-color, var(--app-accent));
+  color:  var(--app-on-accent);
+  border-color: var(--primary-color, var(--app-accent));
 }
 
 .validate-button.primary:hover:not(:disabled),
 .import-button.primary:hover:not(:disabled) {
-  background: var(--primary-hover, #0056b3);
-  border-color: var(--primary-hover, #0056b3);
+  background: var(--primary-hover, var(--app-accent-strong));
+  border-color: var(--primary-hover, var(--app-accent-strong));
   transform: translateY(-1px);
 }
 
@@ -413,8 +413,8 @@
   display: flex;
   justify-content: center;
   padding: 1rem 1.5rem;
-  background: var(--background-secondary, #f8f9fa);
-  border-top: 1px solid var(--border-color, #e0e0e0);
+  background: var(--background-secondary, var(--app-surface-2));
+  border-top: 1px solid var(--border-color, var(--app-border));
 }
 
 .progress-step {
@@ -423,7 +423,7 @@
   padding: 0.5rem;
   font-size: 0.75rem;
   font-weight: 500;
-  color: var(--text-secondary, #666666);
+  color: var(--text-secondary, var(--app-text-dim));
   position: relative;
 }
 
@@ -434,12 +434,12 @@
   right: -50%;
   width: 100%;
   height: 1px;
-  background: var(--border-color, #e0e0e0);
+  background: var(--border-color, var(--app-surface-3));
   transform: translateY(-50%);
 }
 
 .progress-step.active {
-  color: var(--primary-color, #007bff);
+  color: var(--primary-color, var(--app-accent));
   font-weight: 600;
 }
 

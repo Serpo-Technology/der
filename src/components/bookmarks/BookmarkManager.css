@@ -5,7 +5,7 @@
   flex-direction: column;
   height: 100%;
   padding: 1rem;
-  background: var(--background-color, #ffffff);
+  background: var(--background-color, var(--app-surface));
 }
 
 .bookmark-header {
@@ -14,12 +14,12 @@
   align-items: center;
   margin-bottom: 1.5rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  border-bottom: 1px solid var(--border-color, var(--app-border));
 }
 
 .bookmark-header h2 {
   margin: 0;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
   font-size: 1.5rem;
   font-weight: 600;
 }
@@ -32,10 +32,10 @@
 .filter-toggle,
 .refresh-button {
   padding: 0.5rem 1rem;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 4px;
-  background: var(--background-secondary, #f8f9fa);
-  color: var(--text-primary, #333333);
+  background: var(--background-secondary, var(--app-surface-2));
+  color: var(--text-primary, var(--app-text));
   cursor: pointer;
   font-size: 0.875rem;
   transition: all 0.2s ease;
@@ -43,8 +43,8 @@
 
 .filter-toggle:hover,
 .refresh-button:hover {
-  background: var(--background-hover, #e9ecef);
-  border-color: var(--border-hover, #ced4da);
+  background: var(--background-hover, var(--app-surface-3));
+  border-color: var(--border-hover, var(--app-border));
 }
 
 .refresh-button:disabled {
@@ -54,8 +54,8 @@
 
 /* Filters */
 .bookmark-filters {
-  background: var(--background-secondary, #f8f9fa);
-  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--background-secondary, var(--app-surface-2));
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 8px;
   padding: 1rem;
   margin-bottom: 1.5rem;
@@ -72,15 +72,15 @@
 
 .search-input {
   padding: 0.75rem;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 4px;
   font-size: 0.875rem;
-  background: white;
+  background: var(--app-surface);
 }
 
 .search-input:focus {
   outline: none;
-  border-color: var(--primary-color, #007bff);
+  border-color: var(--primary-color, var(--app-accent));
   box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
@@ -92,7 +92,7 @@
 
 .tag-filter label {
   font-weight: 500;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
   font-size: 0.875rem;
 }
 
@@ -104,23 +104,23 @@
 
 .tag-button {
   padding: 0.25rem 0.75rem;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 16px;
-  background: white;
-  color: var(--text-secondary, #666666);
+  background: var(--app-surface);
+  color: var(--text-secondary, var(--app-text-dim));
   cursor: pointer;
   font-size: 0.75rem;
   transition: all 0.2s ease;
 }
 
 .tag-button:hover {
-  background: var(--background-hover, #e9ecef);
+  background: var(--background-hover, var(--app-surface-3));
 }
 
 .tag-button.selected {
-  background: var(--primary-color, #007bff);
-  color: white;
-  border-color: var(--primary-color, #007bff);
+  background: var(--primary-color, var(--app-accent));
+  color:  var(--app-on-accent);
+  border-color: var(--primary-color, var(--app-accent));
 }
 
 .sort-options {
@@ -131,7 +131,7 @@
 
 .sort-options label {
   font-weight: 500;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
   font-size: 0.875rem;
 }
 
@@ -143,40 +143,40 @@
 
 .sort-button {
   padding: 0.5rem 1rem;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 4px;
-  background: white;
-  color: var(--text-secondary, #666666);
+  background: var(--app-surface);
+  color: var(--text-secondary, var(--app-text-dim));
   cursor: pointer;
   font-size: 0.75rem;
   transition: all 0.2s ease;
 }
 
 .sort-button:hover {
-  background: var(--background-hover, #e9ecef);
+  background: var(--background-hover, var(--app-surface-3));
 }
 
 .sort-button.active {
-  background: var(--primary-color, #007bff);
-  color: white;
-  border-color: var(--primary-color, #007bff);
+  background: var(--primary-color, var(--app-accent));
+  color:  var(--app-on-accent);
+  border-color: var(--primary-color, var(--app-accent));
 }
 
 .clear-filters {
   align-self: flex-start;
   padding: 0.5rem 1rem;
-  border: 1px solid var(--danger-color, #dc3545);
+  border: 1px solid var(--danger-color, var(--app-danger));
   border-radius: 4px;
-  background: white;
-  color: var(--danger-color, #dc3545);
+  background: var(--app-surface);
+  color: var(--danger-color, var(--app-danger));
   cursor: pointer;
   font-size: 0.875rem;
   transition: all 0.2s ease;
 }
 
 .clear-filters:hover {
-  background: var(--danger-color, #dc3545);
-  color: white;
+  background: var(--danger-color, var(--app-danger));
+  color:  var(--app-on-accent);
 }
 
 /* Bookmark List */
@@ -193,14 +193,14 @@
   justify-content: center;
   padding: 3rem;
   text-align: center;
-  color: var(--text-secondary, #666666);
+  color: var(--text-secondary, var(--app-text-dim));
 }
 
 .loading-state .spinner {
   width: 2rem;
   height: 2rem;
-  border: 2px solid var(--border-color, #e0e0e0);
-  border-top: 2px solid var(--primary-color, #007bff);
+  border: 2px solid var(--border-color, var(--app-border));
+  border-top: 2px solid var(--primary-color, var(--app-accent));
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 1rem;
@@ -218,7 +218,7 @@
 
 .empty-state h3 {
   margin: 0 0 0.5rem 0;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
 }
 
 .empty-state p {
@@ -236,8 +236,8 @@
 
 /* Bookmark Card */
 .bookmark-card {
-  background: white;
-  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--app-surface);
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 8px;
   overflow: hidden;
   transition: all 0.2s ease;
@@ -247,14 +247,14 @@
 .bookmark-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  border-color: var(--border-hover, #ced4da);
+  border-color: var(--border-hover, var(--app-border));
 }
 
 .bookmark-thumbnail {
   width: 100%;
   height: 120px;
   overflow: hidden;
-  background: var(--background-secondary, #f8f9fa);
+  background: var(--background-secondary, var(--app-surface-2));
 }
 
 .bookmark-thumbnail img {
@@ -275,7 +275,7 @@
   margin: 0 0 0.5rem 0;
   font-size: 1.125rem;
   font-weight: 600;
-  color: var(--text-primary, #333333);
+  color: var(--text-primary, var(--app-text));
   line-height: 1.3;
 }
 
@@ -288,13 +288,13 @@
 .created-date,
 .accessed-date {
   font-size: 0.75rem;
-  color: var(--text-secondary, #666666);
+  color: var(--text-secondary, var(--app-text-dim));
 }
 
 .bookmark-description {
   margin: 0 0 1rem 0;
   font-size: 0.875rem;
-  color: var(--text-secondary, #666666);
+  color: var(--text-secondary, var(--app-text-dim));
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -311,11 +311,11 @@
 
 .bookmark-tag {
   padding: 0.125rem 0.5rem;
-  background: var(--background-secondary, #f8f9fa);
-  color: var(--text-secondary, #666666);
+  background: var(--background-secondary, var(--app-surface-2));
+  color: var(--text-secondary, var(--app-text-dim));
   border-radius: 12px;
   font-size: 0.75rem;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--app-border));
 }
 
 .bookmark-actions {
@@ -329,8 +329,8 @@
   padding: 0.75rem 1rem;
   border: none;
   border-radius: 4px;
-  background: var(--primary-color, #007bff);
-  color: white;
+  background: var(--primary-color, var(--app-accent));
+  color:  var(--app-on-accent);
   cursor: pointer;
   font-size: 0.875rem;
   font-weight: 500;
@@ -338,7 +338,7 @@
 }
 
 .load-button:hover:not(:disabled) {
-  background: var(--primary-hover, #0056b3);
+  background: var(--primary-hover, var(--app-accent-strong));
   transform: translateY(-1px);
 }
 
@@ -350,10 +350,10 @@
 
 .delete-button {
   padding: 0.75rem;
-  border: 1px solid var(--danger-color, #dc3545);
+  border: 1px solid var(--danger-color, var(--app-danger));
   border-radius: 4px;
-  background: white;
-  color: var(--danger-color, #dc3545);
+  background: var(--app-surface);
+  color: var(--danger-color, var(--app-danger));
   cursor: pointer;
   font-size: 1rem;
   transition: all 0.2s ease;
@@ -363,8 +363,8 @@
 }
 
 .delete-button:hover:not(:disabled) {
-  background: var(--danger-color, #dc3545);
-  color: white;
+  background: var(--danger-color, var(--app-danger));
+  color:  var(--app-on-accent);
 }
 
 .delete-button:disabled {
@@ -373,8 +373,8 @@
 }
 
 .delete-button.confirming {
-  background: var(--danger-color, #dc3545);
-  color: white;
+  background: var(--danger-color, var(--app-danger));
+  color:  var(--app-on-accent);
 }
 
 /* Responsive Design */

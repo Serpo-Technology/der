@@ -25,22 +25,22 @@
 
 .parts-view button {
   padding: 8px 16px;
-  border: 1px solid #d0d5dd;
+  border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--app-surface);
   cursor: pointer;
   font-size: 0.9rem;
 }
 
 .parts-view button.primary {
-  background: #3b82f6;
-  border-color: #3b82f6;
-  color: #ffffff;
+  background: var(--app-accent);
+  border-color: var(--app-accent);
+  color: var(--app-on-accent);
 }
 
 .parts-view button.danger {
-  color: #b91c1c;
-  border-color: #f0b4b4;
+  color: var(--app-danger);
+  border-color: var(--app-danger-soft);
 }
 
 .parts-view button:disabled {
@@ -50,10 +50,10 @@
 
 .parts-stage-card,
 .parts-card {
-  border: 1px solid #e4e7ec;
+  border: 1px solid var(--app-border);
   border-radius: 12px;
   padding: 16px;
-  background: #ffffff;
+  background: var(--app-surface);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -92,9 +92,9 @@
 
 .parts-block {
   font-size: 0.85rem;
-  color: #b91c1c;
-  background: #fef2f2;
-  border: 1px solid #f0b4b4;
+  color: var(--app-danger);
+  background: var(--app-danger-soft);
+  border: 1px solid var(--app-danger-soft);
   border-radius: 8px;
   padding: 8px 10px;
 }
@@ -105,7 +105,7 @@
 }
 
 .parts-empty {
-  border: 1px dashed #d0d5dd;
+  border: 1px dashed var(--app-border);
   border-radius: 12px;
   padding: 32px;
   text-align: center;
@@ -153,7 +153,7 @@
 .parts-registry {
   margin: 16px 0;
   padding: 12px 16px;
-  border: 1px solid #e4e7ec;
+  border: 1px solid var(--app-border);
   border-radius: 10px;
 }
 
@@ -169,7 +169,7 @@
 .parts-registry-bar input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid #d0d5dd;
+  border: 1px solid var(--app-border);
   border-radius: 8px;
   font-size: 0.9rem;
 }

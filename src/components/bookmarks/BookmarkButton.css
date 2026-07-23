@@ -5,10 +5,10 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 4px;
-  background: white;
-  color: var(--text-secondary, #666666);
+  background: var(--app-surface);
+  color: var(--text-secondary, var(--app-text-dim));
   cursor: pointer;
   font-family: inherit;
   font-weight: 500;
@@ -18,8 +18,8 @@
 }
 
 .bookmark-button:hover:not(:disabled) {
-  background: var(--background-hover, #f8f9fa);
-  border-color: var(--border-hover, #ced4da);
+  background: var(--background-hover, var(--app-surface-2));
+  border-color: var(--border-hover, var(--app-border));
   transform: translateY(-1px);
 }
 
@@ -89,26 +89,26 @@
 
 /* State Styles */
 .bookmark-button.not-bookmarked {
-  background: white;
-  color: var(--text-secondary, #666666);
-  border-color: var(--border-color, #e0e0e0);
+  background: var(--app-surface);
+  color: var(--text-secondary, var(--app-text-dim));
+  border-color: var(--border-color, var(--app-border));
 }
 
 .bookmark-button.not-bookmarked:hover:not(:disabled) {
-  background: var(--primary-color, #007bff);
-  color: white;
-  border-color: var(--primary-color, #007bff);
+  background: var(--primary-color, var(--app-accent));
+  color:  var(--app-on-accent);
+  border-color: var(--primary-color, var(--app-accent));
 }
 
 .bookmark-button.bookmarked {
-  background: var(--primary-color, #007bff);
-  color: white;
-  border-color: var(--primary-color, #007bff);
+  background: var(--primary-color, var(--app-accent));
+  color:  var(--app-on-accent);
+  border-color: var(--primary-color, var(--app-accent));
 }
 
 .bookmark-button.bookmarked:hover:not(:disabled) {
-  background: var(--danger-color, #dc3545);
-  border-color: var(--danger-color, #dc3545);
+  background: var(--danger-color, var(--app-danger));
+  border-color: var(--danger-color, var(--app-danger));
 }
 
 .bookmark-button.processing {

@@ -477,20 +477,6 @@ export const MainInterface: React.FC = () => {
         )}
       </main>
 
-      {/* Status Bar */}
-      <footer className="main-footer">
-        <div className="status-info">
-          <span>Mode: {state.currentMode}</span>
-          {state.blueprint && <span>Blueprint: ✓</span>}
-          {state.contract && <span>Contract: ✓</span>}
-          {state.validationResults.blueprint && !state.validationResults.blueprint.isValid && (
-            <span className="validation-error">Blueprint: {state.validationResults.blueprint.errors.length} errors</span>
-          )}
-          {state.validationResults.contract && !state.validationResults.contract.isValid && (
-            <span className="validation-error">Contract: {state.validationResults.contract.errors.length} errors</span>
-          )}
-        </div>
-      </footer>
 
       {/* Sharing Dialog */}
       {state.shareTarget && (

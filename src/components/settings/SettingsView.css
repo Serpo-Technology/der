@@ -10,7 +10,7 @@
 }
 
 .settings-section {
-  border: 1px solid var(--border-color, #ddd);
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 16px;
@@ -37,7 +37,7 @@
 .settings-field select,
 .settings-inline input {
   padding: 8px 10px;
-  border: 1px solid var(--border-color, #ccc);
+  border: 1px solid var(--border-color, var(--app-border));
   border-radius: 6px;
   font-size: 0.95rem;
 }
@@ -63,14 +63,14 @@
 .settings-inline button {
   padding: 8px 14px;
   border-radius: 6px;
-  border: 1px solid var(--border-color, #ccc);
+  border: 1px solid var(--border-color, var(--app-border));
   cursor: pointer;
 }
 
 .settings-actions button.primary {
-  background: #3b82f6;
-  border-color: #3b82f6;
-  color: white;
+  background: var(--app-accent);
+  border-color: var(--app-accent);
+  color:  var(--app-on-accent);
 }
 
 .settings-actions button:disabled,
@@ -93,7 +93,7 @@
 .link-button {
   background: none;
   border: none;
-  color: #3b82f6;
+  color: var(--app-accent);
   cursor: pointer;
   padding: 0;
   margin-left: 8px;

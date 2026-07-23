@@ -16,7 +16,7 @@
 }
 
 .conflict-resolution-dialog {
-  background: #fff;
+  background: var(--app-surface);
   border-radius: 8px;
   max-width: 800px;
   max-height: 90vh;
@@ -28,19 +28,19 @@
 
 .dialog-header {
   padding: 20px;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .dialog-header h2 {
   margin: 0 0 8px 0;
-  color: #212529;
+  color: var(--app-text);
   font-size: 1.5rem;
   font-weight: 600;
 }
 
 .dialog-header p {
   margin: 0;
-  color: #6c757d;
+  color: var(--app-text-dim);
   font-size: 0.875rem;
 }
 
@@ -52,10 +52,10 @@
 }
 
 .conflict-item {
-  border: 1px solid #e9ecef;
+  border: 1px solid var(--app-border);
   border-radius: 6px;
   margin-bottom: 16px;
-  background: #f8f9fa;
+  background: var(--app-surface-2);
 }
 
 .conflict-header {
@@ -63,9 +63,9 @@
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  background: #fff;
+  background: var(--app-surface);
   border-radius: 6px 6px 0 0;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .conflict-info {
@@ -81,28 +81,28 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #e9ecef;
+  background: var(--app-surface-3);
   border-radius: 50%;
 }
 
 .conflict-details h4 {
   margin: 0 0 4px 0;
-  color: #212529;
+  color: var(--app-text);
   font-size: 1rem;
   font-weight: 600;
 }
 
 .conflict-description {
   margin: 0;
-  color: #6c757d;
+  color: var(--app-text-dim);
   font-size: 0.875rem;
 }
 
 .preview-toggle {
   padding: 6px 12px;
-  border: 1px solid #dee2e6;
-  background: #fff;
-  color: #495057;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+  color: var(--app-text-dim);
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.875rem;
@@ -110,14 +110,14 @@
 }
 
 .preview-toggle:hover {
-  background: #f8f9fa;
-  border-color: #adb5bd;
+  background: var(--app-surface-2);
+  border-color: var(--app-border-strong);
 }
 
 .conflict-preview {
   padding: 16px;
-  background: #fff;
-  border-top: 1px solid #e9ecef;
+  background: var(--app-surface);
+  border-top: 1px solid var(--app-border);
 }
 
 .value-comparison {
@@ -128,8 +128,8 @@
 
 .ai-value,
 .user-value {
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
+  background: var(--app-surface-2);
+  border: 1px solid var(--app-border);
   border-radius: 4px;
   padding: 12px;
 }
@@ -137,13 +137,13 @@
 .ai-value h5,
 .user-value h5 {
   margin: 0 0 8px 0;
-  color: #212529;
+  color: var(--app-text);
   font-size: 0.875rem;
   font-weight: 600;
 }
 
 .ai-value {
-  border-left: 3px solid #007bff;
+  border-left: 3px solid var(--app-accent);
 }
 
 .user-value {
@@ -154,8 +154,8 @@
 .user-value pre {
   margin: 0;
   font-size: 0.75rem;
-  color: #495057;
-  background: #fff;
+  color: var(--app-text-dim);
+  background: var(--app-surface);
   padding: 8px;
   border-radius: 3px;
   overflow-x: auto;
@@ -165,32 +165,32 @@
 
 .resolution-options {
   padding: 16px;
-  background: #fff;
+  background: var(--app-surface);
   border-radius: 0 0 6px 6px;
 }
 
 .resolution-options h5 {
   margin: 0 0 12px 0;
-  color: #212529;
+  color: var(--app-text);
   font-size: 0.875rem;
   font-weight: 600;
 }
 
 .resolution-option {
-  border: 1px solid #e9ecef;
+  border: 1px solid var(--app-border);
   border-radius: 4px;
   margin-bottom: 8px;
   padding: 12px;
-  background: #f8f9fa;
+  background: var(--app-surface-2);
   transition: all 0.2s ease;
 }
 
 .resolution-option:hover {
-  background: #e9ecef;
+  background: var(--app-surface-3);
 }
 
 .resolution-option.selected {
-  border-color: #007bff;
+  border-color: var(--app-accent);
   background: #e3f2fd;
 }
 
@@ -207,7 +207,7 @@
 }
 
 .option-text {
-  color: #212529;
+  color: var(--app-text);
   font-size: 0.875rem;
   font-weight: 500;
 }
@@ -215,13 +215,13 @@
 .option-preview {
   margin-top: 8px;
   padding: 8px;
-  background: #fff;
-  border: 1px solid #dee2e6;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
   border-radius: 3px;
 }
 
 .option-preview strong {
-  color: #212529;
+  color: var(--app-text);
   font-size: 0.75rem;
   display: block;
   margin-bottom: 4px;
@@ -230,7 +230,7 @@
 .option-preview pre {
   margin: 0;
   font-size: 0.75rem;
-  color: #495057;
+  color: var(--app-text-dim);
   max-height: 100px;
   overflow-y: auto;
 }
@@ -242,7 +242,7 @@
 .custom-value-input label {
   display: block;
   margin-bottom: 4px;
-  color: #212529;
+  color: var(--app-text);
   font-size: 0.875rem;
   font-weight: 600;
 }
@@ -250,7 +250,7 @@
 .custom-value-input textarea {
   width: 100%;
   padding: 8px;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--app-border);
   border-radius: 4px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 0.75rem;
@@ -268,8 +268,8 @@
   justify-content: flex-end;
   gap: 12px;
   padding: 20px;
-  border-top: 1px solid #e9ecef;
-  background: #f8f9fa;
+  border-top: 1px solid var(--app-border);
+  background: var(--app-surface-2);
   border-radius: 0 0 8px 8px;
 }
 
@@ -285,25 +285,25 @@
 }
 
 .cancel-button {
-  border-color: #6c757d;
-  background: #fff;
-  color: #6c757d;
+  border-color: var(--app-border-strong);
+  background: var(--app-surface);
+  color: var(--app-text-dim);
 }
 
 .cancel-button:hover {
-  background: #6c757d;
-  color: #fff;
+  background: var(--app-text-dim);
+  color: var(--app-on-accent);
 }
 
 .resolve-button {
-  border-color: #007bff;
-  background: #007bff;
-  color: #fff;
+  border-color: var(--app-accent);
+  background: var(--app-accent);
+  color: var(--app-on-accent);
 }
 
 .resolve-button:hover {
-  background: #0056b3;
-  border-color: #0056b3;
+  background: var(--app-accent-strong);
+  border-color: var(--app-accent-strong);
 }
 
 /* Responsive Design */
