@@ -4,7 +4,7 @@
     {
       "id": "der-labs.expr-evaluate",
       "name": "Expressions",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "publisher": "der-labs",
       "namespace": "expr",
       "description": "Safe arithmetic expression evaluation for calculators and derived values.",
@@ -12,7 +12,7 @@
         "expr.evaluate"
       ],
       "bundleUrl": "der-labs.expr-evaluate.derpart",
-      "bundleSha256": "ee5dbc69027b5509a4842915fa6cce4a449726e43bd79d21d6a04d8279f5cf63",
+      "bundleSha256": "684de3e4a81eb1f8bd4fb2d8ffc971b81edcf3078802189c13412c33d2261733",
       "bundleBytes": 143816
     },
     {
