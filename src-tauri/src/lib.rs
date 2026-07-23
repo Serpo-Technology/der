@@ -1277,6 +1277,8 @@ pub fn run() {
             open_experience_window,
             refresh_tray_menu,
             fragments::stage_fragment,
+            fragments::fetch_registry_index,
+            fragments::download_registry_bundle,
             fragments::commit_fragment,
             fragments::remove_fragment,
             fragments::replace_publisher_key,

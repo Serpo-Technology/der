@@ -1054,3 +1054,110 @@ pub async fn execute_fragment(
         Err(error) => FragmentExecResult { success: false, data: None, error: Some(error), execution_time_ms },
     })
 }
+
+
+// ---------------------------------------------------------------------------
+// Registry client: untrusted transport for signed bundles. The index only
+// aids discovery; installation authority stays with bundle signatures and
+// the pinned trust store.
+// ---------------------------------------------------------------------------
+
+const MAX_INDEX_BYTES: usize = 1 << 20;
+const MAX_BUNDLE_DOWNLOAD_BYTES: usize = 12 << 20;
+
+/// Validates a registry index body and resolves bundle URLs against the
+/// index URL. Returns the entries as JSON for the UI.
+pub fn parse_registry_index(index_url: &str, body: &str) -> Result<Value, String> {
+    let value: Value = serde_json::from_str(body).map_err(|e| format!("index is not JSON: {}", e))?;
+    if value.get("formatVersion").and_then(Value::as_u64) != Some(1) {
+        return Err("index formatVersion is not 1".to_string());
+    }
+    let base = reqwest::Url::parse(index_url).map_err(|e| format!("bad index URL: {}", e))?;
+    let mut parts: Vec<Value> = Vec::new();
+    for part in value.get("parts").and_then(Value::as_array).unwrap_or(&Vec::new()) {
+        let mut part = part.clone();
+        let bundle_url = part
+            .get("bundleUrl")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "index entry has no bundleUrl".to_string())?;
+        let absolute = base
+            .join(bundle_url)
+            .map_err(|e| format!("bad bundleUrl {}: {}", bundle_url, e))?;
+        if absolute.scheme() != "https" && absolute.scheme() != "http" {
+            return Err(format!("bundleUrl must be http(s), got {}", absolute));
+        }
+        part["bundleUrl"] = Value::String(absolute.to_string());
+        parts.push(part);
+    }
+    Ok(serde_json::json!({ "formatVersion": 1, "parts": parts }))
+}
+
+fn registry_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))
+}
+
+#[tauri::command]
+pub async fn fetch_registry_index(url: String) -> Result<Value, String> {
+    let response = registry_client()?
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Registry request failed: {}", e))?;
+    if !response.status().is_success() {
+        return Err(format!("Registry answered {}", response.status()));
+    }
+    let body = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read the index: {}", e))?;
+    if body.len() > MAX_INDEX_BYTES {
+        return Err("Registry index is unreasonably large".to_string());
+    }
+    parse_registry_index(&url, &String::from_utf8_lossy(&body))
+}
+
+#[tauri::command]
+pub async fn download_registry_bundle(url: String) -> Result<String, String> {
+    let response = registry_client()?
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Bundle download failed: {}", e))?;
+    if !response.status().is_success() {
+        return Err(format!("Bundle download answered {}", response.status()));
+    }
+    let body = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read the bundle: {}", e))?;
+    if body.len() > MAX_BUNDLE_DOWNLOAD_BYTES {
+        return Err("Bundle exceeds the download size limit".to_string());
+    }
+    Ok(BASE64.encode(&body))
+}
+
+#[cfg(test)]
+mod registry_tests {
+    use super::parse_registry_index;
+
+    #[test]
+    fn resolves_relative_bundle_urls_and_checks_version() {
+        let body = r#"{"formatVersion":1,"parts":[{"id":"a.b","bundleUrl":"a.b.derpart"}]}"#;
+        let parsed =
+            parse_registry_index("https://example.com/reg/index.json", body).expect("parses");
+        assert_eq!(
+            parsed["parts"][0]["bundleUrl"],
+            "https://example.com/reg/a.b.derpart"
+        );
+
+        let bad = r#"{"formatVersion":2,"parts":[]}"#;
+        assert!(parse_registry_index("https://example.com/index.json", bad).is_err());
+
+        let scheme = r#"{"formatVersion":1,"parts":[{"bundleUrl":"file:///etc/passwd"}]}"#;
+        assert!(parse_registry_index("https://example.com/index.json", scheme).is_err());
+    }
+}

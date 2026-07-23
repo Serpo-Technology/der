@@ -24,7 +24,12 @@ access to the network, the file system, or any host function.
   converter apps compute locally instead of calling a public API.
 - `keys/` holds publisher keys. Only the public half (`demo.pub`) is
   tracked; the secret half (`demo.key`) is gitignored.
-- `dist/` holds signed bundles ready to install through the app.
+- `dist/` holds signed bundles ready to install through the app, plus the
+  registry `index.json` the `index` subcommand generates from them. Host the
+  directory on any static http(s) server and point the app's Parts view at
+  the index URL to browse and install from it; bundle URLs in the index are
+  relative to it. The registry is untrusted transport: installation is still
+  judged by bundle signatures and the pinned trust store.
 
 These crates are standalone. None of them belongs to a cargo workspace,
 and none is part of the `src-tauri` build.

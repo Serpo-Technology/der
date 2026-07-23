@@ -63,6 +63,15 @@ enum Command {
         #[arg(long = "pub")]
         public: PathBuf,
     },
+    /// Write a registry index.json describing every .derpart in a directory
+    Index {
+        /// Directory holding signed .derpart bundles
+        #[arg(long)]
+        dir: PathBuf,
+        /// Output path for the index (bundle URLs are relative to it)
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 /// Serialized bundle. Field order and camelCase names match the app's
@@ -83,6 +92,7 @@ fn main() -> ExitCode {
         Command::Keygen { out_dir, name } => keygen(&out_dir, &name),
         Command::Bundle { manifest, wasm, key, out } => bundle(&manifest, &wasm, &key, &out),
         Command::Fingerprint { public } => fingerprint(&public),
+        Command::Index { dir, out } => index(&dir, &out),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -236,4 +246,93 @@ fn fingerprint_grouped(public_key: &[u8; 32]) -> String {
 
 fn hex_lower(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IndexEntry {
+    id: String,
+    name: String,
+    version: String,
+    publisher: String,
+    namespace: String,
+    description: String,
+    operations: Vec<String>,
+    bundle_url: String,
+    bundle_sha256: String,
+    bundle_bytes: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IndexOut {
+    format_version: u32,
+    parts: Vec<IndexEntry>,
+}
+
+fn index(dir: &Path, out: &Path) -> Result<(), String> {
+    let mut parts: Vec<IndexEntry> = Vec::new();
+    let entries = fs::read_dir(dir).map_err(|e| format!("cannot read {}: {}", dir.display(), e))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("derpart") {
+            continue;
+        }
+        let raw = fs::read(&path).map_err(|e| format!("cannot read {}: {}", path.display(), e))?;
+        let envelope: serde_json::Value = serde_json::from_slice(&raw)
+            .map_err(|e| format!("{} is not a bundle: {}", path.display(), e))?;
+        let manifest_bytes = envelope
+            .get("manifestB64")
+            .and_then(|v| v.as_str())
+            .and_then(|b64| BASE64.decode(b64).ok())
+            .ok_or_else(|| format!("{} has no readable manifest", path.display()))?;
+        let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)
+            .map_err(|e| format!("{} manifest is not JSON: {}", path.display(), e))?;
+        let text = |key: &str| {
+            manifest
+                .get(key)
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string()
+        };
+        let operations = manifest
+            .get("operations")
+            .and_then(|v| v.as_array())
+            .map(|ops| {
+                ops.iter()
+                    .filter_map(|op| op.get("name").and_then(|n| n.as_str()))
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+        parts.push(IndexEntry {
+            id: text("id"),
+            name: text("name"),
+            version: text("version"),
+            publisher: text("publisher"),
+            namespace: text("namespace"),
+            description: text("description"),
+            operations,
+            bundle_url: file_name,
+            bundle_sha256: Sha256::digest(&raw)
+                .iter()
+                .map(|byte| format!("{:02x}", byte))
+                .collect::<String>(),
+            bundle_bytes: raw.len() as u64,
+        });
+    }
+    parts.sort_by(|a, b| a.id.cmp(&b.id));
+    let part_count = parts.len();
+    let json = serde_json::to_string_pretty(&IndexOut { format_version: 1, parts })
+        .map_err(|e| format!("cannot serialize index: {}", e))?;
+    fs::write(out, format!("{}\n", json))
+        .map_err(|e| format!("cannot write {}: {}", out.display(), e))?;
+    println!("wrote {} ({} parts)", out.display(), part_count);
+    Ok(())
 }

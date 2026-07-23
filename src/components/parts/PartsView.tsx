@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fragmentsService,
   InstalledFragment,
+  RegistryPartEntry,
   StageSummary,
 } from '../../services/fragments/FragmentsService';
 import './PartsView.css';
@@ -19,6 +20,40 @@ interface PartsViewProps {
 export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
   const [installed, setInstalled] = useState<InstalledFragment[]>([]);
   const [staged, setStaged] = useState<StageSummary | null>(null);
+  const [registryUrl, setRegistryUrl] = useState(
+    () => localStorage.getItem('der-registry-url') ?? ''
+  );
+  const [registryParts, setRegistryParts] = useState<RegistryPartEntry[] | null>(null);
+
+  const handleFetchRegistry = useCallback(async () => {
+    const url = registryUrl.trim();
+    if (!url) return;
+    setBusy(true);
+    try {
+      const index = await fragmentsService.fetchRegistryIndex(url);
+      setRegistryParts(index.parts);
+      localStorage.setItem('der-registry-url', url);
+    } catch (error) {
+      onError?.(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }, [registryUrl, onError]);
+
+  const handleInstallFromRegistry = useCallback(
+    async (entry: RegistryPartEntry) => {
+      setBusy(true);
+      setForceDowngrade(false);
+      try {
+        setStaged(await fragmentsService.stageFromRegistry(entry.bundleUrl));
+      } catch (error) {
+        onError?.(error instanceof Error ? error.message : String(error));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onError]
+  );
   const [busy, setBusy] = useState(false);
   const [forceDowngrade, setForceDowngrade] = useState(false);
   const fileInput = useRef<HTMLInputElement | null>(null);
@@ -120,6 +155,63 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
             Install part
           </button>
         </div>
+      </div>
+
+      <div className="parts-registry">
+        <h3>Browse a registry</h3>
+        <div className="parts-registry-bar">
+          <input
+            value={registryUrl}
+            onChange={(e) => setRegistryUrl(e.target.value)}
+            placeholder="https://example.com/parts/index.json"
+            disabled={busy}
+            aria-label="Registry index URL"
+          />
+          <button onClick={handleFetchRegistry} disabled={busy || !registryUrl.trim()}>
+            Fetch
+          </button>
+        </div>
+        {registryParts && registryParts.length === 0 && (
+          <p className="parts-registry-note">The registry lists no parts.</p>
+        )}
+        {registryParts && registryParts.length > 0 && (
+          <div className="parts-list">
+            {registryParts.map((entry) => {
+              const installedPart = installed.find((p) => p.manifest.id === entry.id);
+              const upToDate = installedPart?.manifest.version === entry.version;
+              return (
+                <div key={entry.id} className="parts-card">
+                  <div className="parts-card-header">
+                    <div>
+                      <strong>{entry.name}</strong>
+                      <span className="parts-version">v{entry.version}</span>
+                    </div>
+                    <button
+                      onClick={() => handleInstallFromRegistry(entry)}
+                      disabled={busy || upToDate}
+                      title={
+                        upToDate
+                          ? 'Already installed'
+                          : 'Download and review before installing'
+                      }
+                    >
+                      {upToDate
+                        ? 'Installed'
+                        : installedPart
+                          ? `Update to ${entry.version}`
+                          : 'Install'}
+                    </button>
+                  </div>
+                  <p>{entry.description}</p>
+                  <div className="parts-meta">
+                    <span>Publisher: {entry.publisher}</span>
+                    <span>{entry.operations.join(', ')}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {staged && (

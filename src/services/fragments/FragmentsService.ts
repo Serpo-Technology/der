@@ -20,6 +20,24 @@ interface FragmentIoSpec {
   description?: string;
 }
 
+export interface RegistryPartEntry {
+  id: string;
+  name: string;
+  version: string;
+  publisher: string;
+  namespace: string;
+  description: string;
+  operations: string[];
+  bundleUrl: string;
+  bundleSha256?: string;
+  bundleBytes?: number;
+}
+
+export interface RegistryIndex {
+  formatVersion: number;
+  parts: RegistryPartEntry[];
+}
+
 interface FragmentOpSpec {
   name: string;
   description: string;
@@ -156,6 +174,19 @@ export class FragmentsService {
         return result.data;
       },
     };
+  }
+
+  /** Registry entries with bundle URLs resolved to absolute http(s). */
+  async fetchRegistryIndex(url: string): Promise<RegistryIndex> {
+    return await invoke<RegistryIndex>('fetch_registry_index', { url });
+  }
+
+  /** Downloads a bundle from the registry and stages it for the normal
+   * confirm flow; signatures and trust pinning judge it exactly like a
+   * file install. */
+  async stageFromRegistry(bundleUrl: string): Promise<StageSummary> {
+    const bundleB64 = await invoke<string>('download_registry_bundle', { url: bundleUrl });
+    return await this.stage(bundleB64);
   }
 
   async stage(bundleB64: string): Promise<StageSummary> {
