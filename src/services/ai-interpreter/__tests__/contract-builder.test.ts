@@ -113,6 +113,21 @@ describe('ContractBuilder', () => {
     });
   });
 
+  describe('local provider failure hint', () => {
+    it('points at prompt truncation when a local model fails twice', async () => {
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      vi.mocked(mockLLMClient.sendMessage).mockResolvedValue({
+        content: '{"spec": {}, "contract": {"name": "x", "elements": ["not-an-object"]}}',
+        provider: 'local',
+        model: 'qwen2.5-coder:3b'
+      });
+
+      await expect(builder.composeFromDescription('a todo list')).rejects.toThrow(
+        /OLLAMA_CONTEXT_LENGTH/
+      );
+    });
+  });
+
   describe('generateFromBlueprint', () => {
     it('should generate a contract from the LLM response', async () => {
       mockLLMResponse(JSON.stringify(SAMPLE_TODO_CONTRACT));

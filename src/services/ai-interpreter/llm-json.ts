@@ -79,6 +79,7 @@ export async function generateValidatedJson<S extends z.ZodType>(
   schema: S,
   options: GenerateJsonOptions<z.output<S>>
 ): Promise<z.output<S>> {
+  let lastProvider: string | undefined;
   const attempt = async (conversation: LLMMessage[]) => {
     const onPartial = options.onPartial;
     let accumulated = '';
@@ -103,6 +104,7 @@ export async function generateValidatedJson<S extends z.ZodType>(
     if (onPartial && accumulated.length > 0) {
       onPartial(accumulated);
     }
+    lastProvider = response.provider;
     return response.content;
   };
 
@@ -151,5 +153,13 @@ export async function generateValidatedJson<S extends z.ZodType>(
     return secondParse.value;
   }
 
-  throw new Error(`${options.label} generation failed after a repair attempt. ${secondParse.problem}`);
+  // Local servers silently truncate prompts that exceed their context
+  // window, which reads as model failure; point at the likely cause.
+  const localHint =
+    lastProvider === 'local'
+      ? ' If your local server truncates long prompts (Ollama logs "truncating input prompt"), raise its context window: restart Ollama with OLLAMA_CONTEXT_LENGTH=16384.'
+      : '';
+  throw new Error(
+    `${options.label} generation failed after a repair attempt. ${secondParse.problem}${localHint}`
+  );
 }
