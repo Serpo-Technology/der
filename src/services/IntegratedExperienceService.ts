@@ -13,7 +13,7 @@ import { BookmarkManager } from './persistence/BookmarkManager';
 import { PersistenceService } from './persistence/PersistenceService';
 import { Blueprint as BlueprintModel } from '../models/blueprint';
 import { Contract as ContractModel } from '../models/contract';
-import { emit } from '@tauri-apps/api/event';
+import { emit, listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { isTauriRuntime } from './tauri/TauriCommandService';
 import { extractStreamingContract } from './ai-interpreter/partial-json';
@@ -44,6 +44,11 @@ export interface ExperienceEditResult {
   updatedContract: ContractModel;
 }
 
+interface AssemblySnapshot {
+  contract: Record<string, unknown> | null;
+  status: 'assembling' | 'done' | 'failed';
+}
+
 export class IntegratedExperienceService {
   private aiInterpreter: AIInterpreterService;
   private repository: RepositoryService;
@@ -52,6 +57,9 @@ export class IntegratedExperienceService {
   private sharing: SharingService;
   private bookmarks: BookmarkManager;
   private persistence: PersistenceService;
+  /** Latest contract and status per assembling experience, replayed to
+   * windows whose webview boots after generation already moved on. */
+  private assemblySnapshots = new Map<string, AssemblySnapshot>();
 
   constructor() {
     // Shared singleton so generation sees the seeded component catalog.
@@ -65,6 +73,32 @@ export class IntegratedExperienceService {
     this.sharing = new SharingService();
     this.bookmarks = new BookmarkManager();
     this.persistence = new PersistenceService();
+
+    if (isTauriRuntime()) {
+      listen<{ experienceId: string }>('experience-window-ready', (event) => {
+        const experienceId = event.payload?.experienceId;
+        if (experienceId) void this.replayAssemblyState(experienceId);
+      }).catch(() => undefined);
+    }
+  }
+
+  /** Re-sends the latest contract and terminal status to a window that
+   * attached its listeners after the events already fired. */
+  async replayAssemblyState(experienceId: string): Promise<void> {
+    const snapshot = this.assemblySnapshots.get(experienceId);
+    if (!snapshot) return;
+    if (snapshot.contract) {
+      await emit('experience-contract-updated', {
+        experienceId,
+        contract: snapshot.contract
+      }).catch(() => undefined);
+    }
+    if (snapshot.status !== 'assembling') {
+      await emit('experience-assembly-status', {
+        experienceId,
+        status: snapshot.status
+      }).catch(() => undefined);
+    }
   }
 
   /**
@@ -91,6 +125,10 @@ export class IntegratedExperienceService {
         ? (accumulated: string) => {
             const preview = extractStreamingContract(accumulated);
             if (!preview) return;
+            this.assemblySnapshots.set(experienceId, {
+              contract: preview as unknown as Record<string, unknown>,
+              status: 'assembling'
+            });
             if (!windowOpened) {
               windowOpened = true;
               opening = invoke('open_experience_window', {
@@ -119,6 +157,11 @@ export class IntegratedExperienceService {
         // The assembly window may already be showing a partial draft; tell it
         // generation ended without a result.
         if (windowOpened) {
+          const prior = this.assemblySnapshots.get(experienceId);
+          this.assemblySnapshots.set(experienceId, {
+            contract: prior?.contract ?? null,
+            status: 'failed'
+          });
           await emit('experience-assembly-status', { experienceId, status: 'failed' }).catch(
             () => undefined
           );
@@ -132,6 +175,10 @@ export class IntegratedExperienceService {
       // Step 2: Hand the finished app to its window: replace the assembly
       // preview, or open the window now when nothing streamed.
       if (isTauriRuntime()) {
+        this.assemblySnapshots.set(experienceId, {
+          contract: contract.toObject() as unknown as Record<string, unknown>,
+          status: 'done'
+        });
         if (windowOpened) {
           await emit('experience-contract-updated', {
             experienceId,

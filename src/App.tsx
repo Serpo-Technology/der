@@ -2,7 +2,7 @@ import "./App.css";
 import { MainInterface } from "./components/MainInterface.tsx";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { LiveExperienceRenderer } from "./components/runtime/LiveExperienceRenderer";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import type { Contract as ContractType, ValidationWarning } from "./types/contract";
 import { ExperienceEditBar } from "./components/runtime/ExperienceEditBar";
@@ -176,11 +176,15 @@ const ExperienceWindow: React.FC<{
     setTimeout(() => setBookmarkNote(null), 3000);
   }, [initialExperienceId, currentContract]);
 
-  // Cross-window subscription to updates via Tauri events
+  // Cross-window subscription to updates and assembly lifecycle. Fast models
+  // can finish before this window's webview boots, so once both listeners are
+  // attached the window announces itself and generation replays the latest
+  // contract and status.
   React.useEffect(() => {
-    let unlisten: (() => void) | undefined;
+    let unlistenContract: (() => void) | undefined;
+    let unlistenStatus: (() => void) | undefined;
     (async () => {
-      unlisten = await listen<{ experienceId: string; contract: ContractType }>(
+      unlistenContract = await listen<{ experienceId: string; contract: ContractType }>(
         'experience-contract-updated',
         (event) => {
           if (event.payload?.experienceId === initialExperienceId && event.payload.contract) {
@@ -188,16 +192,7 @@ const ExperienceWindow: React.FC<{
           }
         }
       );
-    })();
-    return () => { if (unlisten) unlisten(); };
-  }, [initialExperienceId]);
-
-  // Assembly lifecycle: the window opens while the model is still writing the
-  // app; generation reports when it finishes or fails.
-  React.useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    (async () => {
-      unlisten = await listen<{ experienceId: string; status: string }>(
+      unlistenStatus = await listen<{ experienceId: string; status: string }>(
         'experience-assembly-status',
         (event) => {
           if (event.payload?.experienceId !== initialExperienceId) return;
@@ -205,8 +200,14 @@ const ExperienceWindow: React.FC<{
           setAssemblyFailed(event.payload.status === 'failed');
         }
       );
+      await emit('experience-window-ready', { experienceId: initialExperienceId }).catch(
+        () => undefined
+      );
     })();
-    return () => { if (unlisten) unlisten(); };
+    return () => {
+      if (unlistenContract) unlistenContract();
+      if (unlistenStatus) unlistenStatus();
+    };
   }, [initialExperienceId]);
 
   // A crashed render recovers when the next contract lands: the boundary is
