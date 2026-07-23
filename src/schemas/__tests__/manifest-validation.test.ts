@@ -14,7 +14,7 @@ import {
   checkAgainstManifests,
 } from '../contract';
 import type { ContractShape } from '../contract';
-import { FRAGMENT_ELEMENTS } from '../../services/operations/registry';
+import { FRAGMENT_ELEMENTS, FRAGMENT_OPERATIONS } from '../../services/operations/registry';
 
 function checkContract(raw: Record<string, unknown>) {
   const contract = JSON.parse(JSON.stringify(ContractSchema.parse(raw))) as ContractShape;
@@ -499,6 +499,36 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
       expect(result.errors).toEqual([]);
     } finally {
       delete FRAGMENT_ELEMENTS['basics.entry_row'];
+    }
+  });
+
+  it('does not demand optional structured prefixes', () => {
+    FRAGMENT_OPERATIONS['expr.evaluate'] = {
+      name: 'expr.evaluate',
+      description: 'x',
+      inputs: [
+        { name: 'expression', type: 'string', required: true },
+        { name: 'var.<name>', type: 'any', required: false }
+      ],
+      outputs: [{ name: 'value', type: 'number' }],
+      structuredPrefixes: ['var'],
+      execute: async () => ({})
+    };
+    try {
+      const { result } = checkContract(
+        rawContract({
+          operations: [
+            {
+              id: 'op-calc',
+              operationName: 'expr.evaluate',
+              inputs: [{ name: 'expression', source: 'ui-element', sourceId: 'title-in' }]
+            }
+          ]
+        })
+      );
+      expect(result.errors).toEqual([]);
+    } finally {
+      delete FRAGMENT_OPERATIONS['expr.evaluate'];
     }
   });
 

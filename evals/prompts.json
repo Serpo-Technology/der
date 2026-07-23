@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "prompts": [
+    { "id": "todo-basic", "prompt": "Create a todo list app with add, delete, and mark complete functionality" },
+    { "id": "todo-search", "prompt": "Task list where I can add tasks, with a search box that filters as you type" },
+    { "id": "kanban", "prompt": "Team kanban board with todo, doing, and done columns. Cards have a title and an owner. Buttons to move cards between columns and to delete them. Show a count per column. Dark theme." },
+    { "id": "contacts", "prompt": "Contact manager: add contacts with name, company, and email. Click a contact in the list to see a detail panel with all fields and a delete button. Show how many contacts exist." },
+    { "id": "inventory", "prompt": "Inventory tracker: add items with a name, quantity, and unit price. List them with a delete button per row. Dashboard section showing total item count, total stock value, and the average unit price." },
+    { "id": "calculator", "prompt": "A calculator where I type an expression and press a button to evaluate it" },
+    { "id": "bmi", "prompt": "BMI calculator with weight in kilograms and height in meters" },
+    { "id": "stopwatch", "prompt": "Stopwatch with start, stop, and reset, showing elapsed seconds" },
+    { "id": "journal", "prompt": "Daily journal: a text area for the entry, save button, entries listed with their date, newest first" },
+    { "id": "expense-split", "prompt": "Expense tracker with a category dropdown (food, travel, other), the list filterable by category, and a total for the visible entries" }
+  ]
+}

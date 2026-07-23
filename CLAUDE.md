@@ -18,6 +18,7 @@ the authoritative source for intent and architecture; read
 ## Commands
 
 ```bash
+npm run eval -- --provider mercury   # Score the canned prompt suite (evals/prompts.json) against a provider
 npm run tauri dev      # Run the full desktop app (Rust backend + Vite frontend). Use this to exercise invoke().
 npm run dev            # Vite frontend only on port 1420. Tauri invoke() calls fail here (no Rust backend).
 npm run build          # tsc (type-check, excludes tests) then vite build

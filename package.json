@@ -17,7 +17,8 @@
     "test:ui": "vitest --ui",
     "type-check": "tsc --noEmit",
     "probe:prompt": "tsx scripts/diffusion-probe/export-prompt.ts",
-    "probe:validate": "tsx scripts/diffusion-probe/validate.ts"
+    "probe:validate": "tsx scripts/diffusion-probe/validate.ts",
+    "eval": "tsx scripts/eval/run.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

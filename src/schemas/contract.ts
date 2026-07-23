@@ -617,8 +617,12 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
           fail(opPath, `${op.operationName} requires input "${spec.name}"`, 'MISSING_INPUT');
         }
       }
-      // Structured ops need at least one prefixed field.
+      // A structured prefix demands at least one field only when its
+      // placeholder spec is required (list.append's item.<field> is; expr's
+      // var.<name> is optional).
       for (const prefix of def.structuredPrefixes ?? []) {
+        const placeholder = def.inputs.find((spec) => spec.name.startsWith(`${prefix}.`));
+        if (placeholder && placeholder.required === false) continue;
         if (![...seenInputNames].some((name) => name.startsWith(`${prefix}.`))) {
           fail(
             opPath,
