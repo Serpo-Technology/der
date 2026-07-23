@@ -3,51 +3,188 @@
   "prompts": [
     {
       "id": "todo-basic",
-      "prompt": "Create a todo list app with add, delete, and mark complete functionality"
+      "prompt": "Create a todo list app with add, delete, and mark complete functionality",
+      "behavior": {
+        "steps": [
+          { "do": "type", "into": ["task", "todo", "item", "what"], "value": "buy milk" },
+          { "do": "click", "on": ["add"] },
+          { "expect": "text", "match": "buy milk" },
+          { "expect": "rowCount", "count": 1 },
+          { "do": "toggleInRow", "row": "buy milk" },
+          { "do": "clickInRow", "row": "buy milk", "on": ["delete", "remove"] },
+          { "expect": "noText", "match": "buy milk" }
+        ]
+      }
     },
     {
       "id": "todo-search",
-      "prompt": "Task list where I can add tasks, with a search box that filters as you type"
+      "prompt": "Task list where I can add tasks, with a search box that filters as you type",
+      "behavior": {
+        "steps": [
+          { "do": "type", "into": ["task", "todo", "add", "new"], "value": "wash car" },
+          { "do": "click", "on": ["add"] },
+          { "do": "type", "into": ["task", "todo", "add", "new"], "value": "write report" },
+          { "do": "click", "on": ["add"] },
+          { "expect": "rowCount", "count": 2 },
+          { "do": "type", "into": ["search", "filter"], "value": "wash" },
+          { "expect": "text", "match": "wash car" },
+          { "expect": "noText", "match": "write report" }
+        ]
+      }
     },
     {
       "id": "kanban",
-      "prompt": "Team kanban board with todo, doing, and done columns. Cards have a title and an owner. Buttons to move cards between columns and to delete them. Show a count per column. Dark theme."
+      "prompt": "Team kanban board with todo, doing, and done columns. Cards have a title and an owner. Buttons to move cards between columns and to delete them. Show a count per column. Dark theme.",
+      "behavior": {
+        "steps": [
+          { "do": "type", "into": ["title", "card", "task"], "value": "Ship docs" },
+          { "do": "type", "into": ["owner", "assignee", "who"], "value": "Ana" },
+          { "do": "click", "on": ["add"] },
+          { "expect": "text", "match": "Ship docs" },
+          { "expect": "text", "match": "Ana" },
+          { "do": "clickInRow", "row": "Ship docs", "on": ["delete", "remove"] },
+          { "expect": "noText", "match": "Ship docs" }
+        ]
+      }
     },
     {
       "id": "contacts",
-      "prompt": "Contact manager: add contacts with name, company, and email. Click a contact in the list to see a detail panel with all fields and a delete button. Show how many contacts exist."
+      "prompt": "Contact manager: add contacts with name, company, and email. Click a contact in the list to see a detail panel with all fields and a delete button. Show how many contacts exist.",
+      "behavior": {
+        "steps": [
+          { "do": "type", "into": ["name"], "value": "Grace Hopper" },
+          { "do": "type", "into": ["company"], "value": "Navy" },
+          { "do": "type", "into": ["email"], "value": "grace@navy.mil" },
+          { "do": "click", "on": ["add"] },
+          { "expect": "text", "match": "Grace Hopper" },
+          { "do": "clickRow", "row": "Grace" },
+          { "expect": "text", "match": "grace@navy.mil" }
+        ]
+      }
     },
     {
       "id": "inventory",
-      "prompt": "Inventory tracker: add items with a name, quantity, and unit price. List them with a delete button per row. Dashboard section showing total item count, total stock value, and the average unit price."
+      "prompt": "Inventory tracker: add items with a name, quantity, and unit price. List them with a delete button per row. Dashboard section showing total item count, total stock value, and the average unit price.",
+      "behavior": {
+        "steps": [
+          { "do": "type", "into": ["name", "item"], "value": "Bolt" },
+          { "do": "type", "into": ["quantity", "qty"], "value": "4" },
+          { "do": "type", "into": ["price"], "value": "2.5" },
+          { "do": "click", "on": ["add"] },
+          { "expect": "text", "match": "Bolt" },
+          { "expect": "text", "match": "/\\b10(\\.0+)?\\b/" },
+          { "do": "clickInRow", "row": "Bolt", "on": ["delete", "remove"] },
+          { "expect": "noText", "match": "Bolt" }
+        ]
+      }
     },
     {
       "id": "calculator",
-      "prompt": "A calculator where I type an expression and press a button to evaluate it"
+      "prompt": "A calculator where I type an expression and press a button to evaluate it",
+      "behavior": {
+        "steps": [
+          { "do": "type", "into": ["expression", "calc", "enter"], "value": "2+3*4" },
+          { "do": "click", "on": ["calculate", "evaluate", "="] },
+          { "expect": "text", "match": "/\\b14\\b/" }
+        ]
+      }
     },
     {
       "id": "bmi",
-      "prompt": "BMI calculator with weight in kilograms and height in meters"
+      "prompt": "BMI calculator with weight in kilograms and height in meters",
+      "behavior": {
+        "steps": [
+          { "do": "type", "into": ["weight"], "value": "80" },
+          { "do": "type", "into": ["height"], "value": "2" },
+          { "do": "click", "on": ["calculate", "bmi", "compute"], "optional": true },
+          { "expect": "text", "match": "/\\b20(\\.0+)?\\b/" }
+        ]
+      }
     },
     {
       "id": "stopwatch",
-      "prompt": "Stopwatch with start, stop, and reset, showing elapsed seconds"
+      "prompt": "Stopwatch with start, stop, and reset, showing elapsed seconds",
+      "behavior": {
+        "steps": [
+          { "do": "click", "on": ["start"] },
+          { "do": "wait", "ms": 2400 },
+          { "do": "click", "on": ["stop"] },
+          { "expect": "text", "match": "/\\b[2-3]\\b/" },
+          { "do": "click", "on": ["reset"] },
+          { "expect": "text", "match": "/\\b0\\b/" }
+        ]
+      }
     },
     {
       "id": "journal",
-      "prompt": "Daily journal: a text area for the entry, save button, entries listed with their date, newest first"
+      "prompt": "Daily journal: a text area for the entry, save button, entries listed with their date, newest first",
+      "behavior": {
+        "steps": [
+          { "do": "type", "into": ["entry", "journal", "write", "today"], "value": "Rain all day" },
+          { "do": "click", "on": ["save", "add"] },
+          { "expect": "text", "match": "Rain all day" },
+          { "expect": "text", "match": "{{year}}" }
+        ]
+      }
     },
     {
       "id": "expense-split",
-      "prompt": "Expense tracker with a category dropdown (food, travel, other), the list filterable by category, and a total for the visible entries"
+      "prompt": "Expense tracker with a category dropdown (food, travel, other), the list filterable by category, and a total for the visible entries",
+      "behavior": {
+        "steps": [
+          { "do": "type", "into": ["amount", "cost", "price"], "value": "10" },
+          { "do": "type", "into": ["description", "what", "name"], "value": "lunch", "optional": true },
+          { "do": "select", "in": ["category"], "value": "food" },
+          { "do": "click", "on": ["add"] },
+          { "do": "type", "into": ["amount", "cost", "price"], "value": "7" },
+          { "do": "type", "into": ["description", "what", "name"], "value": "taxi", "optional": true },
+          { "do": "select", "in": ["category"], "value": "travel" },
+          { "do": "click", "on": ["add"] },
+          { "expect": "rowCount", "count": 2 },
+          { "expect": "text", "match": "/\\b17(\\.0+)?\\b/" },
+          { "do": "select", "in": ["filter"], "value": "food" },
+          { "expect": "text", "match": "/\\b10(\\.0+)?\\b/" },
+          { "expect": "noText", "match": "/\\b7(\\.0+)?\\b/" }
+        ]
+      }
     },
     {
       "id": "trip-planner",
-      "prompt": "Trip planner: add destinations with a city name and a travel date. Each destination row shows the city and date and has a Check weather button that fetches the current temperature and conditions for that city into a details panel. Show a count of destinations and the soonest travel date. Paper theme."
+      "prompt": "Trip planner: add destinations with a city name and a travel date. Each destination row shows the city and date and has a Check weather button that fetches the current temperature and conditions for that city into a details panel. Show a count of destinations and the soonest travel date. Paper theme.",
+      "behavior": {
+        "stubs": {
+          "weather.current": { "temperature": 21.4, "description": "clear sky", "city": "Berlin" }
+        },
+        "steps": [
+          { "do": "type", "into": ["city", "destination", "where"], "value": "Berlin" },
+          { "do": "type", "into": ["date", "when", "travel"], "value": "2026-08-01" },
+          { "do": "click", "on": ["add"] },
+          { "expect": "text", "match": "Berlin" },
+          { "do": "clickInRow", "row": "Berlin", "on": ["weather", "check"] },
+          { "expect": "text", "match": "clear sky" }
+        ]
+      }
     },
     {
       "id": "finance-dashboard",
-      "prompt": "Personal finance dashboard with two tabs: Entries and Overview. Entries: add expenses with a description, amount in USD, and a category dropdown (food, travel, other); list them with delete buttons, filterable by category. Overview: total spent, average expense, count by category for food, and the USD total converted to EUR using the live exchange rate with a Refresh rate button. Dark theme with a green accent."
+      "prompt": "Personal finance dashboard with two tabs: Entries and Overview. Entries: add expenses with a description, amount in USD, and a category dropdown (food, travel, other); list them with delete buttons, filterable by category. Overview: total spent, average expense, count by category for food, and the USD total converted to EUR using the live exchange rate with a Refresh rate button. Dark theme with a green accent.",
+      "behavior": {
+        "stubs": {
+          "fx.rate": { "rate": 0.9, "date": "2026-07-23" }
+        },
+        "steps": [
+          { "do": "click", "on": ["entries"], "optional": true },
+          { "do": "type", "into": ["description", "what"], "value": "bread" },
+          { "do": "type", "into": ["amount", "usd"], "value": "90" },
+          { "do": "select", "in": ["category"], "value": "food" },
+          { "do": "click", "on": ["add"] },
+          { "expect": "text", "match": "bread" },
+          { "do": "click", "on": ["overview"] },
+          { "do": "click", "on": ["refresh"] },
+          { "expect": "text", "match": "/\\b90(\\.0+)?\\b/" },
+          { "expect": "text", "match": "/\\b81(\\.0+)?\\b/" }
+        ]
+      }
     }
   ]
 }

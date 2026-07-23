@@ -33,6 +33,20 @@ export const TransformFunctionSchema = z.object({
 
 const TransformPipelineSchema = z.array(TransformFunctionSchema);
 
+/** Names the expr.evaluate grammar resolves without a variable binding. */
+const EXPR_RESERVED_WORDS = new Set([
+  'sqrt',
+  'abs',
+  'floor',
+  'ceil',
+  'round',
+  'min',
+  'max',
+  'pow',
+  'pi',
+  'e',
+]);
+
 export const DataBindingSchema = z.object({
   property: z.string().min(1),
   source: z.enum(['operation', 'state', 'constant', 'item']),
@@ -725,6 +739,36 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
           );
         }
       });
+
+      // A constant expr.evaluate expression can be linted against its bound
+      // variables here; at runtime a mismatch surfaces only when someone
+      // clicks the button.
+      if (op.operationName === 'expr.evaluate') {
+        const expression = op.inputs.find(
+          (input) => input.name === 'expression' && input.source === 'constant'
+        );
+        const bound = new Set(
+          [...seenInputNames]
+            .filter((name) => name.startsWith('var.'))
+            .map((name) => name.slice('var.'.length))
+        );
+        const source = String(expression?.value ?? expression?.sourceId ?? '');
+        if (expression && source) {
+          const identifiers = source.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
+          for (const identifier of new Set(identifiers)) {
+            if (EXPR_RESERVED_WORDS.has(identifier)) continue;
+            if (!bound.has(identifier)) {
+              fail(
+                opPath,
+                `expr.evaluate expression uses "${identifier}" but binds ${
+                  bound.size ? `only: ${[...bound].join(', ')}` : 'no variables'
+                }; add an input named "var.${identifier}" or rename it in the expression`,
+                'EXPR_UNBOUND_VARIABLE'
+              );
+            }
+          }
+        }
+      }
     }
 
     // Output pipelines and element references apply to every execution type.

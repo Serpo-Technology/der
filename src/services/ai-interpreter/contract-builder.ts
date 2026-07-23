@@ -95,6 +95,15 @@ export class ContractBuilder {
     return { contract, spec };
   }
 
+  /**
+   * Normalizes a validated model shape into a renderable contract without a
+   * model call. Tooling entry: the eval harness renders stored shapes through
+   * the same normalization the app applies.
+   */
+  finalizeShape(shape: ContractShape, description?: string): Contract {
+    return this.postProcess(shape, description);
+  }
+
   async generateFromBlueprint(blueprint: Blueprint): Promise<Contract> {
     const catalog = await this.renderCatalog();
     const messages: LLMMessage[] = [

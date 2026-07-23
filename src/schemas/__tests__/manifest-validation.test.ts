@@ -536,6 +536,81 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
     }
   });
 
+  it('rejects expression identifiers with no matching var binding', () => {
+    FRAGMENT_OPERATIONS['expr.evaluate'] = {
+      name: 'expr.evaluate',
+      description: 'x',
+      inputs: [
+        { name: 'expression', type: 'string', required: true },
+        { name: 'var.<name>', type: 'any', required: false }
+      ],
+      outputs: [{ name: 'value', type: 'number' }],
+      structuredPrefixes: ['var'],
+      execute: async () => ({})
+    };
+    try {
+      const { result } = checkContract(
+        rawContract({
+          operations: [
+            {
+              id: 'op-bmi',
+              operationName: 'expr.evaluate',
+              inputs: [
+                { name: 'expression', source: 'constant', sourceId: 'weight / (h * h)' },
+                { name: 'var.w', source: 'ui-element', sourceId: 'title-in' },
+                { name: 'var.h', source: 'ui-element', sourceId: 'title-in' }
+              ]
+            }
+          ]
+        })
+      );
+      expect(result.errors.map((e) => e.code)).toEqual(['EXPR_UNBOUND_VARIABLE']);
+      expect(result.errors[0].message).toContain('"weight"');
+      expect(result.errors[0].message).toContain('var.weight');
+    } finally {
+      delete FRAGMENT_OPERATIONS['expr.evaluate'];
+    }
+  });
+
+  it('accepts expressions using only bound variables, functions, and constants', () => {
+    FRAGMENT_OPERATIONS['expr.evaluate'] = {
+      name: 'expr.evaluate',
+      description: 'x',
+      inputs: [
+        { name: 'expression', type: 'string', required: true },
+        { name: 'var.<name>', type: 'any', required: false }
+      ],
+      outputs: [{ name: 'value', type: 'number' }],
+      structuredPrefixes: ['var'],
+      execute: async () => ({})
+    };
+    try {
+      const { result } = checkContract(
+        rawContract({
+          operations: [
+            {
+              id: 'op-calc',
+              operationName: 'expr.evaluate',
+              inputs: [
+                {
+                  name: 'expression',
+                  source: 'constant',
+                  sourceId: 'round(sqrt(area) * pi) + max(a, b)'
+                },
+                { name: 'var.area', source: 'ui-element', sourceId: 'title-in' },
+                { name: 'var.a', source: 'ui-element', sourceId: 'title-in' },
+                { name: 'var.b', source: 'ui-element', sourceId: 'title-in' }
+              ]
+            }
+          ]
+        })
+      );
+      expect(result.errors).toEqual([]);
+    } finally {
+      delete FRAGMENT_OPERATIONS['expr.evaluate'];
+    }
+  });
+
   it('checks implementation.auth against configured credentials', () => {
     const remoteOp = (auth: string) => ({
       operations: [
