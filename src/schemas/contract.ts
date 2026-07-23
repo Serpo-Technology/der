@@ -29,6 +29,7 @@ import {
   expandPackOperations,
   expandUiFragment,
 } from '../services/fragments/ui-fragments';
+import { parseRowExpression } from '../services/operations/row-expression';
 
 export const TransformFunctionSchema = z.object({
   type: z.string().min(1),
@@ -301,6 +302,30 @@ function checkPipeline(
       );
       continue;
     }
+    // A deriveField expression that does not parse can never compute; fail
+    // here so the repair round sees the exact problem.
+    if (step.type === 'deriveField') {
+      const expression = step.parameters?.expression;
+      if (typeof expression !== 'string' || typeof step.parameters?.field !== 'string') {
+        fail(
+          owner,
+          'deriveField needs a "field" name and an "expression" string in its parameters',
+          'INVALID_EXPRESSION'
+        );
+      } else {
+        try {
+          parseRowExpression(expression);
+        } catch (error) {
+          fail(
+            owner,
+            `deriveField expression "${expression}" is invalid: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            'INVALID_EXPRESSION'
+          );
+        }
+      }
+    }
     for (const value of Object.values(step.parameters ?? {})) {
       const ref = paramRefOf(value);
       if (ref && checkRef) checkRef(owner, ref);
@@ -478,6 +503,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     'filterTruthy',
     'filterFalsy',
     'sortBy',
+    'deriveField',
   ]);
   const checkListFieldReads = (
     path: string,
@@ -489,25 +515,52 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     }
   ) => {
     if (binding.source !== 'state' || !binding.sourceId) return;
-    const fields = appendFieldsByKey.get(binding.sourceId);
-    if (!fields) return;
+    const appendFields = appendFieldsByKey.get(binding.sourceId);
+    if (!appendFields) return;
+    // deriveField adds fields mid-pipeline, so later steps check against a
+    // growing copy, never the shared append bookkeeping.
+    const fields = new Set(appendFields);
     const steps = [
       ...(binding.transforms ?? []),
       ...(binding.transform ? [binding.transform] : []),
     ];
     for (const step of steps) {
       const field = step.parameters?.field;
+      if (step.type === 'deriveField') {
+        const expression = step.parameters?.expression;
+        if (typeof expression === 'string' && typeof field === 'string' && field) {
+          const carried = new Set([...fields].map((name) => name.toLowerCase()));
+          let identifiers: string[] = [];
+          try {
+            identifiers = parseRowExpression(expression).identifiers;
+          } catch {
+            // Syntax problems already failed in checkPipeline.
+          }
+          for (const identifier of identifiers) {
+            if (!carried.has(identifier)) {
+              fail(
+                path,
+                `deriveField expression "${expression}" reads "${identifier}", but rows of "${binding.sourceId}" carry: ${
+                  [...fields].join(', ') || 'nothing'
+                }; add an item.${identifier} input to the append or fix the expression`,
+                'LIST_FIELD_UNWRITTEN'
+              );
+            }
+          }
+          fields.add(field);
+        }
+        continue;
+      }
       if (FIELD_READING_TRANSFORMS.has(step.type) && typeof field === 'string' && field) {
         if (!fields.has(field)) {
           const later = laterFieldsByKey.get(binding.sourceId);
+          const carried = [...fields].join(', ') || 'nothing';
           const hint = later?.has(field)
             ? `only a later list operation sets "${field}", so new rows start without it; give the append an item.${field} input with the starting value`
-            : `add an item.${field} input to the append or fix the field name`;
+            : `add an item.${field} input to the append, or if "${field}" is computed from each row's own fields, insert {"type": "deriveField", "parameters": {"field": "${field}", "expression": "<arithmetic over ${carried}>"}} before this step`;
           fail(
             path,
-            `${step.type} reads field "${field}" from "${binding.sourceId}", but its rows carry: ${
-              [...fields].join(', ') || 'nothing'
-            }; ${hint}`,
+            `${step.type} reads field "${field}" from "${binding.sourceId}", but its rows carry: ${carried}; ${hint}`,
             'LIST_FIELD_UNWRITTEN'
           );
         }

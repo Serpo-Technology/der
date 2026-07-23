@@ -111,6 +111,52 @@ describe('TRANSFORMS', () => {
     });
   });
 
+  describe('deriveField', () => {
+    const rows = [
+      { name: 'widget', qty: 2, price: 10 },
+      { name: 'gadget', qty: 3, price: 5 }
+    ];
+
+    it('adds the computed field to every row from that row\'s own values', () => {
+      const derived = apply('deriveField', rows, {
+        field: 'value',
+        expression: 'qty * price'
+      }) as Array<Record<string, unknown>>;
+      expect(derived.map((r) => r.value)).toEqual([20, 15]);
+      // Originals stay untouched; rows are copies.
+      expect(rows[0]).not.toHaveProperty('value');
+    });
+
+    it('feeds sum and sortBy with the derived field', () => {
+      const total = applyTransformPipeline(rows, [
+        { type: 'deriveField', parameters: { field: 'value', expression: 'qty * price' } },
+        { type: 'sum', parameters: { field: 'value' } }
+      ]);
+      // Per-row products: 20 + 15; the wrong sum(qty)*avg(price) shape gives 37.5.
+      expect(total).toBe(35);
+
+      const sorted = applyTransformPipeline(rows, [
+        { type: 'deriveField', parameters: { field: 'value', expression: 'qty * price' } },
+        { type: 'sortBy', parameters: { field: 'value', direction: 'desc' } }
+      ]) as Array<Record<string, unknown>>;
+      expect(sorted.map((r) => r.name)).toEqual(['widget', 'gadget']);
+    });
+
+    it('sets null for rows the expression cannot compute', () => {
+      const derived = apply('deriveField', [{ qty: 2 }, { qty: 2, price: 'x' }], {
+        field: 'value',
+        expression: 'qty * price'
+      }) as Array<Record<string, unknown>>;
+      expect(derived.map((r) => r.value)).toEqual([null, null]);
+    });
+
+    it('degrades to untouched rows for missing parameters or bad expressions', () => {
+      expect(apply('deriveField', rows, { field: '', expression: 'qty' })).toEqual(rows);
+      expect(apply('deriveField', rows, { field: 'v', expression: 'qty +' })).toEqual(rows);
+      expect(apply('deriveField', undefined, { field: 'v', expression: 'qty' })).toEqual([]);
+    });
+  });
+
   describe('pick', () => {
     it('reads a field through a dot path', () => {
       expect(apply('pick', { user: { name: 'Ada' } }, { field: 'user.name' })).toBe('Ada');

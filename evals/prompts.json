@@ -65,18 +65,25 @@
     },
     {
       "id": "inventory",
-      "prompt": "Inventory tracker: add items with a name, quantity, and unit price. List them with a delete button per row. Dashboard section showing total item count, total stock value, and the average unit price.",
+      "prompt": "Inventory tracker: add items with a name, quantity, and unit price. List them with a delete button and each row's stock value (quantity times price). Dashboard section showing total item count, total stock value, and the average unit price.",
       "behavior": {
         "steps": [
           { "do": "type", "into": ["name", "item"], "value": "Bolt" },
           { "do": "type", "into": ["quantity", "qty"], "value": "4" },
           { "do": "type", "into": ["price"], "value": "2.5" },
           { "do": "click", "on": ["add"] },
-          { "expect": "text", "match": "Bolt" },
+          { "do": "type", "into": ["name", "item"], "value": "Washer" },
+          { "do": "type", "into": ["quantity", "qty"], "value": "10" },
+          { "do": "type", "into": ["price"], "value": "0.5" },
+          { "do": "click", "on": ["add"] },
+          { "expect": "rowCount", "count": 2 },
           { "do": "click", "on": ["refresh", "start", "update", "compute", "calculate"], "optional": true },
           { "expect": "text", "match": "/\\b10(\\.0+)?\\b/" },
+          { "expect": "text", "match": "/\\b15(\\.0+)?\\b/" },
+          { "expect": "noText", "match": "/\\b21(\\.0+)?\\b/" },
           { "do": "clickInRow", "row": "Bolt", "on": ["delete", "remove"] },
-          { "expect": "noText", "match": "Bolt" }
+          { "expect": "noText", "match": "Bolt" },
+          { "expect": "noText", "match": "/\\b15(\\.0+)?\\b/" }
         ]
       }
     },

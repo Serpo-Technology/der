@@ -74,6 +74,102 @@ function rawContract(overrides: Record<string, unknown> = {}) {
   };
 }
 
+describe('deriveField validation', () => {
+  const inventoryFixture = (
+    itemsTransforms: unknown[],
+    totalTransforms: unknown[]
+  ): Record<string, unknown> => ({
+    name: 'inventory',
+    operations: [
+      {
+        id: 'op-add',
+        operationName: 'list.append',
+        inputs: [
+          { name: 'key', source: 'constant', sourceId: 'stock' },
+          { name: 'item.qty', source: 'ui-element', sourceId: 'qty-in' },
+          { name: 'item.price', source: 'ui-element', sourceId: 'price-in' }
+        ]
+      }
+    ],
+    elements: [
+      { id: 'qty-in', type: 'input', properties: { label: 'Qty' } },
+      { id: 'price-in', type: 'input', properties: { label: 'Price' } },
+      {
+        id: 'add-btn',
+        type: 'button',
+        properties: { text: 'Add' },
+        eventBindings: [{ event: 'click', operationId: 'op-add' }]
+      },
+      {
+        id: 'rows',
+        type: 'list',
+        dataBindings: [
+          { property: 'items', source: 'state', sourceId: 'stock', transforms: itemsTransforms }
+        ],
+        children: [
+          {
+            id: 'r-value',
+            type: 'text',
+            dataBindings: [{ property: 'content', source: 'item', sourceId: 'value' }]
+          }
+        ]
+      },
+      {
+        id: 'total',
+        type: 'text',
+        dataBindings: [
+          { property: 'content', source: 'state', sourceId: 'stock', transforms: totalTransforms }
+        ]
+      }
+    ]
+  });
+
+  const derive = { type: 'deriveField', parameters: { field: 'value', expression: 'qty * price' } };
+
+  it('accepts per-row expressions over appended fields and sums the derived field', () => {
+    const { result } = checkContract(
+      inventoryFixture(
+        [derive],
+        [derive, { type: 'sum', parameters: { field: 'value' } }]
+      )
+    );
+
+    expect(result.errors).toEqual([]);
+  });
+
+  it('rejects an expression reading a field the append never writes', () => {
+    const bad = {
+      type: 'deriveField',
+      parameters: { field: 'value', expression: 'qty * cost' }
+    };
+    const { result } = checkContract(
+      inventoryFixture([bad], [bad, { type: 'sum', parameters: { field: 'value' } }])
+    );
+
+    const hits = result.errors.filter((e) => e.code === 'LIST_FIELD_UNWRITTEN');
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits[0].message).toContain('cost');
+    expect(hits[0].message).toContain('qty, price');
+  });
+
+  it('rejects an expression that does not parse', () => {
+    const broken = { type: 'deriveField', parameters: { field: 'value', expression: 'qty *' } };
+    const { result } = checkContract(inventoryFixture([broken], [broken]));
+
+    expect(result.errors.some((e) => e.code === 'INVALID_EXPRESSION')).toBe(true);
+  });
+
+  it('still rejects reading the derived field without deriving it first', () => {
+    const { result } = checkContract(
+      inventoryFixture([derive], [{ type: 'sum', parameters: { field: 'value' } }])
+    );
+
+    const hit = result.errors.find((e) => e.code === 'LIST_FIELD_UNWRITTEN');
+    expect(hit).toBeDefined();
+    expect(hit!.message).toContain('"value"');
+  });
+});
+
 describe('checkAgainstManifests hard errors', () => {
   it('flags an operation name that is neither builtin nor remote', () => {
     const { result } = checkContract(

@@ -8,6 +8,7 @@
 import type { TransformFunction } from '../../types/contract';
 import type { KnobSpec } from '../../types/component';
 import { getValueAtPath, looseEquals } from './registry';
+import { parseRowExpression } from './row-expression';
 
 export { looseEquals };
 
@@ -160,6 +161,47 @@ export const TRANSFORMS: Record<string, TransformDef> = {
         return String(av ?? '').localeCompare(String(bv ?? '')) * direction;
       });
       return copy;
+    },
+  },
+  deriveField: {
+    name: 'deriveField',
+    output: 'array',
+    description:
+      'Adds a computed field to every row of an array: an arithmetic expression over that row\'s numeric fields (e.g. field "value", expression "qty * price"). Rows keep their other fields; read the new field like any row field, sum it for totals, or sortBy it.',
+    parameters: [
+      { name: 'field', type: 'string', description: 'Name of the field to add' },
+      {
+        name: 'expression',
+        type: 'string',
+        description:
+          'Arithmetic over row fields: + - * / % ^, parentheses, sqrt/abs/floor/ceil/round, min/max/pow, pi, e',
+      },
+    ],
+    apply: (value, parameters) => {
+      const field = String(parameters.field ?? '');
+      const source = String(parameters.expression ?? '');
+      if (!field || !source) return asArray(value);
+      let parsed;
+      try {
+        parsed = parseRowExpression(source);
+      } catch {
+        // Validation rejects bad expressions before a contract renders;
+        // anything that still arrives here degrades to untouched rows.
+        return asArray(value);
+      }
+      return asArray(value).map((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+        const row = item as Record<string, unknown>;
+        let result: number | null;
+        try {
+          result = parsed.evaluate(row);
+        } catch {
+          // One bad row (a missing or non-numeric field) shows an empty
+          // cell instead of poisoning the whole list.
+          result = null;
+        }
+        return { ...row, [field]: result };
+      });
     },
   },
   pick: {

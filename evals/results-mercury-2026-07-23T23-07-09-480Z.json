@@ -1,0 +1,19 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "finance-dashboard",
+      "wallMs": 14434,
+      "completionTokens": 3291,
+      "verdict": "manifest",
+      "errors": "operations.9: Nothing runs operation \"op-food-count\"; wire it to an element event (a click, change, or timer tick) or remove it",
+      "fragmentsUsed": [
+        "expr.evaluate",
+        "fx.rate",
+        "stats.summary",
+        "basics.stat_tile"
+      ]
+    }
+  ]
+}

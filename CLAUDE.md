@@ -185,6 +185,11 @@ that feeds the append, operations nothing triggers, appended lists no list eleme
 list edits on keys nothing fills, and interactive controls nothing consumes. Transform
 conventions: `filterBy`/`filterContains` with an empty value keep everything (the "All"
 dropdown case), and `pick` on an array reads its first entry (the filterBy-then-pick shape).
+Per-row computed values use `deriveField` (backed by `row-expression.ts`, a synchronous
+evaluator with exactly the expr part's grammar): it adds an arithmetic field to every row from
+that row's own fields, so row templates read it like any field and totals chain deriveField
+then sum; validation parses every expression and checks its identifiers against the fields the
+list's append actually writes, with fields derived mid-pipeline visible to later steps.
 Builtins also include `random.int`/`random.pick` (randomness cannot live in zero-import wasm).
 Warnings are cosmetic normalizations only (knob defaults, deduped inputs, seeded state keys);
 the edit bar shows them grouped apart from spec assumptions and open questions. The `local`

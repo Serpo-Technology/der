@@ -1,0 +1,17 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "inventory",
+      "wallMs": 6127,
+      "completionTokens": 1915,
+      "verdict": "manifest",
+      "errors": "operations.3.inputs.0: pluck reads field \"stockValue\" from \"inventory\", but its rows carry: id, name, quantity, unitPrice; add an item.stockValue input to the append, or if \"stockValue\" is computed from each row's own fields, insert {\"type\": \"deriveField\", \"parameters\": {\"field\": \"stockValue\", \"expr",
+      "fragmentsUsed": [
+        "stats.summary",
+        "basics.stat_tile"
+      ]
+    }
+  ]
+}

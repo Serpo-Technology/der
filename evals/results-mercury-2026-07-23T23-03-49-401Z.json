@@ -1,0 +1,16 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "inventory",
+      "wallMs": 9085,
+      "completionTokens": 1894,
+      "verdict": "manifest",
+      "errors": "elements.3.children.1.dataBindings.0: sum reads field \"stockValue\" from \"inventory\", but its rows carry: id, name, quantity, unitPrice; add an item.stockValue input to the append, or if \"stockValue\" is computed from each row's own fields, insert {\"type\": \"deriveField\", \"parameters\": {\"field\": \"stock",
+      "fragmentsUsed": [
+        "stats.summary"
+      ]
+    }
+  ]
+}
