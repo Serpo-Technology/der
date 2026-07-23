@@ -7,5 +7,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Only this project's tests; the working tree may hold unrelated
+    // checkouts (a local llama.cpp clone, scratch dirs).
+    include: ['src/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
   },
 });
