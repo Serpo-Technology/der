@@ -11,9 +11,8 @@ reviewable Blueprint projected from that result. The React frontend handles inte
 editing, and rendering; the Rust backend handles storage, operation execution, and
 window/tray management.
 
-The app itself lives at the repository root (`src/`, `src-tauri/`). The `.kiro/specs/` tree is
-the authoritative source for intent and architecture; read
-`.kiro/specs/dynamic-experience-runtime/design.md` before making structural changes.
+The app itself lives at the repository root (`src/`, `src-tauri/`). This file is the
+authoritative architecture record; read the Architecture section before structural changes.
 
 ## Commands
 
@@ -40,6 +39,18 @@ Rust code under `src-tauri/` is outside the ESLint/tsc setup; build it with `car
 `tauri` commands above.
 
 ## Architecture
+
+### Intent and principles
+
+DER turns a natural-language description into a working desktop app the user can keep, edit
+conversationally, and launch like any installed app. Design principles: dynamic composition
+(elements and operations compose at runtime, never at compile time); loose coupling through
+manifests and contracts; the human keeps editorial control at every step (spec header,
+Blueprint projection, contract editor); everything discoverable through the part registry;
+contract changes render in real time; and composition only: the model never writes code, and
+anything the parts cannot express is a repairable validation error, never a silent
+degradation. The end goal is a marketplace of signed parts where service publishers ship
+their own integrations.
 
 ### Generation pipeline
 
@@ -162,15 +173,27 @@ model's output schema (`LlmContractSchema`) rejects `local`/`implementation.code
 so the repair round teaches it; `checkAgainstManifests` (`src/schemas/contract.ts`) runs inside
 the repair loop. Anything the parts cannot express (unknown operations, inputs, outputs,
 transforms) is a hard error: the model recomposes or generation fails, never silently ships
-less than asked. Warnings are cosmetic normalizations only (knob defaults, deduped inputs,
-seeded state keys); the edit bar shows them grouped apart from spec assumptions and open
-questions. The `local` execution type still runs for human-edited contracts only.
+less than asked. A wiring-completeness rule family (grown from behavioral eval findings) also
+hard-errors dead compositions: expression identifiers without matching `var.*` bindings,
+filters and sorts on fields a list's append never writes, filters driven by the same control
+that feeds the append, operations nothing triggers, appended lists no list element displays,
+list edits on keys nothing fills, and interactive controls nothing consumes. Transform
+conventions: `filterBy`/`filterContains` with an empty value keep everything (the "All"
+dropdown case), and `pick` on an array reads its first entry (the filterBy-then-pick shape).
+Builtins also include `random.int`/`random.pick` (randomness cannot live in zero-import wasm).
+Warnings are cosmetic normalizations only (knob defaults, deduped inputs, seeded state keys);
+the edit bar shows them grouped apart from spec assumptions and open questions. The `local`
+execution type still runs for human-edited contracts only.
 
 ### Runtime conventions
 
 One flat state map with three namespaces: plain app-state keys, `element_${id}` for element values
 (inputs/selects/checkboxes are auto-controlled and write there on change, EXCEPT inside list
 templates where controlled state would be shared across rows), and `operation_${opId}` mirrors.
+Several bindings on one event run sequentially in contract order, and a failed operation stops
+the rest of its chain (the error strip shows the root failure; later bindings usually consume
+the failed operation's outputs). Buttons accept bound `content` as their label, the way list
+row templates bind item fields onto row buttons.
 Contracts may carry `initialState`. Constants can carry a typed `value` field (booleans/numbers);
 `sourceId` stays the legacy string form. Elements support declarative `visibleWhen` conditions
 (single or AND array; operators truthy/falsy/empty/notEmpty/equals/notEquals/gt/gte/lt/lte, with
@@ -184,23 +207,36 @@ unknown values normalize with a warning. List
 elements repeat children per bound item with an `item` binding scope and support an `emptyText`
 knob. `normalizeContract` converts legacy `triggers` into event bindings before rendering.
 
-### Wasm fragment parts
+### Signed parts (wasm, UI fragments, integrations)
 
-Installed signed parts extend the operation vocabulary: a `.derpart` bundle (verbatim-signed
-manifest + base64 wasm; Ed25519 over `DERPART-SIG-V1\0 || manifest bytes`) is verified and
-executed by the hardened wasmtime host in `src-tauri/src/fragments.rs` (zero imports allowed,
-fuel + epoch deadline + memory limiter, fresh instance per call, `der_alloc`/`der_run` JSON ABI).
-Trust is pinned on first install in `app_data_dir/fragments/trust.json` (publisher key
-fingerprints, namespace claims; key changes hard-block). `FragmentsService`
-(`src/services/fragments/`) publishes installed operations into `FRAGMENT_OPERATIONS`; the Parts
-view can also browse a static registry (an `index.json` generated by fragment-tool's `index`
-subcommand next to the bundles; `fetch_registry_index`/`download_registry_bundle` in Rust are
-untrusted transport and the signature/trust flow still judges installs); all
-operation lookups go through `getOperationDef()` (builtins win collisions), so the prompt
-catalog, `checkAgainstManifests`, and the executor treat part operations exactly like builtins
-(the model still emits `executionType: "builtin"`). Demo part + signing tool live in
-`fragments/` as standalone crates (NOT src-tauri workspace members); the committed signed bundle
-keeps `cargo test` hermetic; rebuilding needs `rustup target add wasm32-unknown-unknown`.
+Installed signed parts extend the vocabulary in three kinds: compute parts (wasm), composed UI
+fragments (`uiFragments` templates, no wasm), and integration parts (a `service` block plus
+per-op `remote` specs, no wasm). A `.derpart` bundle (verbatim-signed manifest + base64 wasm;
+Ed25519 over `DERPART-SIG-V1\0 || manifest bytes`; wasm bound by `wasmSha256` in the manifest)
+is verified and executed by the hardened wasmtime host in `src-tauri/src/fragments.rs` (zero
+imports allowed, fuel + epoch deadline + memory limiter, fresh instance per call,
+`der_alloc`/`der_run` JSON ABI). The compiled-module session cache revalidates against the
+bundle bytes on disk, so an updated file swaps the guest without eviction choreography.
+Operation names are namespaced with camelCase segments allowed (`date.diffDays` matches the
+builtin `list.updateWhere` style). Integration calls run through `execute_part_remote`:
+endpoint placeholders substitute percent-encoded, query values raw (reqwest encodes them),
+redirects stay confined to the service base URL, a projection path that finds nothing fails the
+call naming the path and the fields present, and part-scoped credentials (stored as
+`part:<id>:<name>` in settings/integrations.json) inject host-side. Trust is pinned on first
+install in `app_data_dir/fragments/trust.json` (publisher key fingerprints, namespace claims;
+key changes hard-block). `FragmentsService` (`src/services/fragments/`) publishes installed
+operations into `FRAGMENT_OPERATIONS` and templates into `FRAGMENT_ELEMENTS`; the Parts view
+browses a static registry (an `index.json` generated by fragment-tool's `index` subcommand next
+to the bundles), auto-checks a saved registry on open, and shows per-part update badges;
+`fetch_registry_index`/`download_registry_bundle` in Rust are untrusted transport and the
+signature/trust flow still judges installs. All operation lookups go through `getOperationDef()`
+(builtins win collisions), so the prompt catalog, `checkAgainstManifests`, and the executor
+treat part operations exactly like builtins (the model still emits `executionType: "builtin"`).
+Parts and the signing tool live in `fragments/` as standalone crates (NOT src-tauri workspace
+members); committed signed bundles keep `cargo test` hermetic; rebuilding needs
+`rustup target add wasm32-unknown-unknown`. Current library: expr-evaluate and dates and
+stats-summary (compute), frankfurter and openweather and coingecko and wikipedia
+(integrations), ui-basics (entry_row, stat_tile).
 
 ### Component repository
 
@@ -208,6 +244,23 @@ The shared `repositoryService` singleton is seeded once at startup in `App.tsx` 
 `registerBuiltins()` (`src/services/repository/builtins.ts`); both element and operation manifests
 derive from the part registry. Registration falls back to the in-memory index outside Tauri
 instead of throwing.
+
+### Evals
+
+`npm run eval -- --provider <p>` (scripts/eval/run.ts) generates every prompt in
+`evals/prompts.json`, judges each first attempt with the real pipeline validation, then chains
+into the behavioral stage: it spawns `vitest run --config vitest.evals.config.ts` against the
+fresh results file and merges outcomes into it, printing one end-to-end score. The behavioral
+harness (`evals/behavior.eval.tsx` + `evals/harness/`) renders each passing contract through the
+real renderer under jsdom and runs the prompt's `behavior` script: steps address controls by
+fuzzy hints (generated ids and labels vary), compute parts execute their actual wasm under
+Node's WebAssembly with the host ABI, and remote parts return the scenario's `stubs`.
+`ContractBuilder.finalizeShape` is the tooling entry that normalizes a stored shape without a
+model call. Results files (`evals/results-*.json`) store the generated contracts plus behavior
+verdicts and are committed on purpose: they are the corpus of behaviorally proven contracts.
+Mercury occasionally emits unclosed JSON (an unparseable verdict); rerun the prompt with
+`--only <id>` before treating it as a regression. The behavioral suite never runs under
+`npm run test` (its own vitest config; failures grade model output, never the codebase).
 
 ## Conventions and gotchas
 

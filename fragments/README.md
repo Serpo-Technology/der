@@ -7,7 +7,10 @@ contract composition) and binds the module by its sha256. The app verifies
 an Ed25519 signature over the verbatim manifest bytes before installing
 anything, and the module itself may import nothing from the host: a v1 part
 can compute values from its inputs and can do nothing else. It has no
-access to the network, the file system, or any host function.
+access to the network, the file system, or any host function. Operation
+names live under the manifest's namespace (`date.diffDays` for namespace
+`date`); segments start lowercase and may continue in camelCase, matching
+the builtin vocabulary.
 
 ## Layout
 
@@ -31,6 +34,16 @@ access to the network, the file system, or any host function.
   sqrt/abs/floor/ceil/round, two-argument min/max/pow, pi and e, and
   caller-bound variables via `var.<name>` inputs). It lets calculator and
   converter apps compute locally instead of calling a public API.
+- `dates/` provides `date.diffDays` and `date.addDays`: civil-calendar day
+  arithmetic for countdowns and deadlines. Dates are `YYYY-MM-DD` (a full
+  ISO timestamp also parses).
+- `frankfurter/` is an integration part for the free Frankfurter exchange
+  rate API (`fx.rate`, no credential).
+- `coingecko/` is an integration part for CoinGecko spot prices
+  (`crypto.price`, no credential).
+- `wikipedia/` is an integration part for English Wikipedia article
+  summaries (`wiki.summary`, no credential); its endpoint path substitutes
+  the topic percent-encoded.
 - `keys/` holds publisher keys. Only the public half (`demo.pub`) is
   tracked; the secret half (`demo.key`) is gitignored.
 - `dist/` holds signed bundles ready to install through the app, plus the
