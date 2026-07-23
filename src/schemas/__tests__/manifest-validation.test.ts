@@ -663,6 +663,30 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
     expect(result.errors[0].message).toContain('auto-controlled');
   });
 
+  it('allows checked bindings on checkboxes inside list templates', () => {
+    const { result } = checkContract(
+      rawContract({
+        initialState: { todos: [] },
+        elements: [
+          {
+            id: 'rows',
+            type: 'list',
+            dataBindings: [{ property: 'items', source: 'state', sourceId: 'todos' }],
+            children: [
+              {
+                id: 'row-done',
+                type: 'checkbox',
+                dataBindings: [{ property: 'checked', source: 'item', sourceId: 'completed' }]
+              }
+            ]
+          }
+        ]
+      })
+    );
+
+    expect(result.errors).toEqual([]);
+  });
+
   it('rejects placeholder endpoints', () => {
     const { result } = checkContract(
       rawContract({

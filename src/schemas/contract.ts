@@ -459,7 +459,10 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       const bindingPath = `${path}.dataBindings.${bindingIndex}`;
       checkPipeline(bindingPath, binding, fail, checkParamRef);
 
+      // Inside list templates auto-control is off and item bindings drive
+      // the control; the ban applies only outside them.
       if (
+        !inListTemplate &&
         INPUT_LIKE_TYPES.has(element.type) &&
         (binding.property === 'value' || binding.property === 'checked')
       ) {
