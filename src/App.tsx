@@ -80,6 +80,7 @@ const ExperienceWindow: React.FC<{
 }> = ({ initialExperienceId, initialContract, savedState, initialAssembling = false }) => {
   const [currentContract, setCurrentContract] = useState<ContractType>(initialContract);
   const [editBusy, setEditBusy] = useState(false);
+  const [editProgress, setEditProgress] = useState<string | null>(null);
   const [editWarnings, setEditWarnings] = useState<ValidationWarning[]>([]);
   const [assembling, setAssembling] = useState(initialAssembling);
   const [assemblyFailed, setAssemblyFailed] = useState(false);
@@ -126,16 +127,19 @@ const ExperienceWindow: React.FC<{
   const handleRefine = useCallback(
     async (instruction: string) => {
       setEditBusy(true);
+      setEditProgress(null);
       try {
         const result = await integratedExperienceService.refineExperience(
           initialExperienceId,
           instruction,
-          currentContract
+          currentContract,
+          (receivedChars) => setEditProgress(`${(receivedChars / 1000).toFixed(1)}k`)
         );
         setEditWarnings(result.warnings);
         setCurrentContract(result.contract.toObject() as unknown as ContractType);
       } finally {
         setEditBusy(false);
+        setEditProgress(null);
       }
     },
     [initialExperienceId, currentContract]
@@ -245,6 +249,7 @@ const ExperienceWindow: React.FC<{
       <ExperienceEditBar
         onSubmit={handleRefine}
         busy={editBusy}
+        progressNote={editProgress}
         warnings={editWarnings}
         onDismissWarnings={() => setEditWarnings([])}
       />

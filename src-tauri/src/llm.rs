@@ -59,11 +59,19 @@ pub struct LlmChatResponse {
 
 const DEFAULT_MAX_TOKENS: u32 = 8192;
 
+const PLAIN_DEADLINE: Duration = Duration::from_secs(300);
+// Streams stay alive as long as tokens flow; local models can run long.
+const STREAM_DEADLINE: Duration = Duration::from_secs(1800);
+
 fn http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .timeout(Duration::from_secs(300))
+        .connect_timeout(Duration::from_secs(30))
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))
+}
+
+fn request_deadline(streaming: bool) -> Duration {
+    if streaming { STREAM_DEADLINE } else { PLAIN_DEADLINE }
 }
 
 fn api_key(app: &AppHandle, provider: &str) -> Result<String, String> {
@@ -288,6 +296,7 @@ async fn anthropic_chat(
     };
 
     let response = request
+        .timeout(request_deadline(on_chunk.is_some()))
         .json(&body)
         .send()
         .await
@@ -371,6 +380,7 @@ async fn openai_compat_chat(
     }
 
     let response = request
+        .timeout(request_deadline(on_chunk.is_some()))
         .json(&body)
         .send()
         .await
@@ -455,6 +465,7 @@ async fn gemini_chat(
         .post(&url)
         .header("x-goog-api-key", api_key)
         .header("content-type", "application/json")
+        .timeout(request_deadline(false))
         .json(&body)
         .send()
         .await

@@ -141,11 +141,12 @@ export class AIInterpreterService implements AIInterpreter {
    */
   async editContract(
     current: Contract,
-    instruction: string
+    instruction: string,
+    onPartial?: (accumulated: string) => void
   ): Promise<{ contract: Contract; warnings: ValidationWarning[] }> {
     try {
       const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
-      const contract = await contractBuilder.editContract(current, instruction);
+      const contract = await contractBuilder.editContract(current, instruction, onPartial);
       this.lastContractWarnings = contractBuilder.getLastWarnings();
       return { contract, warnings: this.lastContractWarnings };
     } catch (error) {

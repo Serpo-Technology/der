@@ -128,6 +128,28 @@ describe('ContractBuilder', () => {
     });
   });
 
+  describe('editContract streaming progress', () => {
+    it('reports accumulated text while the edit streams', async () => {
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      const full = contractJson();
+      vi.mocked(mockLLMClient.sendMessage).mockImplementationOnce(async (_messages, options) => {
+        options?.onChunk?.(full.slice(0, 40));
+        options?.onChunk?.(full.slice(40));
+        return { content: full };
+      });
+
+      const sizes: number[] = [];
+      await builder.editContract(
+        JSON.parse(contractJson()),
+        'rename the title',
+        (accumulated) => sizes.push(accumulated.length)
+      );
+
+      expect(sizes.length).toBeGreaterThan(0);
+      expect(sizes[sizes.length - 1]).toBe(full.length);
+    });
+  });
+
   describe('generateFromBlueprint', () => {
     it('should generate a contract from the LLM response', async () => {
       mockLLMResponse(JSON.stringify(SAMPLE_TODO_CONTRACT));

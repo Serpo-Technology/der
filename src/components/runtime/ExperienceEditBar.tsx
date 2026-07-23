@@ -8,6 +8,8 @@ import type { ValidationWarning } from '../../types/contract';
 interface ExperienceEditBarProps {
   onSubmit: (instruction: string) => Promise<void>;
   busy: boolean;
+  /** Short live note shown while busy, e.g. how much has streamed in. */
+  progressNote?: string | null;
   warnings?: ValidationWarning[];
   onDismissWarnings?: () => void;
 }
@@ -107,6 +109,7 @@ export const ExperienceNotes: React.FC<ExperienceNotesProps> = ({ warnings, onDi
 export const ExperienceEditBar: React.FC<ExperienceEditBarProps> = ({
   onSubmit,
   busy,
+  progressNote,
   warnings,
   onDismissWarnings
 }) => {
@@ -141,7 +144,7 @@ export const ExperienceEditBar: React.FC<ExperienceEditBarProps> = ({
           aria-label="Describe a change"
         />
         <button type="submit" disabled={busy || !instruction.trim()}>
-          {busy ? 'Updating...' : 'Apply'}
+          {busy ? (progressNote ? `Updating (${progressNote})` : 'Updating...') : 'Apply'}
         </button>
       </form>
       {error && <div className="der-edit-error">{error}</div>}

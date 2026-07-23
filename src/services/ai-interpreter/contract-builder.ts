@@ -139,7 +139,11 @@ export class ContractBuilder {
    * a property of id stability: the prompt requires kept elements/operations
    * to keep their ids, and an id that changes its kind of part is repaired.
    */
-  async editContract(current: Contract | ContractShape, instruction: string): Promise<Contract> {
+  async editContract(
+    current: Contract | ContractShape,
+    instruction: string,
+    onPartial?: (accumulated: string) => void
+  ): Promise<Contract> {
     const currentObject =
       typeof (current as { toObject?: () => unknown }).toObject === 'function'
         ? (current as unknown as { toObject(): Contract }).toObject()
@@ -174,6 +178,7 @@ export class ContractBuilder {
       label: 'Contract',
       maxTokens: 16000,
       systemBlocks,
+      onPartial,
       semanticCheck: (candidate) => {
         const result = checkAgainstManifests(candidate as ContractShape);
         warnings = result.warnings;
