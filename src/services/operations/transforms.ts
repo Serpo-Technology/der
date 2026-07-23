@@ -27,10 +27,10 @@ function isParamRef(value: unknown): value is { source: 'state' | 'element'; sou
 
 /** Replaces parameter references with live values; static parameters pass through. */
 export function resolveTransformParameters(
-  parameters: Record<string, any>,
+  parameters: Record<string, unknown>,
   context?: TransformContext
-): Record<string, any> {
-  let resolved: Record<string, any> | null = null;
+): Record<string, unknown> {
+  let resolved: Record<string, unknown> | null = null;
   for (const [key, value] of Object.entries(parameters)) {
     if (isParamRef(value)) {
       resolved = resolved ?? { ...parameters };
