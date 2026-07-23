@@ -179,3 +179,32 @@
   font-size: 0.85rem;
   opacity: 0.7;
 }
+
+.parts-service {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--app-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+.parts-service > span {
+  color: var(--app-text-dim);
+}
+
+.parts-credential {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.parts-credential input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--app-border-strong);
+  border-radius: var(--app-radius-sm);
+  background: var(--app-surface);
+  color: var(--app-text);
+}

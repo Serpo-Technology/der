@@ -77,6 +77,30 @@ pub struct Manifest {
     pub operations: Vec<OpSpec>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ui_fragments: Vec<UiFragmentSpec>,
+    /// Present on integration parts: the service the part talks to and the
+    /// credentials the user must provide at install time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service: Option<ServiceSpec>,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceSpec {
+    /// Origin/prefix every remote endpoint of this part is confined to.
+    pub base_url: String,
+    #[serde(default)]
+    pub credentials: Vec<CredentialRequirement>,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CredentialRequirement {
+    pub name: String,
+    /// "bearer" | "header" | "query"
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    pub label: String,
 }
 
 /// A composed UI pattern: a template subtree instantiated by the renderer
@@ -122,6 +146,26 @@ pub struct OpSpec {
     pub example: Option<Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub structured_prefixes: Vec<String>,
+    /// Declarative HTTP call for integration parts; executed by the host,
+    /// confined to the manifest's service base URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote: Option<RemoteSpec>,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteSpec {
+    /// Path joined to the service base URL; {input} placeholders substitute.
+    pub endpoint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+    /// Query parameters; values may hold {input} placeholders.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<std::collections::BTreeMap<String, String>>,
+    /// Output name -> dot path into the JSON response (array indices as
+    /// numerals). Missing paths yield null.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -399,11 +443,67 @@ pub fn verify_bundle(raw: &[u8]) -> FragmentResult<VerifiedBundle> {
             format!("Namespace \"{}\" is reserved", manifest.namespace),
         ));
     }
-    if !manifest.capabilities.is_empty() {
-        return Err(fail(
-            FragmentErrorKind::VerifyFailed,
-            "This app supports only pure-compute parts (capabilities must be empty)",
-        ));
+    let allowed_capability = manifest
+        .service
+        .as_ref()
+        .map(|service| format!("net:{}", service.base_url));
+    for capability in &manifest.capabilities {
+        if Some(capability) != allowed_capability.as_ref() {
+            return Err(fail(
+                FragmentErrorKind::VerifyFailed,
+                format!(
+                    "Capability \"{}\" is not allowed; integration parts may declare exactly net:<service base URL>",
+                    capability
+                ),
+            ));
+        }
+    }
+    if let Some(service) = &manifest.service {
+        if !service.base_url.starts_with("https://") {
+            return Err(fail(
+                FragmentErrorKind::VerifyFailed,
+                "Service base URL must be https",
+            ));
+        }
+        if !manifest.capabilities.iter().any(|c| Some(c) == allowed_capability.as_ref()) {
+            return Err(fail(
+                FragmentErrorKind::VerifyFailed,
+                "Integration parts must declare the net:<service base URL> capability",
+            ));
+        }
+        for requirement in &service.credentials {
+            if !matches!(requirement.kind.as_str(), "bearer" | "header" | "query") {
+                return Err(fail(
+                    FragmentErrorKind::VerifyFailed,
+                    format!("Credential \"{}\" has unknown kind", requirement.name),
+                ));
+            }
+        }
+    }
+    let has_remote_ops = manifest.operations.iter().any(|op| op.remote.is_some());
+    let has_wasm_ops = manifest.operations.iter().any(|op| op.remote.is_none());
+    if has_remote_ops {
+        if manifest.service.is_none() {
+            return Err(fail(
+                FragmentErrorKind::VerifyFailed,
+                "Remote operations need a service block",
+            ));
+        }
+        if has_wasm_ops {
+            return Err(fail(
+                FragmentErrorKind::VerifyFailed,
+                "A part mixes remote and compute operations; split it",
+            ));
+        }
+        for op in &manifest.operations {
+            let remote = op.remote.as_ref().unwrap();
+            if !remote.endpoint.starts_with('/') || remote.endpoint.contains("..") {
+                return Err(fail(
+                    FragmentErrorKind::VerifyFailed,
+                    format!("Operation \"{}\" endpoint must be a relative path without ..", op.name),
+                ));
+            }
+        }
     }
     if manifest.operations.is_empty() && manifest.ui_fragments.is_empty() {
         return Err(fail(
@@ -453,11 +553,11 @@ pub fn verify_bundle(raw: &[u8]) -> FragmentResult<VerifiedBundle> {
         }
     }
 
-    if manifest.operations.is_empty() {
+    if manifest.operations.is_empty() || has_remote_ops {
         if !wasm.is_empty() || !manifest.wasm_sha256.is_empty() {
             return Err(fail(
                 FragmentErrorKind::VerifyFailed,
-                "A part without operations must not carry a wasm module",
+                "Only compute parts carry a wasm module",
             ));
         }
     } else {
@@ -628,10 +728,10 @@ impl FragmentsState {
         if verified.manifest.id != id {
             return Err(fail(FragmentErrorKind::VerifyFailed, "Bundle id does not match its filename"));
         }
-        if verified.manifest.operations.is_empty() {
+        if verified.wasm.is_empty() {
             return Err(fail(
                 FragmentErrorKind::OperationNotFound,
-                "Part provides UI fragments only; it has no operations to run",
+                "Part has no compute module; its operations run elsewhere",
             ));
         }
         let module = self.compile(&verified.wasm)?;
@@ -781,6 +881,7 @@ pub struct StageSummary {
     pub description: String,
     pub namespace: String,
     pub operations: Vec<Value>,
+    pub capabilities: Vec<String>,
     pub fingerprint: String,
     pub fingerprint_grouped: String,
     pub publisher_status: String,
@@ -838,8 +939,8 @@ pub fn stage_core(
 
     // Compiling here both validates the ABI up front and warms nothing: the
     // staged module is dropped; the session cache fills on first execution.
-    // UI-only bundles carry no module to compile.
-    if !verified.manifest.operations.is_empty() {
+    // UI-only and integration bundles carry no module to compile.
+    if !verified.wasm.is_empty() {
         state.compile(&verified.wasm)?;
     }
 
@@ -864,6 +965,7 @@ pub fn stage_core(
             .iter()
             .map(|op| serde_json::json!({ "name": op.name, "description": op.description }))
             .collect(),
+        capabilities: manifest.capabilities.clone(),
         fingerprint: verified.fingerprint.clone(),
         fingerprint_grouped: fingerprint_grouped(&verified.publisher_key),
         publisher_status: publisher_status.to_string(),
@@ -1237,5 +1339,232 @@ mod registry_tests {
 
         let scheme = r#"{"formatVersion":1,"parts":[{"bundleUrl":"file:///etc/passwd"}]}"#;
         assert!(parse_registry_index("https://example.com/index.json", scheme).is_err());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// Integration part execution: declarative HTTP confined to the signed
+// service base URL, with per-part secrets injected host-side.
+// ---------------------------------------------------------------------------
+
+fn substitute_placeholders(template: &str, inputs: &serde_json::Map<String, Value>) -> String {
+    let mut out = template.to_string();
+    for (name, value) in inputs {
+        let placeholder = format!("{{{}}}", name);
+        if out.contains(&placeholder) {
+            let raw = match value {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            out = out.replace(&placeholder, &raw);
+        }
+    }
+    out
+}
+
+/// Resolves a dot path (array indices as numerals) into a JSON value.
+pub fn project_path(value: &Value, path: &str) -> Value {
+    let mut current = value;
+    for segment in path.split('.') {
+        current = match current {
+            Value::Object(map) => match map.get(segment) {
+                Some(next) => next,
+                None => return Value::Null,
+            },
+            Value::Array(items) => match segment.parse::<usize>().ok().and_then(|i| items.get(i)) {
+                Some(next) => next,
+                None => return Value::Null,
+            },
+            _ => return Value::Null,
+        };
+    }
+    current.clone()
+}
+
+#[tauri::command]
+pub async fn execute_part_remote(
+    app: tauri::AppHandle,
+    fragment_id: String,
+    operation: String,
+    inputs: Value,
+) -> Result<FragmentExecResult, FragmentError> {
+    let started = std::time::Instant::now();
+    let dir = fragments_dir(&app)?;
+    let path = dir.join(format!("{}.derpart", fragment_id));
+    let raw = std::fs::read(&path)
+        .map_err(|_| fail(FragmentErrorKind::NotInstalled, format!("Part {} is not installed", fragment_id)))?;
+    let verified = verify_bundle(&raw)?;
+    if verified.manifest.id != fragment_id {
+        return Err(fail(FragmentErrorKind::VerifyFailed, "Bundle id does not match its filename"));
+    }
+    let service = verified
+        .manifest
+        .service
+        .clone()
+        .ok_or_else(|| fail(FragmentErrorKind::OperationNotFound, "Part has no service block"))?;
+    let op = verified
+        .manifest
+        .operations
+        .iter()
+        .find(|op| op.name == operation)
+        .ok_or_else(|| fail(FragmentErrorKind::OperationNotFound, format!("No operation {}", operation)))?;
+    let remote = op
+        .remote
+        .clone()
+        .ok_or_else(|| fail(FragmentErrorKind::OperationNotFound, "Operation is not remote"))?;
+
+    let empty = serde_json::Map::new();
+    let input_map = inputs.as_object().unwrap_or(&empty);
+    let endpoint = substitute_placeholders(&remote.endpoint, input_map);
+    if endpoint.contains("..") {
+        return Err(fail(FragmentErrorKind::Io, "Endpoint escaped its path"));
+    }
+    let url = format!("{}{}", service.base_url.trim_end_matches('/'), endpoint);
+    if !url.starts_with(&service.base_url) {
+        return Err(fail(FragmentErrorKind::Io, "Endpoint escaped the service"));
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| fail(FragmentErrorKind::Io, format!("HTTP client: {}", e)))?;
+    let method = remote.method.clone().unwrap_or_else(|| "GET".to_string()).to_uppercase();
+    let mut request = match method.as_str() {
+        "GET" => client.get(&url),
+        "POST" => client.post(&url),
+        other => {
+            return Err(fail(FragmentErrorKind::Io, format!("Unsupported method {}", other)))
+        }
+    };
+    if let Some(query) = &remote.query {
+        let pairs: Vec<(String, String)> = query
+            .iter()
+            .map(|(key, template)| (key.clone(), substitute_placeholders(template, input_map)))
+            .collect();
+        request = request.query(&pairs);
+    }
+
+    // Part-scoped secrets, stored as part:<id>:<credential name>.
+    let integrations = crate::settings::load_integrations(&app);
+    for requirement in &service.credentials {
+        let store_key = format!("part:{}:{}", fragment_id, requirement.name);
+        let secret = integrations
+            .credentials
+            .get(&store_key)
+            .map(|cred| cred.secret.clone())
+            .ok_or_else(|| {
+                fail(
+                    FragmentErrorKind::Io,
+                    format!(
+                        "This part needs its \"{}\" credential; add it in the Parts view",
+                        requirement.label
+                    ),
+                )
+            })?;
+        match requirement.kind.as_str() {
+            "bearer" => request = request.header("authorization", format!("Bearer {}", secret)),
+            "header" => {
+                let target = requirement.target.clone().unwrap_or_else(|| "x-api-key".to_string());
+                request = request.header(target, secret);
+            }
+            "query" => {
+                let target = requirement.target.clone().unwrap_or_else(|| "key".to_string());
+                request = request.query(&[(target, secret)]);
+            }
+            _ => {}
+        }
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| fail(FragmentErrorKind::Io, format!("Request failed: {}", e)))?;
+    let status = response.status();
+    let body: Value = response
+        .json()
+        .await
+        .map_err(|e| fail(FragmentErrorKind::Io, format!("Response was not JSON: {}", e)))?;
+    if !status.is_success() {
+        return Err(fail(
+            FragmentErrorKind::Io,
+            format!("Service answered {}: {}", status, body.to_string().chars().take(200).collect::<String>()),
+        ));
+    }
+
+    let data = match &remote.project {
+        Some(projection) => {
+            let mut out = serde_json::Map::new();
+            for (name, path) in projection {
+                out.insert(name.clone(), project_path(&body, path));
+            }
+            Value::Object(out)
+        }
+        None => body,
+    };
+
+    Ok(FragmentExecResult {
+        success: true,
+        data: Some(data),
+        error: None,
+        execution_time_ms: started.elapsed().as_millis() as u64,
+    })
+}
+
+#[tauri::command]
+pub fn set_part_credential(
+    app: tauri::AppHandle,
+    fragment_id: String,
+    name: String,
+    secret: String,
+) -> Result<Vec<String>, FragmentError> {
+    if secret.trim().is_empty() {
+        return Err(fail(FragmentErrorKind::Io, "The secret cannot be empty"));
+    }
+    let mut integrations = crate::settings::load_integrations(&app);
+    integrations.credentials.insert(
+        format!("part:{}:{}", fragment_id, name),
+        crate::settings::IntegrationCredential {
+            kind: "partsecret".to_string(),
+            target: None,
+            base_url: None,
+            notes: None,
+            secret,
+        },
+    );
+    crate::settings::save_integrations(&app, &integrations)
+        .map_err(|e| fail(FragmentErrorKind::Io, e))?;
+    Ok(list_part_credentials_core(&app, &fragment_id))
+}
+
+fn list_part_credentials_core(app: &tauri::AppHandle, fragment_id: &str) -> Vec<String> {
+    let prefix = format!("part:{}:", fragment_id);
+    let mut names: Vec<String> = crate::settings::load_integrations(app)
+        .credentials
+        .keys()
+        .filter(|key| key.starts_with(&prefix))
+        .map(|key| key[prefix.len()..].to_string())
+        .collect();
+    names.sort();
+    names
+}
+
+#[tauri::command]
+pub fn list_part_credentials(app: tauri::AppHandle, fragment_id: String) -> Vec<String> {
+    list_part_credentials_core(&app, &fragment_id)
+}
+
+#[cfg(test)]
+mod remote_tests {
+    use super::project_path;
+    use serde_json::json;
+
+    #[test]
+    fn projection_walks_objects_and_arrays() {
+        let body = json!({"main": {"temp": 21.4}, "weather": [{"description": "clear sky"}], "name": "Istanbul"});
+        assert_eq!(project_path(&body, "main.temp"), json!(21.4));
+        assert_eq!(project_path(&body, "weather.0.description"), json!("clear sky"));
+        assert_eq!(project_path(&body, "name"), json!("Istanbul"));
+        assert_eq!(project_path(&body, "missing.path"), serde_json::Value::Null);
     }
 }

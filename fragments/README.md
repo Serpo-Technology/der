@@ -17,6 +17,11 @@ access to the network, the file system, or any host function.
   sum, mean, min, max) and `stats.percentile` (linear interpolation
   between closest ranks). Its `manifest.json` is the exact byte sequence
   that gets signed.
+- `openweather/` is a demo integration part: no wasm, a signed `service`
+  block confining every call to `https://api.openweathermap.org`, a declared
+  API-key requirement the Parts view prompts for, and `weather.current` as a
+  typed operation with query templates and response projection. This is the
+  shape service publishers would ship.
 - `ui-basics/` is a demo part with no wasm at all: it ships composed UI
   fragments (`basics.entry_row`, `basics.stat_tile`), pure-JSON templates
   the renderer expands per instance with parameters. UI-only bundles carry

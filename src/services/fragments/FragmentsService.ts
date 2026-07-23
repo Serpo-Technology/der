@@ -61,6 +61,14 @@ interface FragmentOpSpec {
   howto?: string;
   example?: unknown;
   structuredPrefixes?: string[];
+  remote?: { endpoint: string; method?: string };
+}
+
+export interface PartCredentialRequirement {
+  name: string;
+  kind: string;
+  target?: string;
+  label: string;
 }
 
 export interface InstalledFragment {
@@ -73,12 +81,14 @@ export interface InstalledFragment {
     namespace: string;
     operations: FragmentOpSpec[];
     uiFragments?: FragmentUiSpec[];
+    service?: { baseUrl: string; credentials?: PartCredentialRequirement[] };
   };
   fingerprint: string;
   fingerprintGrouped: string;
 }
 
 export interface StageSummary {
+  capabilities: string[];
   stagingToken: string;
   id: string;
   name: string;
@@ -182,6 +192,9 @@ export class FragmentsService {
   }
 
   private wrapOperation(fragmentId: string, op: FragmentOpSpec): BuiltinOperationDef {
+    // Remote (integration) operations run through the host's confined HTTP
+    // path; compute operations run in the wasm sandbox.
+    const command = op.remote ? 'execute_part_remote' : 'execute_fragment';
     return {
       name: op.name,
       description: op.description,
@@ -191,7 +204,7 @@ export class FragmentsService {
       example: op.example as BuiltinOperationDef['example'],
       structuredPrefixes: op.structuredPrefixes,
       execute: async (inputs) => {
-        const result = await invoke<FragmentExecResult>('execute_fragment', {
+        const result = await invoke<FragmentExecResult>(command, {
           fragmentId,
           operation: op.name,
           inputs,
@@ -202,6 +215,14 @@ export class FragmentsService {
         return result.data;
       },
     };
+  }
+
+  async listPartCredentials(fragmentId: string): Promise<string[]> {
+    return await invoke<string[]>('list_part_credentials', { fragmentId });
+  }
+
+  async setPartCredential(fragmentId: string, name: string, secret: string): Promise<string[]> {
+    return await invoke<string[]>('set_part_credential', { fragmentId, name, secret });
   }
 
   /** Registry entries with bundle URLs resolved to absolute http(s). */

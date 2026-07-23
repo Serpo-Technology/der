@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fragmentsService,
   InstalledFragment,
+  PartCredentialRequirement,
   RegistryPartEntry,
   StageSummary,
 } from '../../services/fragments/FragmentsService';
@@ -24,6 +25,49 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
     () => localStorage.getItem('der-registry-url') ?? ''
   );
   const [registryParts, setRegistryParts] = useState<RegistryPartEntry[] | null>(null);
+  const [partSecrets, setPartSecrets] = useState<Record<string, string[]>>({});
+  const [secretDrafts, setSecretDrafts] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    (async () => {
+      const entries: Record<string, string[]> = {};
+      for (const part of installed) {
+        if (part.manifest.service?.credentials?.length) {
+          try {
+            entries[part.manifest.id] = await fragmentsService.listPartCredentials(
+              part.manifest.id
+            );
+          } catch {
+            entries[part.manifest.id] = [];
+          }
+        }
+      }
+      setPartSecrets(entries);
+    })();
+  }, [installed]);
+
+  const handleSaveSecret = useCallback(
+    async (fragmentId: string, requirement: PartCredentialRequirement) => {
+      const draftKey = `${fragmentId}:${requirement.name}`;
+      const secret = secretDrafts[draftKey]?.trim();
+      if (!secret) return;
+      setBusy(true);
+      try {
+        const names = await fragmentsService.setPartCredential(
+          fragmentId,
+          requirement.name,
+          secret
+        );
+        setPartSecrets((prev) => ({ ...prev, [fragmentId]: names }));
+        setSecretDrafts((prev) => ({ ...prev, [draftKey]: '' }));
+      } catch (error) {
+        onError?.(error instanceof Error ? error.message : String(error));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [secretDrafts, onError]
+  );
 
   const handleFetchRegistry = useCallback(async () => {
     const url = registryUrl.trim();
@@ -224,6 +268,12 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
             </strong>
             <span>Publisher</span>
             <strong>{staged.publisher}</strong>
+            {(staged.capabilities ?? []).length > 0 && (
+              <>
+                <span>Access</span>
+                <strong>{staged.capabilities.join(', ')}</strong>
+              </>
+            )}
             <span>Key fingerprint</span>
             <code>{staged.fingerprintGrouped}</code>
             <span>Operations</span>
@@ -311,6 +361,41 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
                 <span>Publisher: {part.manifest.publisher}</span>
                 <code>{part.fingerprintGrouped}</code>
               </div>
+              {part.manifest.service && (
+                <div className="parts-service">
+                  <span>Calls {part.manifest.service.baseUrl}</span>
+                  {(part.manifest.service.credentials ?? []).map((requirement) => {
+                    const saved = partSecrets[part.manifest.id]?.includes(requirement.name);
+                    const draftKey = `${part.manifest.id}:${requirement.name}`;
+                    return (
+                      <div key={requirement.name} className="parts-credential">
+                        <span>
+                          {requirement.label}
+                          {saved ? ' (saved)' : ''}
+                        </span>
+                        <input
+                          type="password"
+                          value={secretDrafts[draftKey] ?? ''}
+                          onChange={(e) =>
+                            setSecretDrafts((prev) => ({
+                              ...prev,
+                              [draftKey]: e.target.value
+                            }))
+                          }
+                          placeholder={saved ? 'replace' : 'enter secret'}
+                          disabled={busy}
+                        />
+                        <button
+                          onClick={() => handleSaveSecret(part.manifest.id, requirement)}
+                          disabled={busy || !(secretDrafts[draftKey] ?? '').trim()}
+                        >
+                          Save
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               <div className="parts-ops">
                 {part.manifest.operations.map((op) => (
                   <div key={op.name}>

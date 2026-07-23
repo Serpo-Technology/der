@@ -16,6 +16,20 @@
       "bundleBytes": 143740
     },
     {
+      "id": "der-labs.openweather",
+      "name": "OpenWeather",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "weather",
+      "description": "Current weather from OpenWeather, as typed operations.",
+      "operations": [
+        "weather.current"
+      ],
+      "bundleUrl": "der-labs.openweather.derpart",
+      "bundleSha256": "9664b2c84161f4ef52bd5a27d13e6433e9b4dbe4452b44e6212cbc6274d84ba6",
+      "bundleBytes": 3668
+    },
+    {
       "id": "der-labs.stats-summary",
       "name": "Statistics",
       "version": "1.0.0",

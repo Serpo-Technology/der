@@ -1,0 +1,96 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.openweather",
+  "name": "OpenWeather",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Current weather from OpenWeather, as typed operations.",
+  "namespace": "weather",
+  "capabilities": [
+    "net:https://api.openweathermap.org"
+  ],
+  "wasmSha256": "",
+  "createdAt": "2026-07-23T16:10:49Z",
+  "service": {
+    "baseUrl": "https://api.openweathermap.org",
+    "credentials": [
+      {
+        "name": "api-key",
+        "kind": "query",
+        "target": "appid",
+        "label": "OpenWeather API key"
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "weather.current",
+      "description": "Current conditions for a city: temperature (Celsius), description, and the resolved city name.",
+      "inputs": [
+        {
+          "name": "city",
+          "type": "string",
+          "required": true,
+          "description": "City name, e.g. Istanbul"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "temperature",
+          "type": "number",
+          "description": "Celsius"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "description": "e.g. clear sky"
+        },
+        {
+          "name": "city",
+          "type": "string",
+          "description": "Resolved city name"
+        }
+      ],
+      "howto": "Bind city from an input element and run on a button click; route the outputs you display into state keys (round the temperature with a transform if you like). The part calls its own service; you never write a URL. The user must have entered the part's OpenWeather API key in the Parts view.",
+      "example": {
+        "id": "op-weather",
+        "operationName": "weather.current",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "city",
+            "source": "ui-element",
+            "sourceId": "city-in"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "temperature",
+            "target": "state",
+            "targetId": "temp"
+          },
+          {
+            "name": "description",
+            "target": "state",
+            "targetId": "conditions"
+          }
+        ],
+        "triggers": []
+      },
+      "remote": {
+        "endpoint": "/data/2.5/weather",
+        "method": "GET",
+        "query": {
+          "q": "{city}",
+          "units": "metric"
+        },
+        "project": {
+          "temperature": "main.temp",
+          "description": "weather.0.description",
+          "city": "name"
+        }
+      }
+    }
+  ]
+}
