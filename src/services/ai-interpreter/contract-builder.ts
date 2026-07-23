@@ -266,6 +266,18 @@ export class ContractBuilder {
     return validateContractObject(data);
   }
 
+  /**
+   * The exact create-mode prompt for a description, for offline model probes
+   * (e.g. running a local model outside the app and validating its output).
+   */
+  async renderCreatePrompt(description: string): Promise<{ system: string; user: string }> {
+    const catalog = await this.renderCatalog();
+    return {
+      system: `${buildBasePrompt(catalog)}\n\n${CREATE_PROMPT_SECTION}`,
+      user: `Build an app for this request:\n\n${description}`,
+    };
+  }
+
   private async renderCatalog(): Promise<string> {
     const elementLines = Object.values(ELEMENT_MANIFESTS).flatMap((manifest) => {
       const lines = [`- ${manifest.type}: ${manifest.description}`];

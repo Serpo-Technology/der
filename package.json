@@ -15,7 +15,9 @@
     "test": "vitest --run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "probe:prompt": "tsx scripts/diffusion-probe/export-prompt.ts",
+    "probe:validate": "tsx scripts/diffusion-probe/validate.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -46,6 +48,7 @@
     "globals": "^16.3.0",
     "jsdom": "^26.1.0",
     "prettier": "^3.6.2",
+    "tsx": "^4.23.1",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
     "vitest": "^3.2.4"
