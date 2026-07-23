@@ -145,3 +145,36 @@ describe('textarea element', () => {
     expect(view.container.textContent).toContain('hello world');
   });
 });
+
+describe('select options tolerance', () => {
+  it('renders options bound as a JSON string constant', async () => {
+    const contract = {
+      name: 'select-demo',
+      version: '1.0.0',
+      elements: [
+        {
+          id: 'cat-in',
+          type: 'select',
+          properties: { label: 'Category' },
+          dataBindings: [
+            {
+              property: 'options',
+              source: 'constant',
+              sourceId: '[{"value":"food","label":"Food"},{"value":"travel","label":"Travel"}]'
+            }
+          ],
+          eventBindings: []
+        }
+      ],
+      operations: []
+    } as unknown as import('../types/contract').Contract;
+
+    const { render: r } = await import('@testing-library/react');
+    const view = r(
+      <DynamicExperienceRenderer contract={contract} experienceId="select-demo" />
+    );
+    const options = view.container.querySelectorAll('option');
+    expect([...options].map((o) => o.textContent)).toContain('Food');
+    expect([...options].map((o) => o.textContent)).toContain('Travel');
+  });
+});

@@ -581,6 +581,14 @@ interface SelectOption {
 }
 
 function normalizeOptions(options: unknown): SelectOption[] {
+  // Models sometimes bind options as a JSON string constant; tolerate it.
+  if (typeof options === 'string' && options.trim().startsWith('[')) {
+    try {
+      options = JSON.parse(options);
+    } catch {
+      return [];
+    }
+  }
   if (!Array.isArray(options)) return [];
   return options.map((option) => {
     if (option && typeof option === 'object') {

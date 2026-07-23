@@ -610,7 +610,7 @@ export const ELEMENT_MANIFESTS: Record<string, ElementManifest> = {
     passthroughProps: ['className'],
     bindableProps: ['options'],
     howto:
-      'Bind "options" as ["a","b"] or [{"value","label"}] (state or constant with a typed value). Operations read the selection via {source: "ui-element", sourceId: "<id>"}.',
+      'Fixed choices go in properties as a REAL array: "properties": {"options": [{"value": "food", "label": "Food"}, ...]} (a bare ["a","b"] also works). Only bind options when they come from state. Operations read the selection via {source: "ui-element", sourceId: "<id>"}.',
   },
   checkbox: {
     type: 'checkbox',

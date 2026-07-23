@@ -375,6 +375,15 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
   };
   const stateReads = new Map<string, string>(); // key -> first reading property
   const stateWrites = new Set<string>(Object.keys(contract.initialState ?? {}));
+  const objectArrayKeys = new Set<string>();
+  for (const op of contract.operations) {
+    if (op.operationName.startsWith('list.')) {
+      const keyInput = op.inputs.find((input) => input.name === 'key');
+      if (keyInput) {
+        objectArrayKeys.add(String(keyInput.value ?? keyInput.sourceId));
+      }
+    }
+  }
   const operationIds = new Set(contract.operations.map((op) => op.id));
   const missingOperationRefs = new Set<string>();
 
@@ -625,6 +634,26 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
             'UNKNOWN_INPUT'
           );
           continue;
+        }
+
+        // A numbers-array input reading a list-built state key (objects by
+        // construction) silently computes over nothing without a projection.
+        const spec = def.inputs.find((candidate) => candidate.name === input.name);
+        const wantsNumbers =
+          spec?.type === 'array' && /number/i.test(spec.description ?? '');
+        const hasTransforms =
+          (input.transforms?.length ?? 0) > 0 || Boolean(input.transform);
+        if (
+          wantsNumbers &&
+          !hasTransforms &&
+          input.source === 'state' &&
+          objectArrayKeys.has(input.sourceId)
+        ) {
+          fail(
+            inputPath,
+            `"${input.sourceId}" holds objects (built by a list operation); project the numeric field first, e.g. transforms [{"type": "pluck", "parameters": {"field": "<field>"}}]`,
+            'NEEDS_PROJECTION'
+          );
         }
       }
 

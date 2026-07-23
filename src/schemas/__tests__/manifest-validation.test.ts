@@ -601,6 +601,50 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
     }
   });
 
+  it('demands a projection when object arrays feed number-array inputs', () => {
+    FRAGMENT_OPERATIONS['stats.summary'] = {
+      name: 'stats.summary',
+      description: 'x',
+      inputs: [
+        { name: 'values', type: 'array', required: true, description: 'Array of numbers' }
+      ],
+      outputs: [{ name: 'sum', type: 'number' }],
+      execute: async () => ({})
+    };
+    try {
+      const base = {
+        elements: [{ id: 'add-btn', type: 'button', properties: { text: 'Add' } }],
+        operations: [
+          {
+            id: 'op-add',
+            operationName: 'list.append',
+            inputs: [
+              { name: 'key', source: 'constant', sourceId: 'expenses' },
+              { name: 'item.amount', source: 'ui-element', sourceId: 'add-btn' }
+            ]
+          },
+          {
+            id: 'op-stats',
+            operationName: 'stats.summary',
+            inputs: [{ name: 'values', source: 'state', sourceId: 'expenses' }]
+          }
+        ]
+      };
+      const bare = checkContract(rawContract(base));
+      expect(bare.result.errors.map((e) => e.code)).toEqual(['NEEDS_PROJECTION']);
+      expect(bare.result.errors[0].message).toContain('pluck');
+
+      const projected = JSON.parse(JSON.stringify(base));
+      projected.operations[1].inputs[0].transforms = [
+        { type: 'pluck', parameters: { field: 'amount' } }
+      ];
+      const good = checkContract(rawContract(projected));
+      expect(good.result.errors).toEqual([]);
+    } finally {
+      delete FRAGMENT_OPERATIONS['stats.summary'];
+    }
+  });
+
   it('normalizes unknown themes and accents with a warning', () => {
     const { contract, result } = checkContract(
       rawContract({ styling: { theme: 'neon', accent: 'plaid' } })
