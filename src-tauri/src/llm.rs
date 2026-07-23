@@ -539,7 +539,11 @@ async fn llm_chat_impl(
         .unwrap_or(DEFAULT_MAX_TOKENS);
     let temperature = request.temperature.or(stored.temperature);
     let json_mode = request.json_mode.unwrap_or(false);
-    let base_url = request.base_url.or(stored.base_url);
+    // The stored base URL belongs to the local provider; official providers
+    // have fixed endpoints and must not inherit it.
+    let base_url = request.base_url.or_else(|| {
+        if provider == "local" { stored.base_url.clone() } else { None }
+    });
 
     let chunk_sink = if request.stream { on_chunk.as_ref() } else { None };
 

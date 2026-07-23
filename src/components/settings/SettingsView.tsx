@@ -176,15 +176,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
             ))}
           </datalist>
         </label>
-        {(provider === 'local' || provider === 'openai' || provider === 'deepseek') && (
+        {provider === 'local' && (
           <label className="settings-field">
-            <span>Base URL {provider === 'local' ? '(required)' : '(optional)'}</span>
+            <span>Base URL (required)</span>
             <input
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder={
-                provider === 'local' ? 'http://localhost:11434/v1' : 'leave empty for the default'
-              }
+              placeholder="http://localhost:11434/v1"
               disabled={busy}
             />
           </label>
