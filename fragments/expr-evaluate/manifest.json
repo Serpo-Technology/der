@@ -1,0 +1,55 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.expr-evaluate",
+  "name": "Expressions",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Safe arithmetic expression evaluation for calculators and derived values.",
+  "namespace": "expr",
+  "capabilities": [],
+  "wasmSha256": "e68fa4cb9f6cc687229899f7ee52b9d773397c1c735091f7420f76ca66a94aea",
+  "createdAt": "2026-07-23T04:23:52Z",
+  "operations": [
+    {
+      "name": "expr.evaluate",
+      "description": "Evaluates an arithmetic expression string and returns its numeric value.",
+      "inputs": [
+        {
+          "name": "expression",
+          "type": "string",
+          "required": true,
+          "description": "Arithmetic expression: + - * / % ^, parentheses, unary minus, sqrt/abs/floor/ceil/round, two-argument min/max/pow, and the constants pi and e"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "number",
+          "description": "The evaluated result"
+        }
+      ],
+      "howto": "Calculator pattern: bind expression from the input element ({\"source\": \"ui-element\", \"sourceId\": \"expr-in\"}) and wire the operation to a Calculate button click; route the value output to a state key shown by a text element (add a round transform on the display binding for fixed decimals). Everything runs locally; no network. A malformed expression, division by zero, or sqrt of a negative number is an error.",
+      "example": {
+        "id": "op-calc",
+        "operationName": "expr.evaluate",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "expression",
+            "source": "ui-element",
+            "sourceId": "expr-in"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "value",
+            "target": "state",
+            "targetId": "result"
+          }
+        ],
+        "triggers": []
+      }
+    }
+  ]
+}

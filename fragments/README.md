@@ -13,16 +13,20 @@ access to the network, the file system, or any host function.
 
 - `fragment-tool/` is the publisher CLI. It generates Ed25519 key pairs,
   signs manifests, and packs `.derpart` bundles.
-- `stats-summary/` is the demo part. It provides `stats.summary` (count,
+- `stats-summary/` is a demo part. It provides `stats.summary` (count,
   sum, mean, min, max) and `stats.percentile` (linear interpolation
   between closest ranks). Its `manifest.json` is the exact byte sequence
   that gets signed.
+- `expr-evaluate/` is a demo part providing `expr.evaluate`: a safe
+  arithmetic expression evaluator (+ - * / % ^, parentheses, unary minus,
+  sqrt/abs/floor/ceil/round, two-argument min/max/pow, pi and e). It lets
+  calculator-style apps compute locally instead of calling a public API.
 - `keys/` holds publisher keys. Only the public half (`demo.pub`) is
   tracked; the secret half (`demo.key`) is gitignored.
 - `dist/` holds signed bundles ready to install through the app.
 
-Both crates are standalone. Neither belongs to a cargo workspace, and
-neither is part of the `src-tauri` build.
+These crates are standalone. None of them belongs to a cargo workspace,
+and none is part of the `src-tauri` build.
 
 ## Rebuilding the demo part
 
