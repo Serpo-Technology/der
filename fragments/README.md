@@ -29,6 +29,13 @@ the builtin vocabulary.
   fragments (`basics.entry_row`, `basics.stat_tile`), pure-JSON templates
   the renderer expands per instance with parameters. UI-only bundles carry
   an empty `wasmSha256` and are signed exactly like operation parts.
+  `basics.stopwatch` is a partial-experience pack: a fragment that also
+  ships `operations` templates, instantiated per use with the same `{{id}}`
+  scoping as template ids, so one dropped-in element is a working stopwatch
+  with no outer wiring. Its state keys (`<instance id>-elapsed`,
+  `<instance id>-running`) are readable by the rest of the app. Pack
+  operations compose installed operations by name; the verifier rejects an
+  `implementation` on them.
 - `expr-evaluate/` is a demo part providing `expr.evaluate`: a safe
   arithmetic expression evaluator (+ - * / % ^, parentheses, unary minus,
   sqrt/abs/floor/ceil/round, two-argument min/max/pow, pi and e, and

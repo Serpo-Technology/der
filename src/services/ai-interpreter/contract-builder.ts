@@ -386,6 +386,35 @@ export class ContractBuilder {
       const lines = [`- ${def.name}: ${def.description}`];
       if (params) lines.push(`  params: ${params}`);
       lines.push(`  usage: ${usage}`);
+      if (def.operations?.length) {
+        // Self-wired packs: derive the state keys their operations write so
+        // the model can read them from outside without guessing.
+        const keys = [
+          ...new Set(
+            def.operations.flatMap((op) => {
+              const inputs = Array.isArray(op.inputs) ? op.inputs : [];
+              return inputs
+                .filter(
+                  (input): input is { name: string; source: string; sourceId: string } =>
+                    !!input &&
+                    typeof input === 'object' &&
+                    (input as { name?: unknown }).name === 'key' &&
+                    (input as { source?: unknown }).source === 'constant' &&
+                    typeof (input as { sourceId?: unknown }).sourceId === 'string' &&
+                    ((input as { sourceId: string }).sourceId).startsWith('{{id}}')
+                )
+                .map((input) => input.sourceId.replace('{{id}}', '<instance id>'));
+            })
+          ),
+        ];
+        lines.push(
+          `  self-wired: ships its own operations, so add NO operations and no operationId for it${
+            keys.length
+              ? `; it writes state keys ${keys.join(' and ')}, which other bindings and operation inputs may read`
+              : ''
+          }`
+        );
+      }
       if (def.howto) lines.push(`  howto: ${def.howto}`);
       return lines;
     });
@@ -583,7 +612,7 @@ export class ContractBuilder {
 const CREATE_PROMPT_SECTION = `CREATE MODE:
 You are given a user's request for a new app. Respond with ONE JSON object:
 { "spec": { "goal": "one sentence stating what the app does", "assumptions": ["choice you made where the request was open"], "openQuestions": ["question whose answer would change the app"] }, "contract": <the contract> }
-When the catalog has an INSTALLED APPS section and the request asks for what one of those apps already is (same purpose, nothing the app lacks), respond { "spec": <as above>, "recipe": "<name from INSTALLED APPS>" } INSTEAD of a contract: the installed app opens instantly and is already proven to work. Record the reuse as a spec assumption. If the request needs anything the installed app does not do, compose the contract yourself. Never respond with both "contract" and "recipe", and never invent an app name.
+When the catalog has an INSTALLED APPS section and the request asks for what one of those apps already is (same purpose, nothing the app lacks), respond { "spec": <as above>, "recipe": "<name from INSTALLED APPS>" } INSTEAD of a contract: the installed app opens instantly and is already proven to work. The value of "recipe" is the app's exact dotted catalog name, the token before the quoted title (for a line '- apps.expense_tracker "Expense Tracker": ...' it is "apps.expense_tracker"); a title or an invented name is invalid. Record the reuse as a spec assumption. If the request needs anything the installed app does not do, compose the contract yourself. Never respond with both "contract" and "recipe".
 Make reasonable choices instead of blocking on questions; record them as assumptions. Keep both lists short; they are often empty. Return the JSON only: no prose, no code fences.`;
 
 const BLUEPRINT_PROMPT_SECTION = `BLUEPRINT MODE:

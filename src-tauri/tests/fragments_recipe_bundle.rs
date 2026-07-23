@@ -1,6 +1,6 @@
-//! Host tests for recipe bundles: declarative full-experience payloads with
-//! no module. Bundles are built and signed in-test with a fixed key, so each
-//! verifier rule is exercised on its own.
+//! Host tests for declarative payloads: recipe bundles and pack fragments
+//! (UI fragments that ship operations). Bundles are built and signed in-test
+//! with a fixed key, so each verifier rule is exercised on its own.
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
@@ -126,6 +126,53 @@ fn recipe_parts_carry_nothing_else() {
     let err = verify_bundle(&signed_bundle(&manifest)).unwrap_err();
     assert_eq!(err.kind, FragmentErrorKind::VerifyFailed);
     assert!(err.message.contains("only recipes"), "got: {}", err.message);
+}
+
+#[test]
+fn pack_fragment_operations_are_checked() {
+    let fragment_manifest = |operations: Value| {
+        json!({
+            "formatVersion": 1,
+            "abiVersion": 1,
+            "id": "test.packs",
+            "name": "Packs",
+            "version": "1.0.0",
+            "publisher": "test-pub",
+            "description": "Pack fragments.",
+            "namespace": "packs",
+            "capabilities": [],
+            "wasmSha256": "",
+            "uiFragments": [
+                {
+                    "name": "packs.widget",
+                    "description": "A self-wired widget.",
+                    "params": [],
+                    "template": { "id": "{{id}}-box", "type": "container" },
+                    "operations": operations
+                }
+            ]
+        })
+    };
+
+    let good = fragment_manifest(json!([
+        { "id": "{{id}}-go", "operationName": "state.set",
+          "inputs": [ { "name": "key", "source": "constant", "sourceId": "{{id}}-on" } ] }
+    ]));
+    let verified = verify_bundle(&signed_bundle(&good)).expect("pack fragment verifies");
+    assert_eq!(verified.manifest.ui_fragments[0].operations.len(), 1);
+
+    let bad_id = fragment_manifest(json!([
+        { "id": "fixed-id", "operationName": "state.set" }
+    ]));
+    let err = verify_bundle(&signed_bundle(&bad_id)).unwrap_err();
+    assert!(err.message.contains("{{id}}"), "got: {}", err.message);
+
+    let with_impl = fragment_manifest(json!([
+        { "id": "{{id}}-go", "operationName": "http.fetch",
+          "implementation": { "type": "remote", "endpoint": "https://example.com" } }
+    ]));
+    let err = verify_bundle(&signed_bundle(&with_impl)).unwrap_err();
+    assert!(err.message.contains("implementation"), "got: {}", err.message);
 }
 
 #[test]

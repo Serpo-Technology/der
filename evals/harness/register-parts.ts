@@ -61,6 +61,7 @@ export function registerRunnableParts(dir: string): void {
         howto: fragment.howto,
         params: fragment.params ?? [],
         template: fragment.template,
+        operations: fragment.operations,
       };
     }
     for (const recipe of manifest.recipes ?? []) {

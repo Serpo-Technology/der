@@ -116,6 +116,37 @@ describe('ContractBuilder', () => {
     });
   });
 
+  describe('pack fragments in the catalog', () => {
+    it('marks self-wired fragments and derives their state keys', async () => {
+      FRAGMENT_ELEMENTS['basics.stopwatch'] = {
+        name: 'basics.stopwatch',
+        description: 'A complete stopwatch.',
+        params: [{ name: 'label', type: 'string', default: 'Stopwatch' }],
+        template: { id: '{{id}}-box', type: 'container' },
+        operations: [
+          {
+            id: '{{id}}-advance',
+            operationName: 'counter.add',
+            inputs: [{ name: 'key', source: 'constant', sourceId: '{{id}}-elapsed' }]
+          },
+          {
+            id: '{{id}}-run',
+            operationName: 'state.set',
+            inputs: [{ name: 'key', source: 'constant', sourceId: '{{id}}-running' }]
+          }
+        ]
+      };
+      try {
+        const { system } = await builder.renderCreatePrompt('anything');
+        expect(system).toContain('self-wired: ships its own operations');
+        expect(system).toContain('<instance id>-elapsed');
+        expect(system).toContain('<instance id>-running');
+      } finally {
+        delete FRAGMENT_ELEMENTS['basics.stopwatch'];
+      }
+    });
+  });
+
   describe('integration credentials in the catalog', () => {
     it('lists configured credential names for auth binding', async () => {
       vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);

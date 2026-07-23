@@ -273,6 +273,36 @@
       }
     },
     {
+      "id": "reading-timer",
+      "prompt": "A reading timer: a stopwatch I can start, stop, and reset while I read",
+      "behavior": {
+        "steps": [
+          { "do": "click", "on": ["start"] },
+          { "do": "wait", "ms": 2400 },
+          { "do": "click", "on": ["stop"] },
+          { "expect": "text", "match": "/\\b[2-3]\\b/" },
+          { "do": "click", "on": ["reset"] },
+          { "expect": "text", "match": "/\\b0\\b/" }
+        ]
+      }
+    },
+    {
+      "id": "focus-log",
+      "prompt": "Focus sessions: a stopwatch with start, stop, and reset; a task name input with a Log session button that appends the task and the stopwatch's elapsed seconds to a session list below",
+      "behavior": {
+        "steps": [
+          { "do": "click", "on": ["start"] },
+          { "do": "wait", "ms": 2400 },
+          { "do": "click", "on": ["stop"] },
+          { "do": "type", "into": ["task", "name", "what"], "value": "read paper" },
+          { "do": "click", "on": ["log"] },
+          { "expect": "rowCount", "count": 1 },
+          { "expect": "text", "match": "read paper" },
+          { "expect": "text", "match": "/\\b[2-3]\\b/" }
+        ]
+      }
+    },
+    {
       "id": "expense-notes",
       "prompt": "Expense tracker with a category dropdown (food, travel, other), a category filter, a total for the visible entries, and a short note on each expense that shows in its row",
       "behavior": {

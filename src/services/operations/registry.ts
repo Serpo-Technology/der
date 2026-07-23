@@ -743,6 +743,10 @@ export interface UiFragmentDef {
   howto?: string;
   params: UiFragmentParam[];
   template: Record<string, unknown>;
+  /** Present on partial-experience packs: operation templates instantiated
+   * per use with the same {{id}} scoping as template ids, so the pattern
+   * works with no outer wiring. */
+  operations?: Array<Record<string, unknown>>;
 }
 
 export const FRAGMENT_ELEMENTS: Record<string, UiFragmentDef> = {};

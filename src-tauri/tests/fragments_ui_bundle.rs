@@ -13,8 +13,22 @@ fn ui_only_bundle_verifies_without_a_module() {
     let verified = verify_bundle(&raw).expect("verifies");
     assert_eq!(verified.manifest.id, "der-labs.ui-basics");
     assert!(verified.manifest.operations.is_empty());
-    assert_eq!(verified.manifest.ui_fragments.len(), 2);
+    assert_eq!(verified.manifest.ui_fragments.len(), 3);
     assert!(verified.wasm.is_empty());
+
+    // The stopwatch is a partial-experience pack: it ships {{id}}-scoped
+    // operation templates alongside its template.
+    let stopwatch = verified
+        .manifest
+        .ui_fragments
+        .iter()
+        .find(|fragment| fragment.name == "basics.stopwatch")
+        .expect("stopwatch fragment present");
+    assert_eq!(stopwatch.operations.len(), 4);
+    assert!(stopwatch
+        .operations
+        .iter()
+        .all(|op| op["id"].as_str().unwrap_or_default().starts_with("{{id}}")));
 }
 
 #[test]

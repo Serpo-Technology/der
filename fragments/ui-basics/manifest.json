@@ -3,9 +3,9 @@
   "abiVersion": 1,
   "id": "der-labs.ui-basics",
   "name": "UI Basics",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "der-labs",
-  "description": "Composed UI patterns: a correct entry row and a stat tile.",
+  "description": "Composed UI patterns: an entry row, a stat tile, and a self-wired stopwatch.",
   "namespace": "basics",
   "capabilities": [],
   "wasmSha256": "",
@@ -126,6 +126,199 @@
           }
         ]
       }
+    },
+    {
+      "name": "basics.stopwatch",
+      "description": "A complete elapsed-seconds stopwatch: Start, Stop, and Reset, ticking once a second while running.",
+      "howto": "Drop one element and it works; it ships its own operations, so do NOT add operations or an operationId for it. It keeps its elapsed seconds in state key \"<instance id>-elapsed\" and its running flag in \"<instance id>-running\"; other elements and operations may read both (e.g. a list.append input {\"name\": \"item.seconds\", \"source\": \"state\", \"sourceId\": \"<instance id>-elapsed\"} logs the timed value).",
+      "params": [
+        {
+          "name": "label",
+          "type": "string",
+          "default": "Stopwatch",
+          "description": "Caption above the time"
+        }
+      ],
+      "template": {
+        "id": "{{id}}-box",
+        "type": "container",
+        "properties": {
+          "direction": "column",
+          "gap": "8"
+        },
+        "children": [
+          {
+            "id": "{{id}}-label",
+            "type": "text",
+            "properties": {
+              "content": "{{label}}",
+              "role": "caption"
+            }
+          },
+          {
+            "id": "{{id}}-display",
+            "type": "text",
+            "properties": {
+              "role": "title"
+            },
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "{{id}}-elapsed",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "{{value}} s"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "{{id}}-controls",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8"
+            },
+            "children": [
+              {
+                "id": "{{id}}-start",
+                "type": "button",
+                "properties": {
+                  "text": "Start",
+                  "variant": "primary"
+                },
+                "visibleWhen": {
+                  "source": "state",
+                  "sourceId": "{{id}}-running",
+                  "operator": "falsy"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "{{id}}-run"
+                  }
+                ]
+              },
+              {
+                "id": "{{id}}-stop",
+                "type": "button",
+                "properties": {
+                  "text": "Stop"
+                },
+                "visibleWhen": {
+                  "source": "state",
+                  "sourceId": "{{id}}-running",
+                  "operator": "truthy"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "{{id}}-pause"
+                  }
+                ]
+              },
+              {
+                "id": "{{id}}-reset",
+                "type": "button",
+                "properties": {
+                  "text": "Reset",
+                  "size": "sm"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "{{id}}-clear"
+                  }
+                ]
+              },
+              {
+                "id": "{{id}}-tick",
+                "type": "timer",
+                "visibleWhen": {
+                  "source": "state",
+                  "sourceId": "{{id}}-running",
+                  "operator": "truthy"
+                },
+                "eventBindings": [
+                  {
+                    "event": "tick",
+                    "operationId": "{{id}}-advance"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "operations": [
+        {
+          "id": "{{id}}-run",
+          "operationName": "state.set",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "{{id}}-running"
+            },
+            {
+              "name": "value",
+              "source": "constant",
+              "sourceId": "true",
+              "value": true
+            }
+          ]
+        },
+        {
+          "id": "{{id}}-pause",
+          "operationName": "state.set",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "{{id}}-running"
+            },
+            {
+              "name": "value",
+              "source": "constant",
+              "sourceId": "false",
+              "value": false
+            }
+          ]
+        },
+        {
+          "id": "{{id}}-clear",
+          "operationName": "state.set",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "{{id}}-elapsed"
+            },
+            {
+              "name": "value",
+              "source": "constant",
+              "sourceId": "0",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "{{id}}-advance",
+          "operationName": "counter.add",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "{{id}}-elapsed"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

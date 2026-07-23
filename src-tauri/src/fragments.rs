@@ -108,7 +108,12 @@ pub struct CredentialRequirement {
 }
 
 /// A composed UI pattern: a template subtree instantiated by the renderer
-/// with per-use parameters. Pure JSON; carries no code.
+/// with per-use parameters. Pure JSON; carries no code. A fragment that also
+/// ships `operations` is a partial-experience pack: the operation templates
+/// instantiate per use with the same `{{id}}` scoping as template ids, so a
+/// dropped-in pattern works with no outer wiring. Pack operations compose
+/// the installed vocabulary by name only; they may not carry an
+/// implementation (remote power stays in integration parts).
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct UiFragmentSpec {
@@ -119,6 +124,8 @@ pub struct UiFragmentSpec {
     #[serde(default)]
     pub params: Vec<UiParamSpec>,
     pub template: Value,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub operations: Vec<Value>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -590,6 +597,37 @@ pub fn verify_bundle(raw: &[u8]) -> FragmentResult<VerifiedBundle> {
                 FragmentErrorKind::VerifyFailed,
                 format!("UI fragment \"{}\" template must be an object", fragment.name),
             ));
+        }
+        if fragment.operations.len() > MAX_OPERATIONS {
+            return Err(fail(
+                FragmentErrorKind::VerifyFailed,
+                format!("UI fragment \"{}\" declares too many operations", fragment.name),
+            ));
+        }
+        for op in &fragment.operations {
+            let id = op.get("id").and_then(Value::as_str).unwrap_or_default();
+            let op_name = op
+                .get("operationName")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if !id.starts_with("{{id}}") || op_name.is_empty() {
+                return Err(fail(
+                    FragmentErrorKind::VerifyFailed,
+                    format!(
+                        "UI fragment \"{}\" operations need an id starting with {{{{id}}}} and an operationName",
+                        fragment.name
+                    ),
+                ));
+            }
+            if op.get("implementation").is_some() {
+                return Err(fail(
+                    FragmentErrorKind::VerifyFailed,
+                    format!(
+                        "UI fragment \"{}\" operations compose installed operations by name; an implementation is not allowed",
+                        fragment.name
+                    ),
+                ));
+            }
         }
     }
     for recipe in &manifest.recipes {

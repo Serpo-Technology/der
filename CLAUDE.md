@@ -218,7 +218,17 @@ Installed signed parts extend the vocabulary in four kinds: compute parts (wasm)
 fragments (`uiFragments` templates, no wasm), integration parts (a `service` block plus
 per-op `remote` specs, no wasm), and recipe parts (`recipes` entries, each a complete
 behaviorally proven contract with title/description/keywords and its captured spec header; a
-recipe bundle ships nothing but recipes). Recipes publish into `FRAGMENT_RECIPES`;
+recipe bundle ships nothing but recipes). A fragment that also declares `operations` is a
+partial-experience pack: its operation templates instantiate per use with the same `{{id}}`
+scoping as template ids (state keys namespaced per instance, e.g. `<instance id>-elapsed`), so
+a dropped-in pattern works with no outer wiring. `expandPackOperations`
+(`src/services/fragments/ui-fragments.ts`) is the one expansion: the renderer merges the
+instantiated operations into its lookup, and `checkAgainstManifests` validates them through
+every existing rule on fresh copies (pack paths name the instance), while the stored contract
+keeps only the compact instance element. Pack operations compose the installed vocabulary by
+name only; the verifier rejects an `implementation` on them, and the expansion strips one
+defensively. The catalog marks such fragments self-wired and derives their state keys so
+outer bindings can read them. Recipes publish into `FRAGMENT_RECIPES`;
 `RecipeService` (`src/services/recipes/`) revalidates each contract against the installed
 vocabulary (zod parse + `checkAgainstManifests` on a clone, so a recipe whose parts are
 missing surfaces its problems instead of rendering broken) and instantiates through
@@ -250,8 +260,8 @@ Parts and the signing tool live in `fragments/` as standalone crates (NOT src-ta
 members); committed signed bundles keep `cargo test` hermetic; rebuilding needs
 `rustup target add wasm32-unknown-unknown`. Current library: expr-evaluate and dates and
 stats-summary (compute), frankfurter and openweather and coingecko and wikipedia
-(integrations), ui-basics (entry_row, stat_tile), starter-apps (the apps.expense_tracker
-recipe, taken verbatim from the proven eval corpus).
+(integrations), ui-basics (entry_row, stat_tile, and the self-wired stopwatch pack),
+starter-apps (the apps.expense_tracker recipe, taken verbatim from the proven eval corpus).
 
 ### Component repository
 

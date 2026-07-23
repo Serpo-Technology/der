@@ -24,7 +24,11 @@ import {
   getUiFragmentDef,
 } from '../services/operations/registry';
 import { TRANSFORMS } from '../services/operations/transforms';
-import { expandUiFragment } from '../services/fragments/ui-fragments';
+import {
+  PackOperationInstance,
+  expandPackOperations,
+  expandUiFragment,
+} from '../services/fragments/ui-fragments';
 
 export const TransformFunctionSchema = z.object({
   type: z.string().min(1),
@@ -392,6 +396,20 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     }
   };
 
+  // Partial-experience packs: fragment instances that ship operations. Their
+  // instantiated operations validate alongside the contract's own (on fresh
+  // copies; the stored contract keeps only the compact instance elements),
+  // and every rule below reads the merged list. A pack whose vocabulary is
+  // gone therefore fails here, naming the instance, instead of rendering a
+  // dead pattern.
+  const packInstances = expandPackOperations(contract.elements as UIElement[]);
+  const packOperations = packInstances.map(
+    (pack) => pack.operation as unknown as ContractShape['operations'][number]
+  );
+  const allOperations = [...contract.operations, ...packOperations];
+  const packOpPath = (pack: PackOperationInstance) =>
+    `${pack.path} (${pack.fragmentType} operation "${pack.operation.id}")`;
+
   // Collect element ids, state reads, and state writes.
   const elementIds = new Set<string>();
   const knownElementIds = () => {
@@ -407,7 +425,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
   // set.* fields are tracked apart because new rows start without them.
   const appendFieldsByKey = new Map<string, Set<string>>();
   const laterFieldsByKey = new Map<string, Set<string>>();
-  for (const op of contract.operations) {
+  for (const op of allOperations) {
     if (op.operationName.startsWith('list.')) {
       const keyInput = op.inputs.find((input) => input.name === 'key');
       if (!keyInput) continue;
@@ -515,14 +533,14 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       if (!SHAPE_PRESERVING_TRANSFORMS.has(step.type)) break;
     }
   };
-  const operationIds = new Set(contract.operations.map((op) => op.id));
+  const operationIds = new Set(allOperations.map((op) => op.id));
   const missingOperationRefs = new Set<string>();
   const referencedOperationIds = new Set<string>();
   // Element ids something consumes: operation inputs and outputs, or live
   // transform parameters. A control outside every one of these does nothing.
   const consumedElementIds = new Set<string>();
   const controlCandidates: Array<{ id: string; type: string; path: string }> = [];
-  for (const op of contract.operations) {
+  for (const op of allOperations) {
     for (const input of op.inputs) {
       if (input.source === 'ui-element') consumedElementIds.add(input.sourceId);
     }
@@ -540,7 +558,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
   // feeding each list-built key's append.
   const displayedListKeys = new Set<string>();
   const appendElementsByKey = new Map<string, Set<string>>();
-  for (const op of contract.operations) {
+  for (const op of allOperations) {
     if (op.operationName !== 'list.append') continue;
     const keyInput = op.inputs.find((input) => input.name === 'key');
     if (!keyInput) continue;
@@ -591,13 +609,22 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
 
     // Installed UI fragments: enforce their parameter contract. A fragment
     // instance renders its expanded subtree, so references to those ids
-    // (e.g. "<instance>-input") are valid.
+    // (e.g. "<instance>-input") are valid, and the expansion's own event
+    // bindings count as wiring (a pack's operations are triggered from
+    // inside its template).
     const fragmentDef = getUiFragmentDef(element.type);
     if (fragmentDef) {
       try {
         const expanded = expandUiFragment(element, fragmentDef);
         collectExpandedIds(expanded);
         collectDisplayedKeys(expanded);
+        const collectExpandedBindings = (node: UIElement) => {
+          for (const binding of node.eventBindings ?? []) {
+            referencedOperationIds.add(binding.operationId);
+          }
+          node.children?.forEach(collectExpandedBindings);
+        };
+        collectExpandedBindings(expanded);
       } catch {
         // Param problems surface through the checks below.
       }
@@ -752,9 +779,9 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     });
   }
 
-  // Operations against manifests.
-  contract.operations.forEach((op, opIndex) => {
-    const opPath = `operations.${opIndex}`;
+  // Operations against manifests: the contract's own, then every pack
+  // instance's (same rules, pack-flavored paths).
+  const checkOperation = (op: ContractShape['operations'][number], opPath: string) => {
     const def = getOperationDef(op.operationName);
     const isBuiltinName = Boolean(def);
     const hasEndpoint = Boolean(op.implementation?.endpoint);
@@ -982,36 +1009,48 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
         stateWrites.add(String(keyInput.value ?? keyInput.sourceId));
       }
     }
-  });
+  };
+  contract.operations.forEach((op, opIndex) => checkOperation(op, `operations.${opIndex}`));
+  packInstances.forEach((pack) =>
+    checkOperation(pack.operation as ContractShape['operations'][number], packOpPath(pack))
+  );
 
   // An operation nothing runs is a dead feature: some binding, tick, or
   // fragment parameter must reference it.
-  contract.operations.forEach((op, opIndex) => {
+  const checkWired = (op: ContractShape['operations'][number], opPath: string) => {
     const wired = referencedOperationIds.has(op.id) || (op.triggers ?? []).length > 0;
     if (!wired) {
       fail(
-        `operations.${opIndex}`,
+        opPath,
         `Nothing runs operation "${op.id}"; wire it to an element event (a click, change, or timer tick) or remove it`,
         'ORPHAN_OPERATION'
       );
     }
-  });
+  };
+  contract.operations.forEach((op, opIndex) => checkWired(op, `operations.${opIndex}`));
+  packInstances.forEach((pack) =>
+    checkWired(pack.operation as ContractShape['operations'][number], packOpPath(pack))
+  );
 
   // Editing a list nothing ever fills is a feature that can never happen.
   const LIST_EDIT_OPERATIONS = new Set(['list.updateWhere', 'list.removeWhere', 'list.toggleField']);
-  contract.operations.forEach((op, opIndex) => {
+  const checkListEdit = (op: ContractShape['operations'][number], opPath: string) => {
     if (!LIST_EDIT_OPERATIONS.has(op.operationName)) return;
     const keyInput = op.inputs.find((input) => input.name === 'key');
     if (!keyInput) return;
     const key = String(keyInput.value ?? keyInput.sourceId);
     if (!appendFieldsByKey.has(key)) {
       fail(
-        `operations.${opIndex}`,
+        opPath,
         `${op.operationName} edits "${key}" but nothing ever fills it; add a list.append flow with entry controls, or seed initialState.${key} with starting rows`,
         'LIST_NEVER_FILLED'
       );
     }
-  });
+  };
+  contract.operations.forEach((op, opIndex) => checkListEdit(op, `operations.${opIndex}`));
+  packInstances.forEach((pack) =>
+    checkListEdit(pack.operation as ContractShape['operations'][number], packOpPath(pack))
+  );
 
   // Rows someone adds must be visible somewhere.
   for (const key of appendElementsByKey.keys()) {

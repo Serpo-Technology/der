@@ -105,14 +105,14 @@
     {
       "id": "der-labs.ui-basics",
       "name": "UI Basics",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "publisher": "der-labs",
       "namespace": "basics",
-      "description": "Composed UI patterns: a correct entry row and a stat tile.",
+      "description": "Composed UI patterns: an entry row, a stat tile, and a self-wired stopwatch.",
       "operations": [],
       "bundleUrl": "der-labs.ui-basics.derpart",
-      "bundleSha256": "02c12cc9621db07b38b6e5ea6b6349777d8bd2d76d8dee4545deb7d2e9d03a4c",
-      "bundleBytes": 5024
+      "bundleSha256": "a0290b5c0f770fe9200159ae1f66000307d39d022cbf025fbb1dd0f1702e004c",
+      "bundleBytes": 12476
     },
     {
       "id": "der-labs.wikipedia",

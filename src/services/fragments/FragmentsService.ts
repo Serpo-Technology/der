@@ -53,6 +53,7 @@ interface FragmentUiSpec {
     description?: string;
   }>;
   template: Record<string, unknown>;
+  operations?: Array<Record<string, unknown>>;
 }
 
 interface FragmentOpSpec {
@@ -202,6 +203,7 @@ export class FragmentsService {
           howto: fragment.howto,
           params: fragment.params ?? [],
           template: fragment.template as Record<string, unknown>,
+          operations: fragment.operations,
         };
       }
       for (const recipe of part.manifest.recipes ?? []) {

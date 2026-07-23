@@ -13,6 +13,7 @@ import { OperationExecutor, EventContext } from './OperationExecutor';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { normalizeContract } from '../../schemas/contract';
 import { STYLE_ACCENTS, STYLE_THEMES } from '../../services/operations/registry';
+import { expandPackOperations } from '../../services/fragments/ui-fragments';
 
 interface DynamicExperienceRendererProps {
   contract: Contract;
@@ -39,6 +40,16 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
 
   // Convert legacy trigger wiring into event bindings before anything runs.
   const normalizedContract = useMemo(() => normalizeContract(contract), [contract]);
+
+  // Pack instances derive their shipped operations per render; the contract
+  // itself keeps only the compact instance elements.
+  const effectiveOperations = useMemo(
+    () => [
+      ...normalizedContract.operations,
+      ...expandPackOperations(normalizedContract.elements ?? []).map((pack) => pack.operation)
+    ],
+    [normalizedContract]
+  );
 
   const stateManager = useMemo(() => new ExperienceStateManager(experienceId), [experienceId]);
   const operationExecutor = useMemo(() => new OperationExecutor(), []);
@@ -83,7 +94,7 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
   const handleOperationExecution = useCallback(
     async (operationId: string, eventContext: EventContext) => {
       try {
-        const operation = normalizedContract.operations.find(op => op.id === operationId);
+        const operation = effectiveOperations.find(op => op.id === operationId);
         if (!operation) {
           throw new Error(`Operation ${operationId} not found in contract`);
         }
@@ -109,7 +120,7 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
         stateManager.setLoading(operationId, false);
       }
     },
-    [normalizedContract.operations, stateManager, operationExecutor, onError]
+    [effectiveOperations, stateManager, operationExecutor, onError]
   );
 
   // Controlled inputs write their value here on every change
