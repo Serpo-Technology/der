@@ -339,6 +339,8 @@ fn namespace_ok(ns: &str) -> bool {
         && bytes[1..].iter().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'_')
 }
 
+// Segments start lowercase and may continue in camelCase, matching the
+// builtin vocabulary (list.updateWhere, date.diffDays).
 fn op_name_ok(name: &str, namespace: &str) -> bool {
     if !name.starts_with(&format!("{}.", namespace)) {
         return false;
@@ -351,7 +353,7 @@ fn op_name_ok(name: &str, namespace: &str) -> bool {
                 && bytes[0].is_ascii_lowercase()
                 && bytes[1..]
                     .iter()
-                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'_')
+                    .all(|b| b.is_ascii_alphanumeric() || *b == b'_')
         })
 }
 
@@ -1632,6 +1634,16 @@ mod remote_tests {
         let mut inputs = serde_json::Map::new();
         inputs.insert("to".to_string(), json!("EUR"));
         assert_eq!(super::substitute_placeholders("rates.{to}", &inputs), "rates.EUR");
+    }
+
+    #[test]
+    fn op_names_allow_camel_case_segments() {
+        assert!(super::op_name_ok("date.diffDays", "date"));
+        assert!(super::op_name_ok("list.update_where", "list"));
+        assert!(super::op_name_ok("fx.rate", "fx"));
+        assert!(!super::op_name_ok("date.DiffDays", "date"), "leading uppercase");
+        assert!(!super::op_name_ok("other.diffDays", "date"), "outside namespace");
+        assert!(!super::op_name_ok("date", "date"), "no segment");
     }
 
     #[test]

@@ -61,7 +61,7 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
         setPartSecrets((prev) => ({ ...prev, [fragmentId]: names }));
         setSecretDrafts((prev) => ({ ...prev, [draftKey]: '' }));
       } catch (error) {
-        onError?.(error instanceof Error ? error.message : String(error));
+        onError?.(error instanceof Error ? error.message : describeInvokeError(error));
       } finally {
         setBusy(false);
       }
@@ -78,7 +78,7 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
       setRegistryParts(index.parts);
       localStorage.setItem('der-registry-url', url);
     } catch (error) {
-      onError?.(error instanceof Error ? error.message : String(error));
+      onError?.(error instanceof Error ? error.message : describeInvokeError(error));
     } finally {
       setBusy(false);
     }
@@ -103,7 +103,7 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
       try {
         setStaged(await fragmentsService.stageFromRegistry(entry.bundleUrl));
       } catch (error) {
-        onError?.(error instanceof Error ? error.message : String(error));
+        onError?.(error instanceof Error ? error.message : describeInvokeError(error));
       } finally {
         setBusy(false);
       }
@@ -456,6 +456,7 @@ export function versionNewer(a: string, b: string): boolean {
 }
 
 function describeInvokeError(error: unknown): string {
+  if (typeof error === 'string' && error) return error;
   if (error && typeof error === 'object' && 'message' in error) {
     return String((error as { message: unknown }).message);
   }
