@@ -17,14 +17,21 @@ import {
 import type { ContractShape } from '../../src/schemas/contract';
 import { repositoryService } from '../../src/services/repository/repository-service';
 import { registerBuiltins } from '../../src/services/repository/builtins';
+import { loadDistParts } from './load-parts';
 
 console.warn = () => {};
 console.error = () => {};
 
 async function main() {
-  const file = process.argv[2];
+  const args = process.argv.slice(2);
+  const partsIndex = args.indexOf('--with-parts');
+  if (partsIndex !== -1) {
+    loadDistParts('fragments/dist');
+    args.splice(partsIndex, 1);
+  }
+  const file = args[0];
   if (!file) {
-    console.error('Usage: npx tsx scripts/diffusion-probe/validate.ts <model-output-file>');
+    console.error('Usage: npx tsx scripts/diffusion-probe/validate.ts [--with-parts] <model-output-file>');
     process.exit(2);
   }
   await registerBuiltins(repositoryService);

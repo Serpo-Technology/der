@@ -15,6 +15,8 @@ import { join } from 'node:path';
 import { ContractBuilder } from '../../src/services/ai-interpreter/contract-builder';
 import { repositoryService } from '../../src/services/repository/repository-service';
 import { registerBuiltins } from '../../src/services/repository/builtins';
+import { loadDistParts } from './load-parts';
+
 
 // The repository layer logs fallback noise outside Tauri; keep output clean.
 console.warn = () => {};
@@ -32,6 +34,11 @@ const compactIndex = args.indexOf('--compact');
 if (compactIndex !== -1) {
   compact = true;
   args.splice(compactIndex, 1);
+}
+const partsIndex = args.indexOf('--with-parts');
+if (partsIndex !== -1) {
+  loadDistParts('fragments/dist');
+  args.splice(partsIndex, 1);
 }
 const description = args.join(' ').trim() ||
   'Create a todo list app with add, delete, and mark complete functionality';

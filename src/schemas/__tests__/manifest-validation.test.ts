@@ -450,6 +450,58 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
     }
   });
 
+  it('accepts operation references into a fragment expansion', () => {
+    FRAGMENT_ELEMENTS['basics.entry_row'] = {
+      name: 'basics.entry_row',
+      description: 'x',
+      params: [
+        { name: 'label', type: 'string', required: true },
+        { name: 'operationId', type: 'operationId', required: true }
+      ],
+      template: {
+        id: '{{id}}-row',
+        type: 'container',
+        children: [
+          { id: '{{id}}-input', type: 'input', properties: { label: '{{label}}' } },
+          {
+            id: '{{id}}-btn',
+            type: 'button',
+            properties: { text: 'Add' },
+            eventBindings: [{ event: 'click', operationId: '{{operationId}}' }]
+          }
+        ]
+      }
+    };
+    try {
+      const { result } = checkContract(
+        rawContract({
+          elements: [
+            {
+              id: 'task-entry',
+              type: 'basics.entry_row',
+              properties: { label: 'New task', operationId: 'op-add' }
+            }
+          ],
+          operations: [
+            {
+              id: 'op-add',
+              operationName: 'list.append',
+              inputs: [
+                { name: 'key', source: 'constant', sourceId: 'tasks' },
+                { name: 'item.title', source: 'ui-element', sourceId: 'task-entry-input' }
+              ],
+              outputs: [{ name: 'reset', target: 'ui-element', targetId: 'task-entry-input' }]
+            }
+          ]
+        })
+      );
+
+      expect(result.errors).toEqual([]);
+    } finally {
+      delete FRAGMENT_ELEMENTS['basics.entry_row'];
+    }
+  });
+
   it('normalizes unknown themes and accents with a warning', () => {
     const { contract, result } = checkContract(
       rawContract({ styling: { theme: 'neon', accent: 'plaid' } })

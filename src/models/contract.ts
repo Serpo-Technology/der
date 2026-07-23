@@ -17,6 +17,8 @@ import type {
   DependencyNode
 } from '../types';
 import { validateContract } from '../utils/validation';
+import { getUiFragmentDef } from '../services/operations/registry';
+import { expandUiFragment } from '../services/fragments/ui-fragments';
 
 export class Contract implements IContractInterface {
   public name: string;
@@ -593,11 +595,20 @@ export class Contract implements IContractInterface {
     const warnings: any[] = [];
 
     // Element ids and bindings live at every nesting level, so both the id
-    // collection and the checks walk the whole tree.
+    // collection and the checks walk the whole tree. Installed UI fragment
+    // instances also contribute their expansion's ids.
     const elementIds = new Set<string>();
     const collectIds = (elements: UIElement[]) => {
       for (const element of elements) {
         elementIds.add(element.id);
+        const fragmentDef = getUiFragmentDef(element.type);
+        if (fragmentDef) {
+          try {
+            collectIds([expandUiFragment(element, fragmentDef)]);
+          } catch {
+            // Bad params surface through the manifest checks.
+          }
+        }
         if (element.children?.length) collectIds(element.children);
       }
     };

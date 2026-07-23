@@ -23,6 +23,7 @@ import {
   getUiFragmentDef,
 } from '../services/operations/registry';
 import { TRANSFORMS } from '../services/operations/transforms';
+import { expandUiFragment } from '../services/fragments/ui-fragments';
 
 export const TransformFunctionSchema = z.object({
   type: z.string().min(1),
@@ -374,13 +375,24 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
   const operationIds = new Set(contract.operations.map((op) => op.id));
   const missingOperationRefs = new Set<string>();
 
+  const collectExpandedIds = (element: UIElement) => {
+    elementIds.add(element.id);
+    element.children?.forEach(collectExpandedIds);
+  };
   walkElements(contract.elements as UIElement[], (element, path, inListTemplate) => {
     fixCenteredEntryRows(element, path);
     elementIds.add(element.id);
 
-    // Installed UI fragments: enforce their parameter contract.
+    // Installed UI fragments: enforce their parameter contract. A fragment
+    // instance renders its expanded subtree, so references to those ids
+    // (e.g. "<instance>-input") are valid.
     const fragmentDef = getUiFragmentDef(element.type);
     if (fragmentDef) {
+      try {
+        collectExpandedIds(expandUiFragment(element, fragmentDef));
+      } catch {
+        // Param problems surface through the checks below.
+      }
       const props = (element.properties ?? {}) as Record<string, unknown>;
       for (const param of fragmentDef.params) {
         const value = props[param.name];
