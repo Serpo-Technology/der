@@ -20,6 +20,7 @@ import {
   STYLE_ACCENTS,
   STYLE_THEMES,
   getOperationDef,
+  getUiFragmentDef,
 } from '../services/operations/registry';
 import { TRANSFORMS } from '../services/operations/transforms';
 
@@ -376,6 +377,34 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
   walkElements(contract.elements as UIElement[], (element, path, inListTemplate) => {
     fixCenteredEntryRows(element, path);
     elementIds.add(element.id);
+
+    // Installed UI fragments: enforce their parameter contract.
+    const fragmentDef = getUiFragmentDef(element.type);
+    if (fragmentDef) {
+      const props = (element.properties ?? {}) as Record<string, unknown>;
+      for (const param of fragmentDef.params) {
+        const value = props[param.name];
+        if (param.required && (value === undefined || value === '')) {
+          fail(
+            `${path}.properties.${param.name}`,
+            `UI fragment ${element.type} requires the "${param.name}" parameter`,
+            'MISSING_FRAGMENT_PARAM'
+          );
+          continue;
+        }
+        if (value !== undefined && param.type === 'operationId') {
+          if (typeof value !== 'string' || !operationIds.has(value)) {
+            fail(
+              `${path}.properties.${param.name}`,
+              `"${String(value)}" is not a defined operation id; defined: ${
+                [...operationIds].join(', ') || 'none'
+              }`,
+              'UNKNOWN_OPERATION'
+            );
+          }
+        }
+      }
+    }
 
     // Knob normalization against the element manifest.
     const manifest = ELEMENT_MANIFESTS[element.type];

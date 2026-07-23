@@ -29,6 +29,7 @@ import type { ContractShape } from '../../schemas/contract';
 import {
   BUILTIN_OPERATIONS,
   ELEMENT_MANIFESTS,
+  FRAGMENT_ELEMENTS,
   FRAGMENT_OPERATIONS,
   INTRINSIC_ELEMENT_TYPES,
   STYLE_ACCENTS,
@@ -324,6 +325,20 @@ export class ContractBuilder {
         return lines;
       });
 
+    const uiFragmentLines = Object.values(FRAGMENT_ELEMENTS).flatMap((def) => {
+      const params = def.params
+        .map((param) => {
+          const req = param.required ? '' : '?';
+          const dflt = param.default !== undefined ? ` (default ${JSON.stringify(param.default)})` : '';
+          return `${param.name}${req}: ${param.type}${dflt}`;
+        })
+        .join('; ');
+      const lines = [`- ${def.name}: ${def.description}`];
+      if (params) lines.push(`  params: ${params}`);
+      if (def.howto) lines.push(`  howto: ${def.howto}`);
+      return lines;
+    });
+
     const transformLines = Object.values(TRANSFORMS).map((def) => {
       const params = def.parameters.map((p) => p.name).join(', ');
       return compact
@@ -373,6 +388,13 @@ export class ContractBuilder {
       ...transformLines,
       ...(fragmentLines.length
         ? ['', 'INSTALLED PART OPERATIONS (use the exact name with executionType "builtin"):', ...fragmentLines]
+        : []),
+      ...(uiFragmentLines.length
+        ? [
+            '',
+            'COMPOSED UI FRAGMENTS (use as an element: {"id", "type": "<name>", "properties": {<params>}}; the runtime expands them):',
+            ...uiFragmentLines,
+          ]
         : []),
       ...(customLines.length ? ['', 'REGISTERED CUSTOM OPERATIONS:', ...customLines] : []),
     ].join('\n');

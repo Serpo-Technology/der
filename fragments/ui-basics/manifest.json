@@ -1,0 +1,131 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.ui-basics",
+  "name": "UI Basics",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Composed UI patterns: a correct entry row and a stat tile.",
+  "namespace": "basics",
+  "capabilities": [],
+  "wasmSha256": "",
+  "createdAt": "2026-07-23T05:49:10Z",
+  "operations": [],
+  "uiFragments": [
+    {
+      "name": "basics.entry_row",
+      "description": "A labeled input beside a primary button, bottom-aligned.",
+      "howto": "The input renders with id \"<instance id>-input\"; operations read it with {\"source\": \"ui-element\", \"sourceId\": \"<instance id>-input\"} and can reset it by targeting the same id. Pass the click operation via the operationId parameter.",
+      "params": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Label above the input"
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "default": "",
+          "description": "Input placeholder"
+        },
+        {
+          "name": "buttonText",
+          "type": "string",
+          "default": "Add",
+          "description": "Button caption"
+        },
+        {
+          "name": "operationId",
+          "type": "operationId",
+          "required": true,
+          "description": "Operation run on click"
+        }
+      ],
+      "template": {
+        "id": "{{id}}-row",
+        "type": "container",
+        "properties": {
+          "direction": "row",
+          "gap": "8",
+          "align": "end"
+        },
+        "children": [
+          {
+            "id": "{{id}}-input",
+            "type": "input",
+            "properties": {
+              "label": "{{label}}",
+              "placeholder": "{{placeholder}}"
+            }
+          },
+          {
+            "id": "{{id}}-btn",
+            "type": "button",
+            "properties": {
+              "text": "{{buttonText}}",
+              "variant": "primary"
+            },
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "{{operationId}}"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "basics.stat_tile",
+      "description": "A small caption over a large value bound to a state key.",
+      "howto": "Route an operation output (or a derived value) into the stateKey and the tile displays it. Group several tiles in a row container with gap 16.",
+      "params": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Caption above the value"
+        },
+        {
+          "name": "stateKey",
+          "type": "string",
+          "required": true,
+          "description": "State key the value reads"
+        }
+      ],
+      "template": {
+        "id": "{{id}}-tile",
+        "type": "container",
+        "properties": {
+          "direction": "column",
+          "gap": "4"
+        },
+        "children": [
+          {
+            "id": "{{id}}-label",
+            "type": "text",
+            "properties": {
+              "content": "{{label}}",
+              "role": "caption"
+            }
+          },
+          {
+            "id": "{{id}}-value",
+            "type": "text",
+            "properties": {
+              "role": "title"
+            },
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "{{stateKey}}"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

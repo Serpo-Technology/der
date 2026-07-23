@@ -8,6 +8,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import {
   BUILTIN_OPERATIONS,
+  FRAGMENT_ELEMENTS,
   FRAGMENT_OPERATIONS,
   BuiltinOperationDef,
   BuiltinIoSpec,
@@ -38,6 +39,20 @@ export interface RegistryIndex {
   parts: RegistryPartEntry[];
 }
 
+interface FragmentUiSpec {
+  name: string;
+  description: string;
+  howto?: string;
+  params?: Array<{
+    name: string;
+    type: string;
+    required?: boolean;
+    default?: unknown;
+    description?: string;
+  }>;
+  template: Record<string, unknown>;
+}
+
 interface FragmentOpSpec {
   name: string;
   description: string;
@@ -57,6 +72,7 @@ export interface InstalledFragment {
     description: string;
     namespace: string;
     operations: FragmentOpSpec[];
+    uiFragments?: FragmentUiSpec[];
   };
   fingerprint: string;
   fingerprintGrouped: string;
@@ -143,12 +159,24 @@ export class FragmentsService {
     for (const key of Object.keys(FRAGMENT_OPERATIONS)) {
       delete FRAGMENT_OPERATIONS[key];
     }
+    for (const key of Object.keys(FRAGMENT_ELEMENTS)) {
+      delete FRAGMENT_ELEMENTS[key];
+    }
     for (const part of this.installed) {
       const fragmentId = part.manifest.id;
       for (const op of part.manifest.operations) {
         // Builtins always win; a colliding part operation is unreachable.
         if (BUILTIN_OPERATIONS[op.name]) continue;
         FRAGMENT_OPERATIONS[op.name] = this.wrapOperation(fragmentId, op);
+      }
+      for (const fragment of part.manifest.uiFragments ?? []) {
+        FRAGMENT_ELEMENTS[fragment.name] = {
+          name: fragment.name,
+          description: fragment.description,
+          howto: fragment.howto,
+          params: fragment.params ?? [],
+          template: fragment.template as Record<string, unknown>,
+        };
       }
     }
   }

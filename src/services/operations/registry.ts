@@ -656,6 +656,30 @@ export const ELEMENT_CATALOG: Record<string, { description: string; properties: 
   );
 
 /** Plain HTML tags the renderer also accepts as element types. */
+/** Installed composed UI fragments, keyed by their namespaced name; the
+ * renderer expands instances and the catalog lists them. */
+export interface UiFragmentParam {
+  name: string;
+  type: string;
+  required?: boolean;
+  default?: unknown;
+  description?: string;
+}
+
+export interface UiFragmentDef {
+  name: string;
+  description: string;
+  howto?: string;
+  params: UiFragmentParam[];
+  template: Record<string, unknown>;
+}
+
+export const FRAGMENT_ELEMENTS: Record<string, UiFragmentDef> = {};
+
+export function getUiFragmentDef(type: string): UiFragmentDef | undefined {
+  return FRAGMENT_ELEMENTS[type];
+}
+
 /** App-level looks a contract can pick via styling.theme / styling.accent. */
 export const STYLE_THEMES = ['default', 'dark', 'paper', 'terminal'] as const;
 export const STYLE_ACCENTS = ['blue', 'green', 'violet', 'rose', 'amber'] as const;
@@ -686,5 +710,5 @@ export const INTRINSIC_ELEMENT_TYPES = new Set([
 ]);
 
 export function isKnownElementType(type: string): boolean {
-  return type in ELEMENT_MANIFESTS || INTRINSIC_ELEMENT_TYPES.has(type);
+  return type in ELEMENT_MANIFESTS || INTRINSIC_ELEMENT_TYPES.has(type) || type in FRAGMENT_ELEMENTS;
 }

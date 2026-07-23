@@ -17,6 +17,10 @@ access to the network, the file system, or any host function.
   sum, mean, min, max) and `stats.percentile` (linear interpolation
   between closest ranks). Its `manifest.json` is the exact byte sequence
   that gets signed.
+- `ui-basics/` is a demo part with no wasm at all: it ships composed UI
+  fragments (`basics.entry_row`, `basics.stat_tile`), pure-JSON templates
+  the renderer expands per instance with parameters. UI-only bundles carry
+  an empty `wasmSha256` and are signed exactly like operation parts.
 - `expr-evaluate/` is a demo part providing `expr.evaluate`: a safe
   arithmetic expression evaluator (+ - * / % ^, parentheses, unary minus,
   sqrt/abs/floor/ceil/round, two-argument min/max/pow, pi and e, and

@@ -48,8 +48,9 @@ enum Command {
         #[arg(long)]
         manifest: PathBuf,
         /// Compiled wasm module the manifest's wasmSha256 must match
+        /// (omit for UI-only bundles with an empty wasmSha256)
         #[arg(long)]
-        wasm: PathBuf,
+        wasm: Option<PathBuf>,
         /// Secret key file produced by keygen (<name>.key)
         #[arg(long)]
         key: PathBuf,
@@ -90,7 +91,7 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
         Command::Keygen { out_dir, name } => keygen(&out_dir, &name),
-        Command::Bundle { manifest, wasm, key, out } => bundle(&manifest, &wasm, &key, &out),
+        Command::Bundle { manifest, wasm, key, out } => bundle(&manifest, wasm.as_deref(), &key, &out),
         Command::Fingerprint { public } => fingerprint(&public),
         Command::Index { dir, out } => index(&dir, &out),
     };
@@ -151,7 +152,7 @@ fn write_secret(path: &Path, contents: &[u8]) -> Result<(), String> {
     }
 }
 
-fn bundle(manifest_path: &Path, wasm_path: &Path, key_path: &Path, out_path: &Path) -> Result<(), String> {
+fn bundle(manifest_path: &Path, wasm_path: Option<&Path>, key_path: &Path, out_path: &Path) -> Result<(), String> {
     // The manifest bytes are read once and embedded verbatim; they are
     // never re-serialized, so the signature stays valid byte for byte.
     let manifest_bytes = fs::read(manifest_path)
@@ -159,8 +160,10 @@ fn bundle(manifest_path: &Path, wasm_path: &Path, key_path: &Path, out_path: &Pa
     if manifest_bytes.len() > MAX_MANIFEST_BYTES {
         return Err(format!("manifest exceeds the {} byte limit", MAX_MANIFEST_BYTES));
     }
-    let wasm = fs::read(wasm_path)
-        .map_err(|e| format!("could not read {}: {}", wasm_path.display(), e))?;
+    let wasm = match wasm_path {
+        Some(path) => fs::read(path).map_err(|e| format!("could not read {}: {}", path.display(), e))?,
+        None => Vec::new(),
+    };
     if wasm.len() > MAX_WASM_BYTES {
         return Err(format!("wasm module exceeds the {} byte limit", MAX_WASM_BYTES));
     }
@@ -172,7 +175,7 @@ fn bundle(manifest_path: &Path, wasm_path: &Path, key_path: &Path, out_path: &Pa
         .get("wasmSha256")
         .and_then(|v| v.as_str())
         .ok_or("manifest has no wasmSha256 string field")?;
-    let actual = hex_lower(&Sha256::digest(&wasm));
+    let actual = if wasm.is_empty() { String::new() } else { hex_lower(&Sha256::digest(&wasm)) };
     if declared.to_lowercase() != actual {
         return Err(format!(
             "wasmSha256 mismatch: the manifest declares {} but the module hashes to {}; update the wasmSha256 field to the second value and rerun",

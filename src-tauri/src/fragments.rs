@@ -73,7 +73,38 @@ pub struct Manifest {
     pub wasm_sha256: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
+    #[serde(default)]
     pub operations: Vec<OpSpec>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ui_fragments: Vec<UiFragmentSpec>,
+}
+
+/// A composed UI pattern: a template subtree instantiated by the renderer
+/// with per-use parameters. Pure JSON; carries no code.
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct UiFragmentSpec {
+    pub name: String,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub howto: Option<String>,
+    #[serde(default)]
+    pub params: Vec<UiParamSpec>,
+    pub template: Value,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct UiParamSpec {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub param_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -374,8 +405,14 @@ pub fn verify_bundle(raw: &[u8]) -> FragmentResult<VerifiedBundle> {
             "This app supports only pure-compute parts (capabilities must be empty)",
         ));
     }
-    if manifest.operations.is_empty() || manifest.operations.len() > MAX_OPERATIONS {
-        return Err(fail(FragmentErrorKind::VerifyFailed, "Part must declare 1-64 operations"));
+    if manifest.operations.is_empty() && manifest.ui_fragments.is_empty() {
+        return Err(fail(
+            FragmentErrorKind::VerifyFailed,
+            "Part must declare operations or UI fragments",
+        ));
+    }
+    if manifest.operations.len() > MAX_OPERATIONS || manifest.ui_fragments.len() > MAX_OPERATIONS {
+        return Err(fail(FragmentErrorKind::VerifyFailed, "Part declares too many entries"));
     }
     let mut seen = std::collections::HashSet::new();
     for op in &manifest.operations {
@@ -392,10 +429,42 @@ pub fn verify_bundle(raw: &[u8]) -> FragmentResult<VerifiedBundle> {
             ));
         }
     }
+    for fragment in &manifest.ui_fragments {
+        if !op_name_ok(&fragment.name, &manifest.namespace) {
+            return Err(fail(
+                FragmentErrorKind::VerifyFailed,
+                format!(
+                    "UI fragment \"{}\" must live under namespace \"{}.\"",
+                    fragment.name, manifest.namespace
+                ),
+            ));
+        }
+        if !seen.insert(fragment.name.clone()) {
+            return Err(fail(
+                FragmentErrorKind::VerifyFailed,
+                format!("Duplicate name \"{}\"", fragment.name),
+            ));
+        }
+        if !fragment.template.is_object() {
+            return Err(fail(
+                FragmentErrorKind::VerifyFailed,
+                format!("UI fragment \"{}\" template must be an object", fragment.name),
+            ));
+        }
+    }
 
-    let wasm_hash = hex_lower(&Sha256::digest(&wasm));
-    if wasm_hash != manifest.wasm_sha256.to_lowercase() {
-        return Err(fail(FragmentErrorKind::VerifyFailed, "Module hash does not match the manifest"));
+    if manifest.operations.is_empty() {
+        if !wasm.is_empty() || !manifest.wasm_sha256.is_empty() {
+            return Err(fail(
+                FragmentErrorKind::VerifyFailed,
+                "A part without operations must not carry a wasm module",
+            ));
+        }
+    } else {
+        let wasm_hash = hex_lower(&Sha256::digest(&wasm));
+        if wasm_hash != manifest.wasm_sha256.to_lowercase() {
+            return Err(fail(FragmentErrorKind::VerifyFailed, "Module hash does not match the manifest"));
+        }
     }
 
     Ok(VerifiedBundle {
@@ -558,6 +627,12 @@ impl FragmentsState {
         let verified = verify_bundle(&raw)?;
         if verified.manifest.id != id {
             return Err(fail(FragmentErrorKind::VerifyFailed, "Bundle id does not match its filename"));
+        }
+        if verified.manifest.operations.is_empty() {
+            return Err(fail(
+                FragmentErrorKind::OperationNotFound,
+                "Part provides UI fragments only; it has no operations to run",
+            ));
         }
         let module = self.compile(&verified.wasm)?;
         let loaded = Arc::new(LoadedFragment {
@@ -763,7 +838,10 @@ pub fn stage_core(
 
     // Compiling here both validates the ABI up front and warms nothing: the
     // staged module is dropped; the session cache fills on first execution.
-    state.compile(&verified.wasm)?;
+    // UI-only bundles carry no module to compile.
+    if !verified.manifest.operations.is_empty() {
+        state.compile(&verified.wasm)?;
+    }
 
     let token = format!(
         "stage-{}-{}",

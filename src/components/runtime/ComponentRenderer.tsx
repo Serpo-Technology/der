@@ -18,9 +18,11 @@ import { UIElement, DataBinding, EventBinding, VisibilityCondition } from '../..
 import { ExperienceState } from '../../types/experience';
 import {
   ELEMENT_MANIFESTS,
+  getUiFragmentDef,
   getValueAtPath,
   looseEquals,
 } from '../../services/operations/registry';
+import { expandUiFragment } from '../../services/fragments/ui-fragments';
 import {
   applyBindingTransforms,
   applyTransformPipeline,
@@ -138,6 +140,21 @@ export class ComponentRenderer {
       if (content ?? text) children.push(displayable(content ?? text));
       children.push(renderChildren());
       return React.createElement(element.type, { key: element.id, ...rest }, children.length > 0 ? children : undefined);
+    }
+
+    // Installed composed UI fragments expand into their template subtree.
+    const fragmentDef = getUiFragmentDef(element.type);
+    if (fragmentDef) {
+      try {
+        const expanded = expandUiFragment(element, fragmentDef);
+        return (
+          <React.Fragment key={element.id}>
+            {this.renderElement(expanded, experienceState, onOperationExecute, options)}
+          </React.Fragment>
+        );
+      } catch (error) {
+        console.warn(`UI fragment ${element.type} failed to expand`, error);
+      }
     }
 
     // Unknown custom component type fallback

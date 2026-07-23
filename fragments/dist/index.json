@@ -29,6 +29,18 @@
       "bundleUrl": "der-labs.stats-summary.derpart",
       "bundleSha256": "d7f1625a8059791d0f2ad8aec0b7c67928f8c939e468d486c79353204491dcda",
       "bundleBytes": 97572
+    },
+    {
+      "id": "der-labs.ui-basics",
+      "name": "UI Basics",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "basics",
+      "description": "Composed UI patterns: a correct entry row and a stat tile.",
+      "operations": [],
+      "bundleUrl": "der-labs.ui-basics.derpart",
+      "bundleSha256": "02c12cc9621db07b38b6e5ea6b6349777d8bd2d76d8dee4545deb7d2e9d03a4c",
+      "bundleBytes": 5024
     }
   ]
 }

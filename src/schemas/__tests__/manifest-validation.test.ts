@@ -14,6 +14,7 @@ import {
   checkAgainstManifests,
 } from '../contract';
 import type { ContractShape } from '../contract';
+import { FRAGMENT_ELEMENTS } from '../../services/operations/registry';
 
 function checkContract(raw: Record<string, unknown>) {
   const contract = JSON.parse(JSON.stringify(ContractSchema.parse(raw))) as ContractShape;
@@ -408,6 +409,45 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
     expect(result.warnings.some((w) => w.path === 'elements.0.properties.align')).toBe(true);
     // A centered row of plain texts is legitimate and stays untouched.
     expect(contract.elements[1].properties.align).toBe('center');
+  });
+
+  it('validates installed UI fragment parameters', () => {
+    FRAGMENT_ELEMENTS['basics.entry_row'] = {
+      name: 'basics.entry_row',
+      description: 'x',
+      params: [
+        { name: 'label', type: 'string', required: true },
+        { name: 'operationId', type: 'operationId', required: true }
+      ],
+      template: { id: '{{id}}-row', type: 'container' }
+    };
+    try {
+      const { result } = checkContract(
+        rawContract({
+          elements: [
+            {
+              id: 'entry',
+              type: 'basics.entry_row',
+              properties: { operationId: 'op-ghost' }
+            }
+          ],
+          operations: [
+            {
+              id: 'op-add',
+              operationName: 'counter.add',
+              inputs: [{ name: 'key', source: 'constant', sourceId: 'n' }]
+            }
+          ]
+        })
+      );
+
+      expect(result.errors.map((e) => e.code).sort()).toEqual([
+        'MISSING_FRAGMENT_PARAM',
+        'UNKNOWN_OPERATION'
+      ]);
+    } finally {
+      delete FRAGMENT_ELEMENTS['basics.entry_row'];
+    }
   });
 
   it('normalizes unknown themes and accents with a warning', () => {
