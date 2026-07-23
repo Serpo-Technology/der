@@ -297,6 +297,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
   const stateReads = new Map<string, string>(); // key -> first reading property
   const stateWrites = new Set<string>(Object.keys(contract.initialState ?? {}));
   const operationIds = new Set(contract.operations.map((op) => op.id));
+  const missingOperationRefs = new Set<string>();
 
   walkElements(contract.elements as UIElement[], (element, path, inListTemplate) => {
     elementIds.add(element.id);
@@ -363,6 +364,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
 
     element.eventBindings.forEach((binding: EventBinding, bindingIndex) => {
       if (!operationIds.has(binding.operationId)) {
+        missingOperationRefs.add(binding.operationId);
         fail(
           `${path}.eventBindings.${bindingIndex}`,
           `Event "${binding.event}" references unknown operation "${binding.operationId}"`,
@@ -371,6 +373,20 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       }
     });
   });
+
+  // A model that wires events but forgets the operations array needs the fix
+  // stated outright, ahead of the per-binding errors.
+  if (missingOperationRefs.size > 0 && contract.operations.length === 0) {
+    errors.unshift({
+      path: 'operations',
+      message: `The contract has no "operations" array but elements reference ${
+        missingOperationRefs.size
+      } operation id(s): ${[...missingOperationRefs].join(
+        ', '
+      )}. Add a top-level "operations" array with one entry per referenced id.`,
+      code: 'MISSING_OPERATIONS',
+    });
+  }
 
   // Operations against manifests.
   contract.operations.forEach((op, opIndex) => {

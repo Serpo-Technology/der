@@ -164,6 +164,31 @@ describe('checkAgainstManifests hard errors', () => {
     expect(result.errors[0].message).toContain('ghost-out');
   });
 
+  it('states the fix when events are wired but the operations array is missing', () => {
+    const { result } = checkContract(
+      rawContract({
+        elements: [
+          {
+            id: 'add-btn',
+            type: 'button',
+            properties: { text: 'Add' },
+            eventBindings: [{ event: 'click', operationId: 'op-add' }]
+          },
+          {
+            id: 'del-btn',
+            type: 'button',
+            properties: { text: 'Delete' },
+            eventBindings: [{ event: 'click', operationId: 'op-del' }]
+          }
+        ]
+      })
+    );
+
+    expect(result.errors[0].code).toBe('MISSING_OPERATIONS');
+    expect(result.errors[0].message).toContain('op-add, op-del');
+    expect(result.errors[0].message).toContain('Add a top-level "operations" array');
+  });
+
   it('flags event bindings that reference unknown operations', () => {
     const { result } = checkContract(
       rawContract({
@@ -173,6 +198,13 @@ describe('checkAgainstManifests hard errors', () => {
             type: 'button',
             properties: { text: 'Add' },
             eventBindings: [{ event: 'click', operationId: 'op-ghost' }]
+          }
+        ],
+        operations: [
+          {
+            id: 'op-count',
+            operationName: 'counter.add',
+            inputs: [{ name: 'key', source: 'constant', sourceId: 'clicks' }]
           }
         ]
       })
