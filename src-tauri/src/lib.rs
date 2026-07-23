@@ -230,6 +230,14 @@ async fn execute_remote_operation(app: &tauri::AppHandle, request: &OperationReq
                 auth_name
             )
         })?;
+        if let Some(base) = &credential.base_url {
+            if !endpoint.starts_with(base.as_str()) {
+                return Err(format!(
+                    "Credential \"{}\" is confined to {}; refusing to send it to {}",
+                    auth_name, base, endpoint
+                ));
+            }
+        }
         match credential.kind.as_str() {
             "bearer" => {
                 req = req.header("authorization", format!("Bearer {}", credential.secret));

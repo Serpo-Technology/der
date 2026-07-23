@@ -83,6 +83,14 @@ pub struct IntegrationCredential {
     /// Header or query-parameter name; unused for bearer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
+    /// The service origin/prefix the secret is confined to; requests using
+    /// this credential must target it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    /// Non-secret guidance shown to the model: endpoint shapes, response
+    /// fields, units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
     pub secret: String,
 }
 
@@ -120,6 +128,10 @@ pub struct IntegrationCredentialView {
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
 }
 
 #[tauri::command]
@@ -131,6 +143,8 @@ pub fn list_integration_credentials(app: AppHandle) -> Vec<IntegrationCredential
             name,
             kind: cred.kind,
             target: cred.target,
+            base_url: cred.base_url,
+            notes: cred.notes,
         })
         .collect();
     views.sort_by(|a, b| a.name.cmp(&b.name));
@@ -143,6 +157,8 @@ pub fn set_integration_credential(
     name: String,
     kind: String,
     target: Option<String>,
+    base_url: String,
+    notes: Option<String>,
     secret: String,
 ) -> Result<Vec<IntegrationCredentialView>, String> {
     let name = name.trim().to_string();
@@ -161,12 +177,18 @@ pub fn set_integration_credential(
     if secret.trim().is_empty() {
         return Err("The secret cannot be empty".to_string());
     }
+    let base_url = base_url.trim().trim_end_matches('/').to_string();
+    if !base_url.starts_with("https://") && !base_url.starts_with("http://") {
+        return Err("The service base URL must be http(s); the secret is only ever sent there".to_string());
+    }
     let mut integrations = load_integrations(&app);
     integrations.credentials.insert(
         name,
         IntegrationCredential {
             kind,
             target: target.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()),
+            base_url: Some(base_url),
+            notes: notes.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()),
             secret,
         },
     );

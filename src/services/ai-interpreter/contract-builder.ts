@@ -345,14 +345,18 @@ export class ContractBuilder {
       return lines;
     });
 
-    const credentialLines = INTEGRATION_CREDENTIALS.map((cred) => {
+    const credentialLines = INTEGRATION_CREDENTIALS.flatMap((cred) => {
       const shape =
         cred.kind === 'bearer'
           ? 'bearer token'
           : cred.kind === 'header'
             ? `header "${cred.target}"`
             : `query parameter "${cred.target}"`;
-      return `- ${cred.name} (${shape})`;
+      const lines = [
+        `- ${cred.name} (${shape})${cred.baseUrl ? `: endpoints MUST start with ${cred.baseUrl}` : ''}`,
+      ];
+      if (cred.notes) lines.push(`  service notes: ${cred.notes}`);
+      return lines;
     });
 
     const transformLines = Object.values(TRANSFORMS).map((def) => {

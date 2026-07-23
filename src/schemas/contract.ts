@@ -537,14 +537,24 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     // An auth reference must name a configured integration credential.
     const auth = (op.implementation as { auth?: string } | undefined)?.auth;
     if (auth !== undefined) {
-      const known = INTEGRATION_CREDENTIALS.map((cred) => cred.name);
-      if (!known.includes(auth)) {
+      const credential = INTEGRATION_CREDENTIALS.find((cred) => cred.name === auth);
+      if (!credential) {
+        const known = INTEGRATION_CREDENTIALS.map((cred) => cred.name);
         fail(
           `${opPath}.implementation.auth`,
           known.length > 0
             ? `"${auth}" is not a configured integration credential; available: ${known.join(', ')}`
             : `"${auth}" is not a configured integration credential; none are configured, so omit auth or ask the user to add one in Settings`,
           'UNKNOWN_CREDENTIAL'
+        );
+      } else if (
+        credential.baseUrl &&
+        !(op.implementation?.endpoint ?? '').startsWith(credential.baseUrl)
+      ) {
+        fail(
+          `${opPath}.implementation.endpoint`,
+          `Credential "${auth}" is confined to ${credential.baseUrl}; the endpoint must start with it`,
+          'CREDENTIAL_CONFINEMENT'
         );
       }
     }

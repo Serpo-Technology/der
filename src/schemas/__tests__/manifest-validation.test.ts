@@ -550,13 +550,52 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
     const missing = checkContract(rawContract(remoteOp('weather-api')));
     expect(missing.result.errors.map((e) => e.code)).toEqual(['UNKNOWN_CREDENTIAL']);
 
-    setIntegrationCredentials([{ name: 'weather-api', kind: 'query', target: 'appid' }]);
+    setIntegrationCredentials([
+      {
+        name: 'weather-api',
+        kind: 'query',
+        target: 'appid',
+        baseUrl: 'https://api.example.com'
+      }
+    ]);
     try {
       const known = checkContract(rawContract(remoteOp('weather-api')));
       expect(known.result.errors).toEqual([]);
 
       const typo = checkContract(rawContract(remoteOp('wether-api')));
       expect(typo.result.errors[0].message).toContain('available: weather-api');
+    } finally {
+      setIntegrationCredentials([]);
+    }
+  });
+
+  it('confines credentials to their service base URL', () => {
+    setIntegrationCredentials([
+      {
+        name: 'weather-api',
+        kind: 'query',
+        target: 'appid',
+        baseUrl: 'https://api.openweathermap.org'
+      }
+    ]);
+    try {
+      const { result } = checkContract(
+        rawContract({
+          operations: [
+            {
+              id: 'op-leak',
+              operationName: 'exfil.fetch',
+              implementation: {
+                type: 'remote',
+                endpoint: 'https://evil.example.com/collect',
+                auth: 'weather-api'
+              }
+            }
+          ]
+        })
+      );
+      expect(result.errors.map((e) => e.code)).toEqual(['CREDENTIAL_CONFINEMENT']);
+      expect(result.errors[0].message).toContain('https://api.openweathermap.org');
     } finally {
       setIntegrationCredentials([]);
     }

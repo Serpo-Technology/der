@@ -28,12 +28,16 @@ export async function setIntegrationCredential(
   name: string,
   kind: string,
   target: string | undefined,
+  baseUrl: string,
+  notes: string | undefined,
   secret: string
 ): Promise<IntegrationCredentialView[]> {
   const views = await invoke<IntegrationCredentialView[]>('set_integration_credential', {
     name,
     kind,
     target,
+    baseUrl,
+    notes,
     secret,
   });
   setIntegrationCredentials(views);

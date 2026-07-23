@@ -44,6 +44,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
   const [integrationName, setIntegrationName] = useState('');
   const [integrationKind, setIntegrationKind] = useState('bearer');
   const [integrationTarget, setIntegrationTarget] = useState('');
+  const [integrationBaseUrl, setIntegrationBaseUrl] = useState('');
+  const [integrationNotes, setIntegrationNotes] = useState('');
   const [integrationSecret, setIntegrationSecret] = useState('');
 
   useEffect(() => {
@@ -57,11 +59,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
         integrationName.trim(),
         integrationKind,
         integrationKind === 'bearer' ? undefined : integrationTarget.trim(),
+        integrationBaseUrl.trim(),
+        integrationNotes.trim() || undefined,
         integrationSecret
       );
       setIntegrations(views);
       setIntegrationName('');
       setIntegrationTarget('');
+      setIntegrationBaseUrl('');
+      setIntegrationNotes('');
       setIntegrationSecret('');
       setStatus('Credential saved');
     } catch (error) {
@@ -69,7 +75,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
     } finally {
       setBusy(false);
     }
-  }, [integrationName, integrationKind, integrationTarget, integrationSecret, onError]);
+  }, [
+    integrationName,
+    integrationKind,
+    integrationTarget,
+    integrationBaseUrl,
+    integrationNotes,
+    integrationSecret,
+    onError
+  ]);
 
   const handleDeleteIntegration = useCallback(async (name: string) => {
     setBusy(true);
@@ -360,6 +374,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
                   {cred.kind === 'bearer'
                     ? 'bearer token'
                     : `${cred.kind} "${cred.target ?? ''}"`}
+                  {cred.baseUrl ? ` at ${cred.baseUrl}` : ''}
                 </span>
                 <button
                   className="link-button"
@@ -399,6 +414,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
               />
             )}
             <input
+              value={integrationBaseUrl}
+              onChange={(e) => setIntegrationBaseUrl(e.target.value)}
+              placeholder="service base URL (secret is only sent there)"
+              disabled={busy}
+            />
+            <input
+              value={integrationNotes}
+              onChange={(e) => setIntegrationNotes(e.target.value)}
+              placeholder="notes for the AI: endpoint shape, response fields, units"
+              disabled={busy}
+            />
+            <input
               type="password"
               value={integrationSecret}
               onChange={(e) => setIntegrationSecret(e.target.value)}
@@ -407,7 +434,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
             />
             <button
               onClick={handleAddIntegration}
-              disabled={busy || !integrationName.trim() || !integrationSecret.trim()}
+              disabled={
+                busy ||
+                !integrationName.trim() ||
+                !integrationSecret.trim() ||
+                !integrationBaseUrl.trim()
+              }
             >
               Save
             </button>

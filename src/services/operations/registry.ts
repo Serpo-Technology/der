@@ -686,6 +686,8 @@ export interface IntegrationCredentialView {
   name: string;
   kind: string;
   target?: string;
+  baseUrl?: string;
+  notes?: string;
 }
 
 export const INTEGRATION_CREDENTIALS: IntegrationCredentialView[] = [];
