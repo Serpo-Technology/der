@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ContractBuilder } from '../contract-builder';
+import { FRAGMENT_ELEMENTS } from '../../operations/registry';
 import { LLMClient } from '../llm-client';
 import { ComponentRepository } from '../../../types/repository';
 import { OperationManifest } from '../../../types/component';
@@ -84,6 +85,31 @@ describe('ContractBuilder', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  describe('installed UI fragments in the catalog', () => {
+    it('lists fragments with params, usage, and the preference rule', async () => {
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      FRAGMENT_ELEMENTS['basics.entry_row'] = {
+        name: 'basics.entry_row',
+        description: 'A labeled input beside a primary button.',
+        howto: 'The input renders with id "<instance id>-input".',
+        params: [
+          { name: 'label', type: 'string', required: true },
+          { name: 'operationId', type: 'operationId', required: true }
+        ],
+        template: { id: '{{id}}-row', type: 'container' }
+      };
+      try {
+        const { system } = await builder.renderCreatePrompt('anything');
+        expect(system).toContain('COMPOSED UI FRAGMENTS');
+        expect(system).toContain('basics.entry_row');
+        expect(system).toContain('label!: string');
+        expect(system).toContain('Prefer these over hand-building');
+      } finally {
+        delete FRAGMENT_ELEMENTS['basics.entry_row'];
+      }
+    });
   });
 
   describe('composeFromDescription streaming', () => {

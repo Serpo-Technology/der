@@ -328,13 +328,18 @@ export class ContractBuilder {
     const uiFragmentLines = Object.values(FRAGMENT_ELEMENTS).flatMap((def) => {
       const params = def.params
         .map((param) => {
-          const req = param.required ? '' : '?';
+          const req = param.required ? '!' : '?';
           const dflt = param.default !== undefined ? ` (default ${JSON.stringify(param.default)})` : '';
           return `${param.name}${req}: ${param.type}${dflt}`;
         })
         .join('; ');
+      const usage = `{"id": "<id>", "type": "${def.name}", "properties": {${def.params
+        .filter((param) => param.required)
+        .map((param) => `"${param.name}": <${param.type}>`)
+        .join(', ')}}}`;
       const lines = [`- ${def.name}: ${def.description}`];
       if (params) lines.push(`  params: ${params}`);
+      lines.push(`  usage: ${usage}`);
       if (def.howto) lines.push(`  howto: ${def.howto}`);
       return lines;
     });
@@ -392,7 +397,7 @@ export class ContractBuilder {
       ...(uiFragmentLines.length
         ? [
             '',
-            'COMPOSED UI FRAGMENTS (use as an element: {"id", "type": "<name>", "properties": {<params>}}; the runtime expands them):',
+            'COMPOSED UI FRAGMENTS (single elements the runtime expands; params go in "properties"). Prefer these over hand-building the same pattern from raw elements:',
             ...uiFragmentLines,
           ]
         : []),
@@ -586,5 +591,5 @@ ${catalog}
 
 ${compact ? COMPACT_EXAMPLE_SECTION : FULL_EXAMPLE_SECTION}
 
-Every eventBinding.operationId must match an operation id; every part, knob value, operation, and transform must come from the catalog above. Design the smallest contract that fully satisfies the request.`;
+Every eventBinding.operationId must match an operation id; every part, knob value, operation, and transform must come from the catalog above. When an installed UI fragment covers a pattern you are about to build (an entry row, a stat tile), use the fragment element instead of assembling the same thing from raw elements. Design the smallest contract that fully satisfies the request.`;
 }
