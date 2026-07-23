@@ -270,15 +270,20 @@ export class ContractBuilder {
    * The exact create-mode prompt for a description, for offline model probes
    * (e.g. running a local model outside the app and validating its output).
    */
-  async renderCreatePrompt(description: string): Promise<{ system: string; user: string }> {
-    const catalog = await this.renderCatalog();
+  async renderCreatePrompt(
+    description: string,
+    options: { compact?: boolean } = {}
+  ): Promise<{ system: string; user: string }> {
+    const compact = options.compact ?? false;
+    const catalog = await this.renderCatalog(compact);
     return {
-      system: `${buildBasePrompt(catalog)}\n\n${CREATE_PROMPT_SECTION}`,
+      system: `${buildBasePrompt(catalog, compact)}\n\n${CREATE_PROMPT_SECTION}`,
       user: `Build an app for this request:\n\n${description}`,
     };
   }
 
-  private async renderCatalog(): Promise<string> {
+  /** Compact drops howtos and examples: the retrieval-sized prompt shape. */
+  private async renderCatalog(compact = false): Promise<string> {
     const elementLines = Object.values(ELEMENT_MANIFESTS).flatMap((manifest) => {
       const lines = [`- ${manifest.type}: ${manifest.description}`];
       if (manifest.knobs.length > 0) {
@@ -294,9 +299,11 @@ export class ContractBuilder {
       if (manifest.bindableProps?.length) {
         lines.push(`  bindable: ${manifest.bindableProps.join(', ')}`);
       }
-      lines.push(`  howto: ${manifest.howto}`);
-      if (manifest.example) {
-        lines.push(`  example: ${JSON.stringify(manifest.example)}`);
+      if (!compact) {
+        lines.push(`  howto: ${manifest.howto}`);
+        if (manifest.example) {
+          lines.push(`  example: ${JSON.stringify(manifest.example)}`);
+        }
       }
       return lines;
     });
@@ -310,14 +317,18 @@ export class ContractBuilder {
             .join(', ') || 'none';
         const outputs = def.outputs.map((spec) => `${spec.name}: ${spec.type}`).join(', ') || 'none';
         const lines = [`- ${def.name} (inputs: ${inputs}; outputs: ${outputs}): ${def.description}`];
-        if (def.howto) lines.push(`  howto: ${def.howto}`);
-        if (def.example) lines.push(`  example: ${JSON.stringify(def.example)}`);
+        if (!compact) {
+          if (def.howto) lines.push(`  howto: ${def.howto}`);
+          if (def.example) lines.push(`  example: ${JSON.stringify(def.example)}`);
+        }
         return lines;
       });
 
     const transformLines = Object.values(TRANSFORMS).map((def) => {
       const params = def.parameters.map((p) => p.name).join(', ');
-      return `- ${def.name}${params ? ` {${params}}` : ''}: ${def.description}`;
+      return compact
+        ? `- ${def.name}${params ? ` {${params}}` : ''}`
+        : `- ${def.name}${params ? ` {${params}}` : ''}: ${def.description}`;
     });
 
     const fragmentLines = Object.values(FRAGMENT_OPERATIONS).flatMap((def) => {
@@ -327,8 +338,10 @@ export class ContractBuilder {
           .join(', ') || 'none';
       const outputs = def.outputs.map((spec) => `${spec.name}: ${spec.type}`).join(', ') || 'none';
       const lines = [`- ${def.name} (inputs: ${inputs}; outputs: ${outputs}): ${def.description}`];
-      if (def.howto) lines.push(`  howto: ${def.howto}`);
-      if (def.example) lines.push(`  example: ${JSON.stringify(def.example)}`);
+      if (!compact) {
+        if (def.howto) lines.push(`  howto: ${def.howto}`);
+        if (def.example) lines.push(`  example: ${JSON.stringify(def.example)}`);
+      }
       return lines;
     });
 
@@ -471,35 +484,7 @@ You are updating an EXISTING app, given its current contract and a change reques
 - Keep existing initialState keys and their seeds; new state keys follow rule 1 (seed only what needs a non-empty start).
 - Removing parts the instruction makes obsolete is fine; do not remove anything else.`;
 
-function buildBasePrompt(catalog: string): string {
-  return `You compose a Contract JSON from prewritten parts; a runtime renders it into a live interactive app. You configure parts; you NEVER write code.
-
-CONTRACT SHAPE (omit every field marked ?, every empty array or object, and every default):
-{
-  "name": "kebab-case-name",
-  "version": "1.0.0",
-  "initialState"?: { "<stateKey>": <seed> },
-  "elements": [ { "id", "type", "properties"?, "dataBindings"?, "eventBindings"?, "visibleWhen"?, "children"? } ],
-  "operations": [ { "id", "operationName", "inputs"?, "outputs"?, "implementation"? } ],
-  "styling"?: { "theme": ${STYLE_THEMES.map((t) => `"${t}"`).join(' | ')}, "accent"?: ${STYLE_ACCENTS.map((a) => `"${a}"`).join(' | ')} }
-}
-Never emit "metadata", "triggers", "executionType", or "layout": the runtime derives them (executionType from the operation name, or remote when "implementation" carries an endpoint; the default layout is a padded 12px column). Omit "styling" for the standard light look; set a theme or accent when the user asks for one or the app's character clearly calls for it, e.g. "terminal" for a developer tool or "paper" for a journal.
-
-RUNTIME RULES (follow exactly):
-1. State is a flat map. Operations write it; display elements read it with dataBindings {"property", "source": "state", "sourceId": "<stateKey>"}. Unwritten keys start empty (arrays read as []); add an "initialState" entry only when a key needs a non-empty start, e.g. a default tab name or preset options.
-2. Inputs, selects, and checkboxes are auto-controlled. Give each an id; NEVER bind its value. Operations read them with an InputBinding {"name": "<param>", "source": "ui-element", "sourceId": "<element id>"}. Do not place them inside list children.
-3. Wire interactions only with eventBindings on elements: {"event": "click" | "change" | "submit", "operationId": "<operation id>"}. Every operationId you reference MUST have a matching entry in the top-level "operations" array; the contract is incomplete without it.
-4. A "list" element repeats its children once per entry of the array bound to its "items" property. Inside those children, read entry fields with source "item" and a dot-path sourceId (e.g. "title"; "" for the whole entry), including operation InputBindings {"source": "item", "sourceId": "id"}.
-5. Other input sources: {"source": "state", "sourceId": "<stateKey>"} and {"source": "constant", "sourceId": "<text>"}. For non-string constants set the typed "value" field: {"source": "constant", "sourceId": "true", "value": true}. Outputs route results: {"name": "<output name>", "target": "state", "targetId": "<stateKey>"} or {"target": "ui-element", "targetId": "<element id>"} to set an element's value.
-6. Structured operation inputs use dotted names: list.append takes one input per item field named "item.<field>" (never "item.id"; the part generates ids), list.updateWhere writes fields via "set.<field>". Use the parseNumber transform on numeric fields fed from text inputs.
-7. Derived values need no operation: attach a "transforms" pipeline (applied in order) to a dataBinding, e.g. filterFalsy("completed") then count for "N left" (filterFalsy counts rows that never got the flag), or sum then round then format for totals. A pipeline feeding "content" must END in a single value (count, sum, pick, format); a filter alone yields a list and cannot display. Bindings re-resolve on every state change. Make toggled flags VISIBLE: bind the row text's "className" from the flag with a map transform, {"property": "className", "source": "item", "sourceId": "completed", "transforms": [{"type": "map", "parameters": {"mapping": {"true": "done", "false": ""}}}]}; the runtime strikes through elements classed "done".
-8. Conditional rendering: "visibleWhen": {"source": "state"|"item", "sourceId", "operator": "truthy"|"falsy"|"empty"|"notEmpty"|"equals"|"notEquals"|"gt"|"gte"|"lt"|"lte", "value"?, "transforms"?}. An array of conditions means all must hold. Combine with state.set for tabs and view switching.
-9. Element knobs (variant, size, role, direction, gap, align, justify, padding, label, emptyText) are declared per part below; use only listed values.
-10. A remote operation is configuration of an HTTP call: "implementation": {"type": "remote", "endpoint": "https://...", "method": "GET"|"POST", "headers"?}; "{name}" placeholders in the endpoint fill from same-named inputs, other inputs become query parameters (GET) or the JSON body. Builtin operations take an exact name from the catalog and no implementation. There is no way to include code and none is needed.
-
-${catalog}
-
-EXAMPLE CONTRACT (expense tracker; the derived total and count need no operations, everything empty or derivable is omitted, and "expenses" needs no seed because list.append writes it):
+const FULL_EXAMPLE_SECTION = `EXAMPLE CONTRACT (expense tracker; the derived total and count need no operations, everything empty or derivable is omitted, and "expenses" needs no seed because list.append writes it):
 {
   "name": "expense-tracker",
   "version": "1.0.0",
@@ -533,7 +518,50 @@ EXAMPLE CONTRACT (expense tracker; the derived total and count need no operation
         { "name": "key", "source": "constant", "sourceId": "expenses" },
         { "name": "value", "source": "item", "sourceId": "id" } ] }
   ]
+}`;
+
+const COMPACT_EXAMPLE_SECTION = `EXAMPLE CONTRACT (click counter; everything empty or derivable is omitted):
+{
+  "name": "click-counter",
+  "version": "1.0.0",
+  "elements": [
+    { "id": "count-text", "type": "text", "properties": { "role": "title" }, "dataBindings": [ { "property": "content", "source": "state", "sourceId": "clicks", "transforms": [ { "type": "format", "parameters": { "template": "Clicks: {{value}}" } } ] } ] },
+    { "id": "click-btn", "type": "button", "properties": { "text": "Click", "variant": "primary" }, "eventBindings": [ { "event": "click", "operationId": "op-add" } ] }
+  ],
+  "operations": [
+    { "id": "op-add", "operationName": "counter.add", "inputs": [ { "name": "key", "source": "constant", "sourceId": "clicks" } ] }
+  ]
+}`;
+
+function buildBasePrompt(catalog: string, compact = false): string {
+  return `You compose a Contract JSON from prewritten parts; a runtime renders it into a live interactive app. You configure parts; you NEVER write code.
+
+CONTRACT SHAPE (omit every field marked ?, every empty array or object, and every default):
+{
+  "name": "kebab-case-name",
+  "version": "1.0.0",
+  "initialState"?: { "<stateKey>": <seed> },
+  "elements": [ { "id", "type", "properties"?, "dataBindings"?, "eventBindings"?, "visibleWhen"?, "children"? } ],
+  "operations": [ { "id", "operationName", "inputs"?, "outputs"?, "implementation"? } ],
+  "styling"?: { "theme": ${STYLE_THEMES.map((t) => `"${t}"`).join(' | ')}, "accent"?: ${STYLE_ACCENTS.map((a) => `"${a}"`).join(' | ')} }
 }
+Never emit "metadata", "triggers", "executionType", or "layout": the runtime derives them (executionType from the operation name, or remote when "implementation" carries an endpoint; the default layout is a padded 12px column). Omit "styling" for the standard light look; set a theme or accent when the user asks for one or the app's character clearly calls for it, e.g. "terminal" for a developer tool or "paper" for a journal.
+
+RUNTIME RULES (follow exactly):
+1. State is a flat map. Operations write it; display elements read it with dataBindings {"property", "source": "state", "sourceId": "<stateKey>"}. Unwritten keys start empty (arrays read as []); add an "initialState" entry only when a key needs a non-empty start, e.g. a default tab name or preset options.
+2. Inputs, selects, and checkboxes are auto-controlled. Give each an id; NEVER bind its value. Operations read them with an InputBinding {"name": "<param>", "source": "ui-element", "sourceId": "<element id>"}. Do not place them inside list children.
+3. Wire interactions only with eventBindings on elements: {"event": "click" | "change" | "submit", "operationId": "<operation id>"}. Every operationId you reference MUST have a matching entry in the top-level "operations" array; the contract is incomplete without it.
+4. A "list" element repeats its children once per entry of the array bound to its "items" property. Inside those children, read entry fields with source "item" and a dot-path sourceId (e.g. "title"; "" for the whole entry), including operation InputBindings {"source": "item", "sourceId": "id"}.
+5. Other input sources: {"source": "state", "sourceId": "<stateKey>"} and {"source": "constant", "sourceId": "<text>"}. For non-string constants set the typed "value" field: {"source": "constant", "sourceId": "true", "value": true}. Outputs route results: {"name": "<output name>", "target": "state", "targetId": "<stateKey>"} or {"target": "ui-element", "targetId": "<element id>"} to set an element's value.
+6. Structured operation inputs use dotted names: list.append takes one input per item field named "item.<field>" (never "item.id"; the part generates ids), list.updateWhere writes fields via "set.<field>". Use the parseNumber transform on numeric fields fed from text inputs.
+7. Derived values need no operation: attach a "transforms" pipeline (applied in order) to a dataBinding, e.g. filterFalsy("completed") then count for "N left" (filterFalsy counts rows that never got the flag), or sum then round then format for totals. A pipeline feeding "content" must END in a single value (count, sum, pick, format); a filter alone yields a list and cannot display. Bindings re-resolve on every state change. Make toggled flags VISIBLE: bind the row text's "className" from the flag with a map transform, {"property": "className", "source": "item", "sourceId": "completed", "transforms": [{"type": "map", "parameters": {"mapping": {"true": "done", "false": ""}}}]}; the runtime strikes through elements classed "done".
+8. Conditional rendering: "visibleWhen": {"source": "state"|"item", "sourceId", "operator": "truthy"|"falsy"|"empty"|"notEmpty"|"equals"|"notEquals"|"gt"|"gte"|"lt"|"lte", "value"?, "transforms"?}. An array of conditions means all must hold. Combine with state.set for tabs and view switching.
+9. Element knobs (variant, size, role, direction, gap, align, justify, padding, label, emptyText) are declared per part below; use only listed values.
+10. A remote operation is configuration of an HTTP call: "implementation": {"type": "remote", "endpoint": "https://...", "method": "GET"|"POST", "headers"?}; "{name}" placeholders in the endpoint fill from same-named inputs, other inputs become query parameters (GET) or the JSON body. Builtin operations take an exact name from the catalog and no implementation. There is no way to include code and none is needed.
+
+${catalog}
+
+${compact ? COMPACT_EXAMPLE_SECTION : FULL_EXAMPLE_SECTION}
 
 Every eventBinding.operationId must match an operation id; every part, knob value, operation, and transform must come from the catalog above. Design the smallest contract that fully satisfies the request.`;
 }

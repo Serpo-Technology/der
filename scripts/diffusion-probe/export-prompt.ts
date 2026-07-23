@@ -4,6 +4,7 @@
  *
  *   npx tsx scripts/diffusion-probe/export-prompt.ts "a todo list app" > prompt.txt
  *   npx tsx scripts/diffusion-probe/export-prompt.ts --split /tmp "a todo list app"
+ *   npx tsx scripts/diffusion-probe/export-prompt.ts --compact --split /tmp "a todo list app"
  *
  * --split writes der-system.txt and der-user.txt into the given directory,
  * for runners that take the system prompt separately (llama.cpp -sysf).
@@ -26,13 +27,19 @@ if (splitIndex !== -1) {
   splitDir = args[splitIndex + 1] ?? '.';
   args.splice(splitIndex, 2);
 }
+let compact = false;
+const compactIndex = args.indexOf('--compact');
+if (compactIndex !== -1) {
+  compact = true;
+  args.splice(compactIndex, 1);
+}
 const description = args.join(' ').trim() ||
   'Create a todo list app with add, delete, and mark complete functionality';
 
 async function main() {
   await registerBuiltins(repositoryService);
   const builder = new ContractBuilder(repositoryService);
-  const { system, user } = await builder.renderCreatePrompt(description);
+  const { system, user } = await builder.renderCreatePrompt(description, { compact });
   if (splitDir) {
     const systemPath = join(splitDir, 'der-system.txt');
     const userPath = join(splitDir, 'der-user.txt');
