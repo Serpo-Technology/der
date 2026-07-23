@@ -39,7 +39,7 @@ export class AIInterpreterService implements AIInterpreter {
    */
   async compose(
     description: string,
-    onPartial?: (accumulated: string) => void
+    onPartial?: (accumulated: string, attempt: number) => void
   ): Promise<ComposedExperience> {
     if (!description || description.trim().length === 0) {
       throw new Error('Invalid description: Description cannot be empty');
@@ -142,7 +142,7 @@ export class AIInterpreterService implements AIInterpreter {
   async editContract(
     current: Contract,
     instruction: string,
-    onPartial?: (accumulated: string) => void
+    onPartial?: (accumulated: string, attempt: number) => void
   ): Promise<{ contract: Contract; warnings: ValidationWarning[] }> {
     try {
       const contractBuilder = new ContractBuilder(this.repository, this.llmClient);

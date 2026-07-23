@@ -58,7 +58,7 @@ export class ContractBuilder {
    */
   async composeFromDescription(
     description: string,
-    onPartial?: (accumulated: string) => void
+    onPartial?: (accumulated: string, attempt: number) => void
   ): Promise<{ contract: Contract; spec: ComposedSpec }> {
     const catalog = await this.renderCatalog();
     const messages: LLMMessage[] = [
@@ -142,7 +142,7 @@ export class ContractBuilder {
   async editContract(
     current: Contract | ContractShape,
     instruction: string,
-    onPartial?: (accumulated: string) => void
+    onPartial?: (accumulated: string, attempt: number) => void
   ): Promise<Contract> {
     const currentObject =
       typeof (current as { toObject?: () => unknown }).toObject === 'function'

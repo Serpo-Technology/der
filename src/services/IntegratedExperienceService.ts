@@ -260,7 +260,7 @@ export class IntegratedExperienceService {
     experienceId: string,
     instruction: string,
     currentContract?: ContractModel | Contract,
-    onProgress?: (receivedChars: number) => void
+    onProgress?: (receivedChars: number, attempt: number) => void
   ): Promise<{ contract: ContractModel; warnings: ValidationWarning[] }> {
     const existing =
       currentContract ?? (await this.runtime.getExperience(experienceId))?.contract;
@@ -271,7 +271,9 @@ export class IntegratedExperienceService {
     const { contract: editedData, warnings } = await this.aiInterpreter.editContract(
       existing as Contract,
       instruction,
-      onProgress ? (accumulated) => onProgress(accumulated.length) : undefined
+      onProgress
+        ? (accumulated: string, attempt: number) => onProgress(accumulated.length, attempt)
+        : undefined
     );
     const contract = ContractModel.fromObject(editedData);
 

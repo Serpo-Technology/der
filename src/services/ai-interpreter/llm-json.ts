@@ -67,9 +67,9 @@ export interface GenerateJsonOptions<T = unknown> {
   /**
    * Receives the accumulated raw response text as the model streams it
    * (throttled), for best-effort progressive previews. Runs on every
-   * attempt, including the repair round.
+   * attempt; the attempt number (1-based) distinguishes repair rounds.
    */
-  onPartial?: (accumulated: string) => void;
+  onPartial?: (accumulated: string, attempt: number) => void;
 }
 
 export async function generateValidatedJson<S extends z.ZodType>(
@@ -79,7 +79,10 @@ export async function generateValidatedJson<S extends z.ZodType>(
   options: GenerateJsonOptions<z.output<S>>
 ): Promise<z.output<S>> {
   let lastProvider: string | undefined;
+  let attemptNumber = 0;
   const attempt = async (conversation: LLMMessage[]) => {
+    attemptNumber += 1;
+    const round = attemptNumber;
     const onPartial = options.onPartial;
     let accumulated = '';
     let lastFlush = 0;
@@ -89,7 +92,7 @@ export async function generateValidatedJson<S extends z.ZodType>(
           const now = Date.now();
           if (now - lastFlush >= 150) {
             lastFlush = now;
-            onPartial(accumulated);
+            onPartial(accumulated, round);
           }
         }
       : undefined;
@@ -101,7 +104,7 @@ export async function generateValidatedJson<S extends z.ZodType>(
       onChunk,
     });
     if (onPartial && accumulated.length > 0) {
-      onPartial(accumulated);
+      onPartial(accumulated, round);
     }
     lastProvider = response.provider;
     return response.content;

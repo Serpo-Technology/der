@@ -294,6 +294,11 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
 
   // Collect element ids, state reads, and state writes.
   const elementIds = new Set<string>();
+  const knownElementIds = () => {
+    const ids = [...elementIds];
+    const shown = ids.slice(0, 30).join(', ');
+    return ids.length > 30 ? `${shown}, ...` : shown;
+  };
   const stateReads = new Map<string, string>(); // key -> first reading property
   const stateWrites = new Set<string>(Object.keys(contract.initialState ?? {}));
   const operationIds = new Set(contract.operations.map((op) => op.id));
@@ -383,9 +388,10 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     element.eventBindings.forEach((binding: EventBinding, bindingIndex) => {
       if (!operationIds.has(binding.operationId)) {
         missingOperationRefs.add(binding.operationId);
+        const defined = [...operationIds].join(', ') || 'none';
         fail(
           `${path}.eventBindings.${bindingIndex}`,
-          `Event "${binding.event}" references unknown operation "${binding.operationId}"`,
+          `Event "${binding.event}" references unknown operation "${binding.operationId}"; defined operation ids: ${defined}`,
           'UNKNOWN_OPERATION'
         );
       }
@@ -432,7 +438,11 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       checkPipeline(inputPath, input, fail);
 
       if (input.source === 'ui-element' && !elementIds.has(input.sourceId)) {
-        fail(inputPath, `References unknown element "${input.sourceId}"`, 'UNKNOWN_ELEMENT');
+        fail(
+          inputPath,
+          `References unknown element "${input.sourceId}"; existing element ids: ${knownElementIds()}`,
+          'UNKNOWN_ELEMENT'
+        );
       }
       if (input.source === 'state' && input.sourceId && !stateReads.has(input.sourceId)) {
         stateReads.set(input.sourceId, `input:${input.name}`);
@@ -527,7 +537,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       if (output.target === 'ui-element' && !elementIds.has(output.targetId)) {
         fail(
           `${opPath}.outputs.${outputIndex}`,
-          `References unknown element "${output.targetId}"`,
+          `References unknown element "${output.targetId}"; existing element ids: ${knownElementIds()}`,
           'UNKNOWN_ELEMENT'
         );
       }

@@ -133,7 +133,10 @@ const ExperienceWindow: React.FC<{
           initialExperienceId,
           instruction,
           currentContract,
-          (receivedChars) => setEditProgress(`${(receivedChars / 1000).toFixed(1)}k`)
+          (receivedChars, attempt) =>
+            setEditProgress(
+              `${attempt > 1 ? `repair ${attempt - 1}, ` : ''}${(receivedChars / 1000).toFixed(1)}k`
+            )
         );
         setEditWarnings(result.warnings);
         setCurrentContract(result.contract.toObject() as unknown as ContractType);
