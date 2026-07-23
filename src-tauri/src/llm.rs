@@ -160,6 +160,19 @@ fn build_anthropic_body(
     body
 }
 
+/// A base URL with no path gets the standard OpenAI-compatible /v1 prefix;
+/// an explicit path is respected (users often enter just the origin, e.g.
+/// http://localhost:11434 for Ollama).
+fn normalize_openai_base(base: &str) -> String {
+    let trimmed = base.trim_end_matches('/');
+    if let Ok(url) = reqwest::Url::parse(trimmed) {
+        if url.path().is_empty() || url.path() == "/" {
+            return format!("{}/v1", trimmed);
+        }
+    }
+    trimmed.to_string()
+}
+
 /// Splits complete lines off an SSE byte buffer and returns their `data:`
 /// payloads; an unterminated tail stays in the buffer so multi-byte
 /// characters split across chunks survive.
@@ -444,10 +457,23 @@ async fn gemini_chat(
 }
 
 #[tauri::command]
-pub async fn llm_chat(
+pub async fn llm_chat(app: AppHandle, request: LlmChatRequest) -> Result<LlmChatResponse, String> {
+    llm_chat_impl(app, request, None).await
+}
+
+#[tauri::command]
+pub async fn llm_chat_stream(
     app: AppHandle,
     request: LlmChatRequest,
     on_chunk: Channel<String>,
+) -> Result<LlmChatResponse, String> {
+    llm_chat_impl(app, request, Some(on_chunk)).await
+}
+
+async fn llm_chat_impl(
+    app: AppHandle,
+    request: LlmChatRequest,
+    on_chunk: Option<Channel<String>>,
 ) -> Result<LlmChatResponse, String> {
     if request.messages.is_empty() {
         return Err("No messages to send.".to_string());
@@ -474,7 +500,7 @@ pub async fn llm_chat(
     let json_mode = request.json_mode.unwrap_or(false);
     let base_url = request.base_url.or(stored.base_url);
 
-    let chunk_sink = if request.stream { Some(&on_chunk) } else { None };
+    let chunk_sink = if request.stream { on_chunk.as_ref() } else { None };
 
     // Providers without system-block support get the structured prompt as one
     // plain system message ahead of the conversation.
@@ -514,7 +540,9 @@ pub async fn llm_chat(
         }
         "deepseek" => {
             let key = api_key(&app, "deepseek")?;
-            let base = base_url.unwrap_or_else(|| "https://api.deepseek.com/v1".to_string());
+            let base = normalize_openai_base(
+                &base_url.unwrap_or_else(|| "https://api.deepseek.com/v1".to_string()),
+            );
             openai_compat_chat(
                 &base,
                 Some(&key),
@@ -529,7 +557,9 @@ pub async fn llm_chat(
         }
         "openai" => {
             let key = api_key(&app, "openai")?;
-            let base = base_url.unwrap_or_else(|| "https://api.openai.com/v1".to_string());
+            let base = normalize_openai_base(
+                &base_url.unwrap_or_else(|| "https://api.openai.com/v1".to_string()),
+            );
             openai_compat_chat(
                 &base,
                 Some(&key),
@@ -543,9 +573,9 @@ pub async fn llm_chat(
             .await?
         }
         "local" => {
-            let base = base_url.ok_or(
+            let base = normalize_openai_base(&base_url.ok_or(
                 "Local provider needs a base URL (for example http://localhost:11434/v1). Set one in Settings.",
-            )?;
+            )?);
             let key = settings::load_credentials(&app).api_keys.get("local").cloned();
             openai_compat_chat(
                 &base,
@@ -625,6 +655,17 @@ mod tests {
         assert!(system[0].get("cache_control").is_none());
         assert_eq!(system[1]["text"], "BASE");
         assert_eq!(system[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn bare_origins_get_the_standard_v1_path() {
+        assert_eq!(normalize_openai_base("http://localhost:11434"), "http://localhost:11434/v1");
+        assert_eq!(normalize_openai_base("http://localhost:11434/"), "http://localhost:11434/v1");
+        assert_eq!(normalize_openai_base("http://localhost:11434/v1"), "http://localhost:11434/v1");
+        assert_eq!(
+            normalize_openai_base("http://box.local:8080/serve/v1/"),
+            "http://box.local:8080/serve/v1"
+        );
     }
 
     #[test]

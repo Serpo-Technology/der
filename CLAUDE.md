@@ -124,10 +124,11 @@ Anthropic requests never send sampling parameters (modern Claude models reject t
 accepts an optional `systemBlocks: [{text, cache}]` array: on Anthropic-shaped providers each
 `cache: true` block gets `cache_control: {type: "ephemeral"}` (prompt caching for the static
 prompt prefix; a legacy single system string is cached whole), while other providers receive the
-blocks as one plain system message. The command always takes a `Channel<String>` argument and a
-`stream` flag in the request: when set, Anthropic-shaped and OpenAI-shaped providers switch to
-SSE and forward text deltas over the channel (Gemini stays non-streaming), with the full content
-still returned at the end. Settings UI:
+blocks as one plain system message. Streaming goes through the separate `llm_chat_stream` command,
+which takes a `Channel<String>`: Anthropic-shaped and OpenAI-shaped providers switch to SSE and
+forward text deltas over the channel (Gemini stays non-streaming), with the full content still
+returned at the end; plain `llm_chat` keeps its channel-less signature. Bare-origin
+OpenAI-compatible base URLs (e.g. `http://localhost:11434`) normalize to `/v1`. Settings UI:
 `src/components/settings/SettingsView.tsx`; TS wrappers: `src/services/settings/llm-settings.ts`.
 
 ### Composition-only part system

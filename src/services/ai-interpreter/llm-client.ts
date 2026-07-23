@@ -66,37 +66,40 @@ export class LLMClient {
   }
 
   async sendMessage(messages: LLMMessage[], options: LLMSendOptions = {}): Promise<LLMResponse> {
-    // The command always takes a channel; the stream flag decides whether the
-    // provider actually feeds it. Resolved defensively: test doubles of the
-    // Tauri module may not define a Channel export at all.
+    // Streaming callers go through llm_chat_stream, which takes a channel;
+    // everything else uses the plain command. The Channel constructor is
+    // resolved defensively: test doubles of the Tauri module may not define
+    // the export at all.
     let onChunk: Channel<string> | undefined;
-    let ChannelCtor: typeof Channel | undefined;
-    try {
-      ChannelCtor = typeof Channel === 'function' ? Channel : undefined;
-    } catch {
-      ChannelCtor = undefined;
-    }
-    if (ChannelCtor) {
-      onChunk = new ChannelCtor<string>();
-      const handler = options.onChunk;
-      if (handler) {
+    const handler = options.onChunk;
+    if (handler) {
+      let ChannelCtor: typeof Channel | undefined;
+      try {
+        ChannelCtor = typeof Channel === 'function' ? Channel : undefined;
+      } catch {
+        ChannelCtor = undefined;
+      }
+      if (ChannelCtor) {
+        onChunk = new ChannelCtor<string>();
         onChunk.onmessage = (delta) => handler(delta);
       }
     }
 
-    return await invoke<LLMResponse>('llm_chat', {
-      request: {
-        messages,
-        systemBlocks: options.systemBlocks,
-        stream: Boolean(options.onChunk),
-        provider: this.config.provider,
-        model: this.config.model,
-        maxTokens: options.maxTokens ?? this.config.maxTokens,
-        temperature: this.config.temperature,
-        jsonMode: options.jsonMode ?? false,
-        baseUrl: this.config.baseUrl,
-      },
-      onChunk,
-    });
+    const request = {
+      messages,
+      systemBlocks: options.systemBlocks,
+      stream: Boolean(onChunk),
+      provider: this.config.provider,
+      model: this.config.model,
+      maxTokens: options.maxTokens ?? this.config.maxTokens,
+      temperature: this.config.temperature,
+      jsonMode: options.jsonMode ?? false,
+      baseUrl: this.config.baseUrl,
+    };
+
+    if (onChunk) {
+      return await invoke<LLMResponse>('llm_chat_stream', { request, onChunk });
+    }
+    return await invoke<LLMResponse>('llm_chat', { request });
   }
 }

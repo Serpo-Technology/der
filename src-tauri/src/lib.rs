@@ -1280,6 +1280,7 @@ pub fn run() {
             fragments::list_fragments,
             fragments::execute_fragment,
             llm::llm_chat,
+            llm::llm_chat_stream,
             settings::get_llm_settings,
             settings::set_llm_settings,
             settings::set_llm_credential,
