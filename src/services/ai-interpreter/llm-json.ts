@@ -6,7 +6,6 @@
 
 import { z } from 'zod';
 import { LLMClient, LLMMessage, LLMSystemBlock } from './llm-client';
-import { formatZodError } from '../../schemas/contract';
 
 /**
  * Pulls the first balanced JSON object out of a model response, tolerating
@@ -122,7 +121,14 @@ export async function generateValidatedJson<S extends z.ZodType>(
     }
     const result = schema.safeParse(candidate);
     if (!result.success) {
-      return { ok: false, problem: `The JSON failed validation:\n${formatZodError(result.error)}` };
+      const lines = result.error.issues.slice(0, 5).map((issue) => {
+        const path = issue.path.join('.') || '(root)';
+        const snippet = snippetNear(candidate, issue.path);
+        return snippet
+          ? `${path}: ${issue.message} (the object there is: ${snippet})`
+          : `${path}: ${issue.message}`;
+      });
+      return { ok: false, problem: `The JSON failed validation:\n${lines.join('\n')}` };
     }
     if (options.semanticCheck) {
       const problems = options.semanticCheck(result.data);
@@ -133,24 +139,30 @@ export async function generateValidatedJson<S extends z.ZodType>(
     return { ok: true, value: result.data };
   };
 
-  const first = await attempt(messages);
-  const firstParse = parse(first);
-  if (firstParse.ok) {
-    return firstParse.value;
+  let conversation: LLMMessage[] = [...messages];
+  let raw = await attempt(conversation);
+  let parsed = parse(raw);
+  if (parsed.ok) {
+    return parsed.value;
   }
 
-  const repairMessages: LLMMessage[] = [
-    ...messages,
-    { role: 'assistant', content: first },
-    {
-      role: 'user',
-      content: `Your previous response had problems:\n${firstParse.problem}\n\nReturn the corrected JSON object only. No prose, no code fences.`,
-    },
-  ];
-  const second = await attempt(repairMessages);
-  const secondParse = parse(second);
-  if (secondParse.ok) {
-    return secondParse.value;
+  // Local models are cheap and their misses are usually one field; give them
+  // an extra repair round.
+  const maxRepairs = lastProvider === 'local' ? 2 : 1;
+  for (let round = 0; round < maxRepairs; round++) {
+    conversation = [
+      ...conversation,
+      { role: 'assistant', content: raw },
+      {
+        role: 'user',
+        content: `Your previous response had problems:\n${parsed.problem}\n\nReturn the corrected JSON object only. No prose, no code fences.`,
+      },
+    ];
+    raw = await attempt(conversation);
+    parsed = parse(raw);
+    if (parsed.ok) {
+      return parsed.value;
+    }
   }
 
   // Local servers silently truncate prompts that exceed their context
@@ -160,6 +172,28 @@ export async function generateValidatedJson<S extends z.ZodType>(
       ? ' If your local server truncates long prompts (Ollama logs "truncating input prompt"), raise its context window: restart Ollama with OLLAMA_CONTEXT_LENGTH=16384.'
       : '';
   throw new Error(
-    `${options.label} generation failed after a repair attempt. ${secondParse.problem}${localHint}`
+    `${options.label} generation failed after a repair attempt. ${parsed.problem}${localHint}`
   );
+}
+
+/**
+ * Compact JSON of the object containing a zod issue path, so repair messages
+ * point at the fragment instead of only a dotted path.
+ */
+function snippetNear(candidate: unknown, path: PropertyKey[]): string | null {
+  // The issue path targets a field; its container object is the context.
+  const containerPath = path.slice(0, -1);
+  let current: unknown = candidate;
+  for (const segment of containerPath) {
+    if (current === null || current === undefined || typeof current !== 'object') return null;
+    current = (current as Record<PropertyKey, unknown>)[segment];
+  }
+  if (current === undefined) return null;
+  try {
+    const text = JSON.stringify(current);
+    if (!text) return null;
+    return text.length > 200 ? `${text.slice(0, 200)}...` : text;
+  } catch {
+    return null;
+  }
 }

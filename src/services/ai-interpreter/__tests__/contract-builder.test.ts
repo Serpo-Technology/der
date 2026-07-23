@@ -150,6 +150,63 @@ describe('ContractBuilder', () => {
     });
   });
 
+  describe('repair rounds', () => {
+    it('quotes the offending fragment in the repair message', async () => {
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      const broken = JSON.stringify({
+        spec: {},
+        contract: {
+          name: 'x',
+          elements: [{ id: 'ok', type: 'text' }, { id: 'nameless-thing' }]
+        }
+      });
+      const good = JSON.stringify({ spec: {}, contract: JSON.parse(contractJson()) });
+      vi.mocked(mockLLMClient.sendMessage)
+        .mockResolvedValueOnce({ content: broken })
+        .mockResolvedValueOnce({ content: good });
+
+      await builder.composeFromDescription('an app');
+
+      const repairMessage = vi.mocked(mockLLMClient.sendMessage).mock.calls[1][0].at(-1)!;
+      expect(repairMessage.content).toContain('nameless-thing');
+      expect(repairMessage.content).toContain('the object there is:');
+    });
+
+    it('gives the local provider a second repair round', async () => {
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      const broken = JSON.stringify({
+        spec: {},
+        contract: { name: 'x', elements: [{ id: 'nameless' }] }
+      });
+      const good = JSON.stringify({ spec: {}, contract: JSON.parse(contractJson()) });
+      vi.mocked(mockLLMClient.sendMessage)
+        .mockResolvedValueOnce({ content: broken, provider: 'local' })
+        .mockResolvedValueOnce({ content: broken, provider: 'local' })
+        .mockResolvedValueOnce({ content: good, provider: 'local' });
+
+      const { contract } = await builder.composeFromDescription('an app');
+      expect(contract.name).toBe('sample-app');
+      expect(vi.mocked(mockLLMClient.sendMessage)).toHaveBeenCalledTimes(3);
+    });
+
+    it('stops after one repair round on non-local providers', async () => {
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      const broken = JSON.stringify({
+        spec: {},
+        contract: { name: 'x', elements: [{ id: 'nameless' }] }
+      });
+      vi.mocked(mockLLMClient.sendMessage).mockResolvedValue({
+        content: broken,
+        provider: 'anthropic'
+      });
+
+      await expect(builder.composeFromDescription('an app')).rejects.toThrow(
+        /failed after a repair attempt/
+      );
+      expect(vi.mocked(mockLLMClient.sendMessage)).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('generateFromBlueprint', () => {
     it('should generate a contract from the LLM response', async () => {
       mockLLMResponse(JSON.stringify(SAMPLE_TODO_CONTRACT));
