@@ -133,7 +133,7 @@ export class ComponentRenderer {
     if (typeof element.type === 'string' && INTRINSIC_TAGS.has(element.type)) {
       const { content, text, children: _ignored, ...rest } = finalProps as any;
       const children = [] as any[];
-      if (content ?? text) children.push(content ?? text);
+      if (content ?? text) children.push(displayable(content ?? text));
       children.push(renderChildren());
       return React.createElement(element.type, { key: element.id, ...rest }, children.length > 0 ? children : undefined);
     }
@@ -448,8 +448,21 @@ function InputComponent({ label, ...props }: any) {
   return input;
 }
 
+/** Bound values can resolve to anything; only scalars render as-is. */
+function displayable(value: unknown): React.ReactNode {
+  if (value === null || value === undefined) return value as React.ReactNode;
+  if (typeof value === 'object' && !React.isValidElement(value)) {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return value as React.ReactNode;
+}
+
 function TextComponent({ children, text, content, ...props }: any) {
-  const display = children ?? content ?? text;
+  const display = children ?? displayable(content ?? text);
   return <span {...props}>{display}</span>;
 }
 

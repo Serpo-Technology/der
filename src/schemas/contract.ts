@@ -329,6 +329,24 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     element.dataBindings.forEach((binding, bindingIndex) => {
       const bindingPath = `${path}.dataBindings.${bindingIndex}`;
       checkPipeline(bindingPath, binding, fail);
+
+      // Text-bound pipelines must end in a single value, or React receives a
+      // list where a string belongs.
+      if (binding.property === 'content' || binding.property === 'text') {
+        const steps = [
+          ...(binding.transforms ?? []),
+          ...(binding.transform ? [binding.transform] : []),
+        ];
+        const last = steps[steps.length - 1];
+        const lastDef = last ? TRANSFORMS[last.type] : undefined;
+        if (lastDef?.output === 'array') {
+          fail(
+            bindingPath,
+            `The "${binding.property}" pipeline ends in "${last!.type}", which returns a list; append a reducing step such as count, sum, or pick`,
+            'PIPELINE_ENDS_IN_ARRAY'
+          );
+        }
+      }
       if (binding.source === 'state' && binding.sourceId) {
         const existing = stateReads.get(binding.sourceId);
         // Array-shaped readers win so the seed becomes [] regardless of order.

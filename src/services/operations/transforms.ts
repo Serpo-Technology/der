@@ -15,6 +15,8 @@ export interface TransformDef {
   name: string;
   description: string;
   parameters: KnobSpec[];
+  /** What the transform yields: display pipelines must end in a scalar. */
+  output: 'array' | 'scalar' | 'any';
   /** Null-safe: called even when value is null/undefined. */
   apply(value: unknown, parameters: Record<string, any>): unknown;
 }
@@ -31,12 +33,14 @@ function fieldOf(item: unknown, field: unknown): unknown {
 export const TRANSFORMS: Record<string, TransformDef> = {
   count: {
     name: 'count',
+    output: 'scalar',
     description: 'Number of entries in an array (0 for anything else).',
     parameters: [],
     apply: (value) => asArray(value).length,
   },
   sum: {
     name: 'sum',
+    output: 'scalar',
     description: 'Sum of a numeric field across an array of objects.',
     parameters: [
       { name: 'field', type: 'string', description: 'Field to sum', default: '' },
@@ -49,6 +53,7 @@ export const TRANSFORMS: Record<string, TransformDef> = {
   },
   filterBy: {
     name: 'filterBy',
+    output: 'array',
     description: 'Keeps array entries whose field equals the given value.',
     parameters: [
       { name: 'field', type: 'string', description: 'Field to compare' },
@@ -59,6 +64,7 @@ export const TRANSFORMS: Record<string, TransformDef> = {
   },
   filterTruthy: {
     name: 'filterTruthy',
+    output: 'array',
     description: 'Keeps array entries whose field is truthy (set flags, checked rows).',
     parameters: [{ name: 'field', type: 'string', description: 'Field to test' }],
     apply: (value, parameters) =>
@@ -66,6 +72,7 @@ export const TRANSFORMS: Record<string, TransformDef> = {
   },
   filterFalsy: {
     name: 'filterFalsy',
+    output: 'array',
     description:
       'Keeps array entries whose field is falsy or missing (e.g. not-completed rows; a row that never got the flag counts).',
     parameters: [{ name: 'field', type: 'string', description: 'Field to test' }],
@@ -74,6 +81,7 @@ export const TRANSFORMS: Record<string, TransformDef> = {
   },
   sortBy: {
     name: 'sortBy',
+    output: 'array',
     description: 'Sorts an array by a field; numeric when both values are numbers.',
     parameters: [
       { name: 'field', type: 'string', description: 'Field to sort by' },
@@ -104,12 +112,14 @@ export const TRANSFORMS: Record<string, TransformDef> = {
   },
   pick: {
     name: 'pick',
+    output: 'any',
     description: 'Reads a field (dot path allowed) from a single object.',
     parameters: [{ name: 'field', type: 'string', description: 'Field to read' }],
     apply: (value, parameters) => fieldOf(value, parameters.field),
   },
   pluck: {
     name: 'pluck',
+    output: 'array',
     description:
       'Field values across an array of objects (turns [{value: 5}, ...] into [5, ...]; use before count/sum or numeric part inputs).',
     parameters: [{ name: 'field', type: 'string', description: 'Field to project' }],
@@ -117,24 +127,28 @@ export const TRANSFORMS: Record<string, TransformDef> = {
   },
   equals: {
     name: 'equals',
+    output: 'scalar',
     description: 'True when the value equals the given value.',
     parameters: [{ name: 'value', type: 'string', description: 'Value to compare' }],
     apply: (value, parameters) => looseEquals(value, parameters.value),
   },
   not: {
     name: 'not',
+    output: 'scalar',
     description: 'Boolean negation of the value.',
     parameters: [],
     apply: (value) => !value,
   },
   parseNumber: {
     name: 'parseNumber',
+    output: 'scalar',
     description: 'Converts input text to a number (0 when not numeric).',
     parameters: [],
     apply: (value) => Number(value) || 0,
   },
   round: {
     name: 'round',
+    output: 'scalar',
     description: 'Rounds a number to the given decimals.',
     parameters: [
       { name: 'decimals', type: 'number', default: 0, description: 'Decimal places' },
@@ -150,6 +164,7 @@ export const TRANSFORMS: Record<string, TransformDef> = {
   },
   format: {
     name: 'format',
+    output: 'scalar',
     description: 'Inserts the value into a template at {{value}}.',
     parameters: [
       { name: 'template', type: 'string', description: 'Template containing {{value}}' },
@@ -162,6 +177,7 @@ export const TRANSFORMS: Record<string, TransformDef> = {
   },
   map: {
     name: 'map',
+    output: 'any',
     description: 'Maps the value through a lookup table (mapping[String(value)]).',
     parameters: [
       { name: 'mapping', type: 'string', description: 'Object of value -> replacement' },

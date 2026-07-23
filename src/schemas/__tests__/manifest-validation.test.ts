@@ -259,6 +259,58 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
     expect(result.warnings).toHaveLength(0);
   });
 
+  it('rejects content pipelines that end in a list', () => {
+    const { result } = checkContract(
+      rawContract({
+        initialState: { todos: [] },
+        elements: [
+          {
+            id: 'count',
+            type: 'text',
+            dataBindings: [
+              {
+                property: 'content',
+                source: 'state',
+                sourceId: 'todos',
+                transforms: [{ type: 'filterTruthy', parameters: { field: 'completed' } }]
+              }
+            ]
+          }
+        ]
+      })
+    );
+
+    expect(result.errors.map((e) => e.code)).toEqual(['PIPELINE_ENDS_IN_ARRAY']);
+    expect(result.errors[0].message).toContain('count, sum, or pick');
+  });
+
+  it('accepts content pipelines that reduce to a scalar', () => {
+    const { result } = checkContract(
+      rawContract({
+        initialState: { todos: [] },
+        elements: [
+          {
+            id: 'count',
+            type: 'text',
+            dataBindings: [
+              {
+                property: 'content',
+                source: 'state',
+                sourceId: 'todos',
+                transforms: [
+                  { type: 'filterTruthy', parameters: { field: 'completed' } },
+                  { type: 'count', parameters: {} }
+                ]
+              }
+            ]
+          }
+        ]
+      })
+    );
+
+    expect(result.errors).toHaveLength(0);
+  });
+
   it('normalizes unknown themes and accents with a warning', () => {
     const { contract, result } = checkContract(
       rawContract({ styling: { theme: 'neon', accent: 'plaid' } })
