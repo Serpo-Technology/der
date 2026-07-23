@@ -9,51 +9,18 @@
 
 import { ComposedSpec } from '../../types/blueprint';
 import { Contract, ValidationWarning } from '../../types/contract';
-import { LlmContractSchema, checkAgainstManifests, formatZodError } from '../../schemas/contract';
-import type { ContractShape } from '../../schemas/contract';
 import { ContractBuilder } from '../ai-interpreter/contract-builder';
-import { RecipeDef, getRecipeDef } from '../operations/registry';
+import { getRecipeDef } from '../operations/registry';
 import { repositoryService } from '../repository/repository-service';
+import { resolveRecipeShape } from './recipe-check';
 
-export interface RecipeCheck {
-  ok: boolean;
-  problems: string[];
-}
+export { checkRecipe } from './recipe-check';
+export type { RecipeCheck } from './recipe-check';
 
 export interface InstantiatedRecipe {
   contract: Contract;
   spec: ComposedSpec;
   warnings: ValidationWarning[];
-}
-
-/** The stored contract is shared registry state and validation seeds state
- * keys in place, so every use works on its own copy. */
-function cloneContract(def: RecipeDef): unknown {
-  return JSON.parse(JSON.stringify(def.contract));
-}
-
-function validateShape(def: RecipeDef): {
-  shape?: ContractShape;
-  problems: string[];
-  warnings: ValidationWarning[];
-} {
-  const parsed = LlmContractSchema.safeParse(cloneContract(def));
-  if (!parsed.success) {
-    return { problems: [formatZodError(parsed.error)], warnings: [] };
-  }
-  const shape = parsed.data as ContractShape;
-  const result = checkAgainstManifests(shape);
-  return {
-    shape,
-    problems: result.errors.map((error) => `${error.path}: ${error.message}`),
-    warnings: result.warnings,
-  };
-}
-
-/** Validates a recipe's contract against the current part vocabulary. */
-export function checkRecipe(def: RecipeDef): RecipeCheck {
-  const { problems } = validateShape(def);
-  return { ok: problems.length === 0, problems };
 }
 
 /** Turns an installed recipe into a renderable contract without a model
@@ -63,7 +30,7 @@ export function instantiateRecipe(name: string): InstantiatedRecipe {
   if (!def) {
     throw new Error(`No installed recipe named "${name}"`);
   }
-  const { shape, problems, warnings } = validateShape(def);
+  const { shape, problems, warnings } = resolveRecipeShape(def);
   if (!shape || problems.length > 0) {
     throw new Error(
       `Recipe "${def.title}" does not validate against the installed parts:\n${problems.join('\n')}`

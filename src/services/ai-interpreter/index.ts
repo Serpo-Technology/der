@@ -17,6 +17,9 @@ export interface ComposedExperience {
   contract: Contract;
   spec: ComposedSpec;
   warnings: ValidationWarning[];
+  /** Set when the request matched an installed recipe and the contract came
+   * from it instead of a fresh composition. */
+  recipeName?: string;
 }
 
 export class AIInterpreterService implements AIInterpreter {
@@ -47,14 +50,14 @@ export class AIInterpreterService implements AIInterpreter {
 
     try {
       const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
-      const { contract, spec } = await contractBuilder.composeFromDescription(
+      const { contract, spec, recipeName } = await contractBuilder.composeFromDescription(
         description,
         onPartial
       );
       this.lastContractWarnings = contractBuilder.getLastWarnings();
 
       const blueprint = this.generator.deriveFromComposition(spec, contract, description);
-      return { blueprint, contract, spec, warnings: this.lastContractWarnings };
+      return { blueprint, contract, spec, warnings: this.lastContractWarnings, recipeName };
     } catch (error) {
       throw new Error(`Failed to compose experience: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

@@ -189,9 +189,10 @@ export const LlmContractSchema = ContractSchema.extend({
 });
 
 /**
- * The single-call creation response: the contract plus a small spec header
- * that carries the model's reading of the request (shown in the Blueprint tab
- * and surfaced as informational warnings).
+ * The single-call creation response: a small spec header carrying the model's
+ * reading of the request (shown in the Blueprint tab and surfaced as
+ * informational warnings), plus either the composed contract or the name of
+ * an installed recipe that already is the requested app.
  */
 export const ComposedSpecSchema = z.object({
   goal: z.string().default(''),
@@ -199,10 +200,16 @@ export const ComposedSpecSchema = z.object({
   openQuestions: z.array(z.string()).default([]),
 });
 
-export const ComposedResponseSchema = z.object({
-  spec: ComposedSpecSchema.default({ goal: '', assumptions: [], openQuestions: [] }),
-  contract: LlmContractSchema,
-});
+export const ComposedResponseSchema = z
+  .object({
+    spec: ComposedSpecSchema.default({ goal: '', assumptions: [], openQuestions: [] }),
+    contract: LlmContractSchema.optional(),
+    recipe: z.string().min(1).optional(),
+  })
+  .refine((value) => (value.contract === undefined) !== (value.recipe === undefined), {
+    message:
+      'Respond with exactly one of "contract" (a composed app) or "recipe" (an installed app name)',
+  });
 
 export type ComposedSpecShape = z.output<typeof ComposedSpecSchema>;
 export type ComposedResponseShape = z.output<typeof ComposedResponseSchema>;

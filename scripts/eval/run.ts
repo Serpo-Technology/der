@@ -31,7 +31,9 @@ import { loadDistParts } from '../diffusion-probe/load-parts';
 import {
   FRAGMENT_ELEMENTS,
   FRAGMENT_OPERATIONS,
+  FRAGMENT_RECIPES,
 } from '../../src/services/operations/registry';
+import { resolveRecipeShape } from '../../src/services/recipes/recipe-check';
 
 console.warn = () => {};
 console.error = () => {};
@@ -39,15 +41,27 @@ console.error = () => {};
 interface EvalCase {
   id: string;
   prompt: string;
+  /** When set, the correct answer reuses this installed recipe; a composed
+   * contract (or a different recipe) is a matching miss. When absent, a
+   * recipe answer is a matching miss. */
+  expectRecipe?: string;
 }
 
 interface EvalResult {
   id: string;
-  verdict: 'pass' | 'schema' | 'manifest' | 'unparseable' | 'request-failed';
+  verdict:
+    | 'pass'
+    | 'schema'
+    | 'manifest'
+    | 'unparseable'
+    | 'request-failed'
+    | 'recipe-mismatch'
+    | 'no-reuse';
   wallMs: number;
   completionTokens?: number;
   adjustments?: number;
   fragmentsUsed?: string[];
+  recipe?: string;
   errors?: string;
   contract?: unknown;
   behavior?: 'pass' | 'fail';
@@ -120,7 +134,10 @@ async function generate(
   };
 }
 
-function judge(raw: string): Omit<EvalResult, 'id' | 'wallMs' | 'completionTokens'> {
+function judge(
+  raw: string,
+  expectRecipe?: string
+): Omit<EvalResult, 'id' | 'wallMs' | 'completionTokens'> {
   let candidate: unknown;
   try {
     candidate = JSON.parse(extractJson(raw));
@@ -130,6 +147,38 @@ function judge(raw: string): Omit<EvalResult, 'id' | 'wallMs' | 'completionToken
   const parsed = ComposedResponseSchema.safeParse(candidate);
   if (!parsed.success) {
     return { verdict: 'schema', errors: formatZodError(parsed.error).slice(0, 300) };
+  }
+
+  if (parsed.data.recipe !== undefined) {
+    const name = parsed.data.recipe;
+    if (name !== expectRecipe) {
+      return {
+        verdict: 'recipe-mismatch',
+        recipe: name,
+        errors: expectRecipe
+          ? `reused ${name}, expected ${expectRecipe}`
+          : `reused ${name} where composing was expected`,
+      };
+    }
+    const def = FRAGMENT_RECIPES[name];
+    const resolved = def ? resolveRecipeShape(def) : undefined;
+    if (!resolved?.shape || resolved.problems.length > 0) {
+      return {
+        verdict: 'manifest',
+        recipe: name,
+        errors: (resolved?.problems.join('\n') ?? `no installed recipe ${name}`).slice(0, 300),
+      };
+    }
+    // The recipe's stored shape goes through the behavior stage like any
+    // composed contract: reuse must also behave as this prompt demands.
+    return { verdict: 'pass', recipe: name, adjustments: 0, contract: def.contract };
+  }
+
+  if (expectRecipe) {
+    return {
+      verdict: 'no-reuse',
+      errors: `composed a contract where recipe ${expectRecipe} was expected`,
+    };
   }
   const result = checkAgainstManifests(parsed.data.contract as ContractShape);
   const serialized = JSON.stringify(parsed.data.contract);
@@ -172,7 +221,7 @@ async function main() {
         id: evalCase.id,
         wallMs: Date.now() - started,
         completionTokens,
-        ...judge(content),
+        ...judge(content, evalCase.expectRecipe),
       });
     } catch (error) {
       results.push({
@@ -185,6 +234,7 @@ async function main() {
     const last = results[results.length - 1];
     process.stdout.write(
       `${last.id.padEnd(16)} ${last.verdict.padEnd(14)} ${String(last.wallMs).padStart(6)}ms` +
+        `${last.recipe ? '  recipe: ' + last.recipe : ''}` +
         `${last.fragmentsUsed?.length ? '  parts: ' + last.fragmentsUsed.join(',') : ''}\n`
     );
   }

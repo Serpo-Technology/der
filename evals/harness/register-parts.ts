@@ -9,6 +9,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import {
   FRAGMENT_ELEMENTS,
   FRAGMENT_OPERATIONS,
+  FRAGMENT_RECIPES,
 } from '../../src/services/operations/registry';
 import { runGuest } from './wasm-host';
 
@@ -60,6 +61,18 @@ export function registerRunnableParts(dir: string): void {
         howto: fragment.howto,
         params: fragment.params ?? [],
         template: fragment.template,
+      };
+    }
+    for (const recipe of manifest.recipes ?? []) {
+      FRAGMENT_RECIPES[recipe.name] = {
+        name: recipe.name,
+        title: recipe.title,
+        description: recipe.description,
+        keywords: recipe.keywords ?? [],
+        spec: recipe.spec,
+        contract: recipe.contract,
+        partId: manifest.id,
+        publisher: manifest.publisher,
       };
     }
   }

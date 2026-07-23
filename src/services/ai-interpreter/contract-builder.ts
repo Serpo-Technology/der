@@ -31,13 +31,16 @@ import {
   ELEMENT_MANIFESTS,
   FRAGMENT_ELEMENTS,
   FRAGMENT_OPERATIONS,
+  FRAGMENT_RECIPES,
   INTEGRATION_CREDENTIALS,
   INTRINSIC_ELEMENT_TYPES,
   STYLE_ACCENTS,
   STYLE_THEMES,
   getOperationDef,
+  getRecipeDef,
   isKnownElementType,
 } from '../operations/registry';
+import { checkRecipe, resolveRecipeShape } from '../recipes/recipe-check';
 import { TRANSFORMS } from '../operations/transforms';
 
 export class ContractBuilder {
@@ -54,14 +57,17 @@ export class ContractBuilder {
   }
 
   /**
-   * Single-call creation: one model round trip returns the contract plus a
-   * small spec header (goal, assumptions, open questions). Validation matches
-   * the blueprint path exactly: schema parse, manifest check, repair round.
+   * Single-call creation: one model round trip returns the spec header plus
+   * either the composed contract or a reference to an installed recipe that
+   * already is the requested app. Validation matches the blueprint path
+   * exactly: schema parse, manifest check, repair round; a recipe reference
+   * must name an installed recipe that still validates, or the repair round
+   * asks for a composed contract instead.
    */
   async composeFromDescription(
     description: string,
     onPartial?: (accumulated: string, attempt: number) => void
-  ): Promise<{ contract: Contract; spec: ComposedSpec }> {
+  ): Promise<{ contract: Contract; spec: ComposedSpec; recipeName?: string }> {
     const catalog = await this.renderCatalog();
     const messages: LLMMessage[] = [
       { role: 'user', content: `Build an app for this request:\n\n${description}` },
@@ -77,17 +83,47 @@ export class ContractBuilder {
       ],
       onPartial,
       semanticCheck: (candidate) => {
+        if (candidate.recipe !== undefined) {
+          warnings = [];
+          const def = getRecipeDef(candidate.recipe);
+          if (!def) {
+            const names = Object.keys(FRAGMENT_RECIPES).sort().join(', ');
+            return [
+              `recipe: "${candidate.recipe}" is not an installed app${
+                names ? ` (installed: ${names})` : ''
+              }; compose a contract instead`,
+            ];
+          }
+          const check = checkRecipe(def);
+          if (!check.ok) {
+            return [
+              `recipe: "${candidate.recipe}" cannot open (${check.problems.join('; ')}); compose a contract instead`,
+            ];
+          }
+          return [];
+        }
         const result = checkAgainstManifests(candidate.contract as ContractShape);
         warnings = result.warnings;
         return result.errors.length > 0 ? [formatManifestErrors(result.errors)] : [];
       },
     });
 
+    const spec = composed.spec;
+    if (composed.recipe !== undefined) {
+      const def = getRecipeDef(composed.recipe);
+      const resolved = def ? resolveRecipeShape(def) : undefined;
+      if (!resolved?.shape) {
+        throw new Error(`Recipe "${composed.recipe}" is no longer available`);
+      }
+      this.lastWarnings = resolved.warnings;
+      const contract = this.postProcess(resolved.shape, spec.goal || description);
+      return { contract, spec, recipeName: composed.recipe };
+    }
+
     this.lastWarnings = warnings;
     if (warnings.length > 0) {
       console.warn('Contract adjusted against part manifests:', warnings);
     }
-    const spec = composed.spec;
     const contract = this.postProcess(
       composed.contract as ContractShape,
       spec.goal || description
@@ -375,6 +411,16 @@ export class ContractBuilder {
         : `- ${def.name}${params ? ` {${params}}` : ''}: ${def.description}`;
     });
 
+    // Installed recipes that still validate against the current vocabulary.
+    // Sorted by name so the cached prompt prefix stays byte-stable.
+    const recipeLines = Object.values(FRAGMENT_RECIPES)
+      .filter((def) => checkRecipe(def).ok)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((def) => {
+        const keywords = def.keywords.length ? ` (keywords: ${def.keywords.join(', ')})` : '';
+        return `- ${def.name} "${def.title}": ${def.description}${keywords}`;
+      });
+
     const fragmentLines = Object.values(FRAGMENT_OPERATIONS).flatMap((def) => {
       const inputs =
         def.inputs
@@ -430,6 +476,13 @@ export class ContractBuilder {
             '',
             'COMPOSED UI FRAGMENTS (single elements the runtime expands; params go in "properties"). Prefer these over hand-building the same pattern from raw elements. Give every dashboard or summary number its own stat_tile in a row container instead of running them together as plain text:',
             ...uiFragmentLines,
+          ]
+        : []),
+      ...(recipeLines.length
+        ? [
+            '',
+            'INSTALLED APPS (complete proven apps already on this machine):',
+            ...recipeLines,
           ]
         : []),
       ...(customLines.length ? ['', 'REGISTERED CUSTOM OPERATIONS:', ...customLines] : []),
@@ -530,6 +583,7 @@ export class ContractBuilder {
 const CREATE_PROMPT_SECTION = `CREATE MODE:
 You are given a user's request for a new app. Respond with ONE JSON object:
 { "spec": { "goal": "one sentence stating what the app does", "assumptions": ["choice you made where the request was open"], "openQuestions": ["question whose answer would change the app"] }, "contract": <the contract> }
+When the catalog has an INSTALLED APPS section and the request asks for what one of those apps already is (same purpose, nothing the app lacks), respond { "spec": <as above>, "recipe": "<name from INSTALLED APPS>" } INSTEAD of a contract: the installed app opens instantly and is already proven to work. Record the reuse as a spec assumption. If the request needs anything the installed app does not do, compose the contract yourself. Never respond with both "contract" and "recipe", and never invent an app name.
 Make reasonable choices instead of blocking on questions; record them as assumptions. Keep both lists short; they are often empty. Return the JSON only: no prose, no code fences.`;
 
 const BLUEPRINT_PROMPT_SECTION = `BLUEPRINT MODE:

@@ -59,6 +59,11 @@ model call: `compose` -> `ContractBuilder.composeFromDescription` asks for
 `{spec: {goal, assumptions, openQuestions}, contract}` (`ComposedResponseSchema`), validated
 through `generateValidatedJson` (`llm-json.ts`): zod structural validation plus a semantic
 `checkAgainstManifests` pass, with one repair round feeding all problems back before failing.
+When installed recipes exist, the catalog lists them under INSTALLED APPS and the same call may
+answer `{spec, recipe: "<name>"}` instead of a contract (exactly one of the two; enforced by
+the schema): the referenced recipe is validated in the semantic check (unknown or broken
+references repair toward composing) and instantiated through `resolveRecipeShape` +
+`postProcess`, with `recipeName` surfaced on the composed result.
 The Blueprint shown in the tabs is a projection (`BlueprintGenerator.deriveFromComposition`);
 the tab's regenerate path still uses `ContractBuilder.generateFromBlueprint`, and spec
 assumptions/openQuestions surface as informational warnings. The prompt is
@@ -266,8 +271,12 @@ real renderer under jsdom and runs the prompt's `behavior` script: steps address
 fuzzy hints (generated ids and labels vary), compute parts execute their actual wasm under
 Node's WebAssembly with the host ABI, and remote parts return the scenario's `stubs`.
 `ContractBuilder.finalizeShape` is the tooling entry that normalizes a stored shape without a
-model call. Results files (`evals/results-*.json`) store the generated contracts plus behavior
-verdicts and are committed on purpose: they are the corpus of behaviorally proven contracts.
+model call. Prompts may carry `expectRecipe`: the correct answer reuses that installed recipe
+(a composed contract scores `no-reuse`, the wrong or unexpected recipe `recipe-mismatch`), and
+a correct reuse feeds the recipe's stored contract through the behavior stage so reuse must
+also behave as the prompt demands. Results files (`evals/results-*.json`) store the generated
+contracts plus behavior verdicts and are committed on purpose: they are the corpus of
+behaviorally proven contracts.
 Mercury occasionally emits unclosed JSON (an unparseable verdict); rerun the prompt with
 `--only <id>` before treating it as a regression. The behavioral suite never runs under
 `npm run test` (its own vitest config; failures grade model output, never the codebase).

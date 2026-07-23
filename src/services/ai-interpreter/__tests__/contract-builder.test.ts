@@ -8,7 +8,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ContractBuilder } from '../contract-builder';
-import { FRAGMENT_ELEMENTS, setIntegrationCredentials } from '../../operations/registry';
+import {
+  FRAGMENT_ELEMENTS,
+  FRAGMENT_RECIPES,
+  setIntegrationCredentials,
+} from '../../operations/registry';
 import { LLMClient } from '../llm-client';
 import { ComponentRepository } from '../../../types/repository';
 import { OperationManifest } from '../../../types/component';
@@ -516,6 +520,107 @@ describe('ContractBuilder', () => {
 
       expect(contract.elements[0].eventBindings).toEqual([{ event: 'click', operationId: 'op-1' }]);
       expect(contract.operations[0].triggers).toEqual([]);
+    });
+  });
+
+  describe('composeFromDescription recipe answers', () => {
+    beforeEach(() => {
+      FRAGMENT_RECIPES['apps.counter'] = {
+        name: 'apps.counter',
+        title: 'Click Counter',
+        description: 'Counts button clicks.',
+        keywords: ['counter', 'clicks'],
+        spec: { goal: 'Count clicks', assumptions: [], openQuestions: [] },
+        contract: {
+          name: 'counter',
+          version: '1.0.0',
+          elements: [
+            {
+              id: 'count-text',
+              type: 'text',
+              dataBindings: [{ property: 'content', source: 'state', sourceId: 'clicks' }]
+            },
+            {
+              id: 'click-btn',
+              type: 'button',
+              properties: { text: 'Click' },
+              eventBindings: [{ event: 'click', operationId: 'op-add' }]
+            }
+          ],
+          operations: [
+            {
+              id: 'op-add',
+              operationName: 'counter.add',
+              inputs: [{ name: 'key', source: 'constant', sourceId: 'clicks' }]
+            }
+          ]
+        },
+        partId: 'test.starter',
+        publisher: 'test-pub'
+      };
+    });
+
+    afterEach(() => {
+      delete FRAGMENT_RECIPES['apps.counter'];
+    });
+
+    it('lists installed apps in the create prompt', async () => {
+      const { system } = await builder.renderCreatePrompt('anything');
+      expect(system).toContain('INSTALLED APPS');
+      expect(system).toContain('apps.counter "Click Counter"');
+      expect(system).toContain('keywords: counter, clicks');
+    });
+
+    it('instantiates the referenced recipe under the model spec', async () => {
+      mockLLMResponse(
+        JSON.stringify({
+          spec: { goal: 'Count my clicks', assumptions: ['Used the installed Click Counter'] },
+          recipe: 'apps.counter'
+        })
+      );
+
+      const { contract, spec, recipeName } = await builder.composeFromDescription(
+        'a click counter'
+      );
+
+      expect(recipeName).toBe('apps.counter');
+      expect(contract.name).toBe('counter');
+      expect(contract.operations[0].executionType).toBe('builtin');
+      expect(contract.metadata?.description).toBe('Count my clicks');
+      expect(spec.assumptions).toEqual(['Used the installed Click Counter']);
+      expect(vi.mocked(mockLLMClient.sendMessage)).toHaveBeenCalledTimes(1);
+    });
+
+    it('repairs an invented recipe name, listing the installed apps', async () => {
+      mockLLMResponse(JSON.stringify({ spec: { goal: 'x' }, recipe: 'apps.invented' }));
+      mockLLMResponse(JSON.stringify({ spec: { goal: 'x' }, recipe: 'apps.counter' }));
+
+      const { recipeName } = await builder.composeFromDescription('a click counter');
+
+      expect(recipeName).toBe('apps.counter');
+      const calls = vi.mocked(mockLLMClient.sendMessage).mock.calls;
+      expect(calls).toHaveLength(2);
+      const repairText = JSON.stringify(calls[1][0]);
+      expect(repairText).toContain('not an installed app');
+      expect(repairText).toContain('apps.counter');
+    });
+
+    it('rejects a response carrying both a contract and a recipe', async () => {
+      mockLLMResponse(
+        JSON.stringify({
+          spec: { goal: 'x' },
+          recipe: 'apps.counter',
+          contract: JSON.parse(contractJson())
+        })
+      );
+      mockLLMResponse(JSON.stringify({ spec: { goal: 'x' }, recipe: 'apps.counter' }));
+
+      const { recipeName } = await builder.composeFromDescription('a click counter');
+
+      expect(recipeName).toBe('apps.counter');
+      const calls = vi.mocked(mockLLMClient.sendMessage).mock.calls;
+      expect(calls).toHaveLength(2);
+      expect(JSON.stringify(calls[1][0])).toContain('exactly one');
     });
   });
 

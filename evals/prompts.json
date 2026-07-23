@@ -132,6 +132,7 @@
     {
       "id": "expense-split",
       "prompt": "Expense tracker with a category dropdown (food, travel, other), the list filterable by category, and a total for the visible entries",
+      "expectRecipe": "apps.expense_tracker",
       "behavior": {
         "steps": [
           { "do": "type", "into": ["amount", "cost", "price"], "value": "10" },
@@ -246,6 +247,44 @@
           { "do": "click", "on": ["refresh"] },
           { "expect": "text", "match": "/\\b90(\\.0+)?\\b/" },
           { "expect": "text", "match": "/\\b81(\\.0+)?\\b/" }
+        ]
+      }
+    },
+    {
+      "id": "spending-log",
+      "prompt": "I want to jot down what I spend, tag each entry as food, travel, or other, and look at one tag at a time with a total for what I am seeing",
+      "expectRecipe": "apps.expense_tracker",
+      "behavior": {
+        "steps": [
+          { "do": "type", "into": ["amount", "cost", "price"], "value": "10" },
+          { "do": "type", "into": ["description", "what", "name"], "value": "lunch", "optional": true },
+          { "do": "select", "in": ["category"], "value": "food" },
+          { "do": "click", "on": ["add"] },
+          { "do": "type", "into": ["amount", "cost", "price"], "value": "7" },
+          { "do": "type", "into": ["description", "what", "name"], "value": "taxi", "optional": true },
+          { "do": "select", "in": ["category"], "value": "travel" },
+          { "do": "click", "on": ["add"] },
+          { "expect": "rowCount", "count": 2 },
+          { "expect": "text", "match": "/\\b17(\\.0+)?\\b/" },
+          { "do": "select", "in": ["filter"], "value": "food" },
+          { "expect": "text", "match": "/\\b10(\\.0+)?\\b/" },
+          { "expect": "noText", "match": "/\\b7(\\.0+)?\\b/" }
+        ]
+      }
+    },
+    {
+      "id": "expense-notes",
+      "prompt": "Expense tracker with a category dropdown (food, travel, other), a category filter, a total for the visible entries, and a short note on each expense that shows in its row",
+      "behavior": {
+        "steps": [
+          { "do": "type", "into": ["amount", "cost", "price"], "value": "10" },
+          { "do": "type", "into": ["description", "what", "name"], "value": "lunch", "optional": true },
+          { "do": "type", "into": ["note", "memo", "comment"], "value": "with sam" },
+          { "do": "select", "in": ["category"], "value": "food" },
+          { "do": "click", "on": ["add"] },
+          { "expect": "rowCount", "count": 1 },
+          { "expect": "text", "match": "with sam" },
+          { "expect": "text", "match": "/\\b10(\\.0+)?\\b/" }
         ]
       }
     }
