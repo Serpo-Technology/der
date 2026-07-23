@@ -751,6 +751,32 @@ export function getUiFragmentDef(type: string): UiFragmentDef | undefined {
   return FRAGMENT_ELEMENTS[type];
 }
 
+/** Installed recipes: full experiences shipped by signed parts as declarative
+ * contracts, instantiated as ready apps instead of generated. */
+export interface RecipeDef {
+  name: string;
+  title: string;
+  description: string;
+  keywords: string[];
+  /** Spec header captured when the contract was proven. */
+  spec?: { goal?: string; assumptions?: string[]; openQuestions?: string[] };
+  /** The contract in the model's output vocabulary, validated against the
+   * installed part manifests before instantiation. */
+  contract: Record<string, unknown>;
+  partId: string;
+  publisher: string;
+}
+
+export const FRAGMENT_RECIPES: Record<string, RecipeDef> = {};
+
+export function getRecipeDef(name: string): RecipeDef | undefined {
+  return FRAGMENT_RECIPES[name];
+}
+
+export function listRecipeDefs(): RecipeDef[] {
+  return Object.values(FRAGMENT_RECIPES);
+}
+
 /** Redacted integration credentials (names and shapes, never secrets):
  * remote operations reference one via implementation.auth. */
 export interface IntegrationCredentialView {

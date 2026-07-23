@@ -165,6 +165,32 @@
   margin-right: 6px;
 }
 
+.parts-recipes {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--app-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.parts-recipe {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.parts-recipe-text {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+}
+
+.parts-recipe-text span {
+  color: var(--app-text-dim);
+}
+
 .parts-registry {
   margin: 16px 0;
   padding: 12px 16px;

@@ -262,6 +262,8 @@ struct IndexEntry {
     namespace: String,
     description: String,
     operations: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    recipes: Vec<String>,
     bundle_url: String,
     bundle_sha256: String,
     bundle_bytes: u64,
@@ -309,6 +311,17 @@ fn index(dir: &Path, out: &Path) -> Result<(), String> {
                     .collect()
             })
             .unwrap_or_default();
+        let recipes = manifest
+            .get("recipes")
+            .and_then(|v| v.as_array())
+            .map(|entries| {
+                entries
+                    .iter()
+                    .filter_map(|entry| entry.get("name").and_then(|n| n.as_str()))
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
         let file_name = path
             .file_name()
             .and_then(|n| n.to_str())
@@ -322,6 +335,7 @@ fn index(dir: &Path, out: &Path) -> Result<(), String> {
             namespace: text("namespace"),
             description: text("description"),
             operations,
+            recipes,
             bundle_url: file_name,
             bundle_sha256: Sha256::digest(&raw)
                 .iter()

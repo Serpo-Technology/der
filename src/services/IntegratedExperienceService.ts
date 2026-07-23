@@ -4,7 +4,8 @@
  */
 
 import type React from 'react';
-import { AIInterpreterService } from './ai-interpreter';
+import { AIInterpreterService, BlueprintGenerator } from './ai-interpreter';
+import { instantiateRecipe } from './recipes/RecipeService';
 import { RepositoryService, repositoryService } from './repository/repository-service';
 import { DynamicExperienceRuntimeService } from '../components/runtime/DynamicExperienceRuntimeService';
 import { ExperienceEditorService } from './edit-preservation/ExperienceEditorService';
@@ -246,6 +247,84 @@ export class IntegratedExperienceService {
       };
     } catch (error) {
       throw new Error(`Failed to create experience: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Opens an installed recipe as a new experience. The proven contract is
+   * revalidated against the installed parts and normalized without a model
+   * call; everything downstream (window, runtime, persistence, warnings)
+   * matches a freshly generated app.
+   */
+  async createExperienceFromRecipe(
+    recipeName: string,
+    options: IntegratedWorkflowOptions = {}
+  ): Promise<ExperienceCreationResult> {
+    try {
+      const experienceId = this.generateExperienceId();
+      const instantiated = instantiateRecipe(recipeName);
+      const contract = ContractModel.fromObject(instantiated.contract);
+      const blueprint = BlueprintModel.fromObject(
+        new BlueprintGenerator().deriveFromComposition(
+          instantiated.spec,
+          instantiated.contract,
+          instantiated.spec.goal || contract.name
+        )
+      );
+
+      if (isTauriRuntime()) {
+        this.assemblySnapshots.set(experienceId, {
+          contract: contract.toObject() as unknown as Record<string, unknown>,
+          status: 'done'
+        });
+        await invoke('open_experience_window', {
+          experienceId,
+          contract: contract.toObject(),
+          title: contract.name
+        });
+      }
+
+      if (options.preserveEdits) {
+        await this.editor.initializeExperience(experienceId, contract);
+      }
+
+      const renderComponent = await this.runtime.renderExperience(contract, experienceId);
+      const experience: Experience = {
+        id: experienceId,
+        contract,
+        reactComponent: renderComponent,
+        state: {
+          data: {},
+          loading: {},
+          errors: {},
+          lastUpdated: new Date()
+        },
+        operations: new Map()
+      };
+
+      if (options.autoSave) {
+        await this.persistence.saveExperience(experience);
+      }
+
+      const warnings: ValidationWarning[] = [
+        ...instantiated.warnings,
+        ...instantiated.spec.assumptions.map((assumption) => ({
+          path: 'spec',
+          message: assumption,
+          code: 'SPEC_ASSUMPTION'
+        })),
+        ...instantiated.spec.openQuestions.map((question) => ({
+          path: 'spec',
+          message: question,
+          code: 'SPEC_QUESTION'
+        }))
+      ];
+
+      return { experienceId, blueprint, contract, experience, renderComponent, warnings };
+    } catch (error) {
+      throw new Error(
+        `Failed to open the recipe app: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 

@@ -77,6 +77,10 @@ pub struct Manifest {
     pub operations: Vec<OpSpec>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ui_fragments: Vec<UiFragmentSpec>,
+    /// Present on recipe parts: full experiences shipped as declarative
+    /// contracts, instantiated instead of generated.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recipes: Vec<RecipeSpec>,
     /// Present on integration parts: the service the part talks to and the
     /// credentials the user must provide at install time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -129,6 +133,24 @@ pub struct UiParamSpec {
     pub default: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+}
+
+/// A full experience shipped as data: a behaviorally proven contract in the
+/// model's output vocabulary. The app validates it against the installed part
+/// manifests and instantiates it without a model call. Pure JSON; no code.
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeSpec {
+    pub name: String,
+    pub title: String,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keywords: Vec<String>,
+    /// Spec header captured when the contract was proven (goal, assumptions,
+    /// open questions).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec: Option<Value>,
+    pub contract: Value,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -507,13 +529,29 @@ pub fn verify_bundle(raw: &[u8]) -> FragmentResult<VerifiedBundle> {
             }
         }
     }
-    if manifest.operations.is_empty() && manifest.ui_fragments.is_empty() {
+    if !manifest.recipes.is_empty()
+        && (!manifest.operations.is_empty()
+            || !manifest.ui_fragments.is_empty()
+            || manifest.service.is_some())
+    {
         return Err(fail(
             FragmentErrorKind::VerifyFailed,
-            "Part must declare operations or UI fragments",
+            "A recipe part ships only recipes; publish operations and UI fragments as their own parts",
         ));
     }
-    if manifest.operations.len() > MAX_OPERATIONS || manifest.ui_fragments.len() > MAX_OPERATIONS {
+    if manifest.operations.is_empty()
+        && manifest.ui_fragments.is_empty()
+        && manifest.recipes.is_empty()
+    {
+        return Err(fail(
+            FragmentErrorKind::VerifyFailed,
+            "Part must declare operations, UI fragments, or recipes",
+        ));
+    }
+    if manifest.operations.len() > MAX_OPERATIONS
+        || manifest.ui_fragments.len() > MAX_OPERATIONS
+        || manifest.recipes.len() > MAX_OPERATIONS
+    {
         return Err(fail(FragmentErrorKind::VerifyFailed, "Part declares too many entries"));
     }
     let mut seen = std::collections::HashSet::new();
@@ -551,6 +589,44 @@ pub fn verify_bundle(raw: &[u8]) -> FragmentResult<VerifiedBundle> {
             return Err(fail(
                 FragmentErrorKind::VerifyFailed,
                 format!("UI fragment \"{}\" template must be an object", fragment.name),
+            ));
+        }
+    }
+    for recipe in &manifest.recipes {
+        if !op_name_ok(&recipe.name, &manifest.namespace) {
+            return Err(fail(
+                FragmentErrorKind::VerifyFailed,
+                format!(
+                    "Recipe \"{}\" must live under namespace \"{}.\"",
+                    recipe.name, manifest.namespace
+                ),
+            ));
+        }
+        if !seen.insert(recipe.name.clone()) {
+            return Err(fail(
+                FragmentErrorKind::VerifyFailed,
+                format!("Duplicate name \"{}\"", recipe.name),
+            ));
+        }
+        if recipe.title.trim().is_empty() || recipe.description.trim().is_empty() {
+            return Err(fail(
+                FragmentErrorKind::VerifyFailed,
+                format!("Recipe \"{}\" needs a title and description", recipe.name),
+            ));
+        }
+        let element_count = recipe
+            .contract
+            .get("elements")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0);
+        if !recipe.contract.is_object() || element_count == 0 {
+            return Err(fail(
+                FragmentErrorKind::VerifyFailed,
+                format!(
+                    "Recipe \"{}\" contract must be an object with an elements array",
+                    recipe.name
+                ),
             ));
         }
     }
@@ -890,6 +966,7 @@ pub struct StageSummary {
     pub description: String,
     pub namespace: String,
     pub operations: Vec<Value>,
+    pub recipes: Vec<Value>,
     pub capabilities: Vec<String>,
     pub fingerprint: String,
     pub fingerprint_grouped: String,
@@ -973,6 +1050,17 @@ pub fn stage_core(
             .operations
             .iter()
             .map(|op| serde_json::json!({ "name": op.name, "description": op.description }))
+            .collect(),
+        recipes: manifest
+            .recipes
+            .iter()
+            .map(|recipe| {
+                serde_json::json!({
+                    "name": recipe.name,
+                    "title": recipe.title,
+                    "description": recipe.description,
+                })
+            })
             .collect(),
         capabilities: manifest.capabilities.clone(),
         fingerprint: verified.fingerprint.clone(),

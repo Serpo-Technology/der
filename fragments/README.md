@@ -44,6 +44,12 @@ the builtin vocabulary.
 - `wikipedia/` is an integration part for English Wikipedia article
   summaries (`wiki.summary`, no credential); its endpoint path substitutes
   the topic percent-encoded.
+- `starter-apps/` is a demo recipe part: no wasm, no operations, just
+  `recipes` entries that each carry a complete contract taken verbatim from
+  the behaviorally proven eval corpus, plus a title, description, keywords,
+  and the spec header captured when it was proven. The app revalidates the
+  contract against the installed part vocabulary and instantiates it as a
+  ready app with no model call. A recipe bundle ships nothing but recipes.
 - `keys/` holds publisher keys. Only the public half (`demo.pub`) is
   tracked; the secret half (`demo.key`) is gitignored.
 - `dist/` holds signed bundles ready to install through the app, plus the

@@ -10,6 +10,7 @@ import {
   BUILTIN_OPERATIONS,
   FRAGMENT_ELEMENTS,
   FRAGMENT_OPERATIONS,
+  FRAGMENT_RECIPES,
   BuiltinOperationDef,
   BuiltinIoSpec,
 } from '../operations/registry';
@@ -29,6 +30,7 @@ export interface RegistryPartEntry {
   namespace: string;
   description: string;
   operations: string[];
+  recipes?: string[];
   bundleUrl: string;
   bundleSha256?: string;
   bundleBytes?: number;
@@ -71,6 +73,15 @@ export interface PartCredentialRequirement {
   label: string;
 }
 
+export interface FragmentRecipeSpec {
+  name: string;
+  title: string;
+  description: string;
+  keywords?: string[];
+  spec?: { goal?: string; assumptions?: string[]; openQuestions?: string[] };
+  contract: Record<string, unknown>;
+}
+
 export interface InstalledFragment {
   manifest: {
     id: string;
@@ -81,6 +92,7 @@ export interface InstalledFragment {
     namespace: string;
     operations: FragmentOpSpec[];
     uiFragments?: FragmentUiSpec[];
+    recipes?: FragmentRecipeSpec[];
     service?: { baseUrl: string; credentials?: PartCredentialRequirement[] };
   };
   fingerprint: string;
@@ -97,6 +109,7 @@ export interface StageSummary {
   description: string;
   namespace: string;
   operations: { name: string; description: string }[];
+  recipes: { name: string; title: string; description: string }[];
   fingerprint: string;
   fingerprintGrouped: string;
   publisherStatus: 'new' | 'known' | 'keyMismatch';
@@ -172,6 +185,9 @@ export class FragmentsService {
     for (const key of Object.keys(FRAGMENT_ELEMENTS)) {
       delete FRAGMENT_ELEMENTS[key];
     }
+    for (const key of Object.keys(FRAGMENT_RECIPES)) {
+      delete FRAGMENT_RECIPES[key];
+    }
     for (const part of this.installed) {
       const fragmentId = part.manifest.id;
       for (const op of part.manifest.operations) {
@@ -186,6 +202,18 @@ export class FragmentsService {
           howto: fragment.howto,
           params: fragment.params ?? [],
           template: fragment.template as Record<string, unknown>,
+        };
+      }
+      for (const recipe of part.manifest.recipes ?? []) {
+        FRAGMENT_RECIPES[recipe.name] = {
+          name: recipe.name,
+          title: recipe.title,
+          description: recipe.description,
+          keywords: recipe.keywords ?? [],
+          spec: recipe.spec,
+          contract: recipe.contract,
+          partId: fragmentId,
+          publisher: part.manifest.publisher,
         };
       }
     }

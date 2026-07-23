@@ -209,9 +209,18 @@ knob. `normalizeContract` converts legacy `triggers` into event bindings before 
 
 ### Signed parts (wasm, UI fragments, integrations)
 
-Installed signed parts extend the vocabulary in three kinds: compute parts (wasm), composed UI
-fragments (`uiFragments` templates, no wasm), and integration parts (a `service` block plus
-per-op `remote` specs, no wasm). A `.derpart` bundle (verbatim-signed manifest + base64 wasm;
+Installed signed parts extend the vocabulary in four kinds: compute parts (wasm), composed UI
+fragments (`uiFragments` templates, no wasm), integration parts (a `service` block plus
+per-op `remote` specs, no wasm), and recipe parts (`recipes` entries, each a complete
+behaviorally proven contract with title/description/keywords and its captured spec header; a
+recipe bundle ships nothing but recipes). Recipes publish into `FRAGMENT_RECIPES`;
+`RecipeService` (`src/services/recipes/`) revalidates each contract against the installed
+vocabulary (zod parse + `checkAgainstManifests` on a clone, so a recipe whose parts are
+missing surfaces its problems instead of rendering broken) and instantiates through
+`ContractBuilder.finalizeShape`; `IntegratedExperienceService.createExperienceFromRecipe`
+opens the result exactly like a generated app with no model call. The Parts view lists a
+part's recipes with an Open button (unavailable ones disabled with the validation problems)
+and the install review lists them under Apps. A `.derpart` bundle (verbatim-signed manifest + base64 wasm;
 Ed25519 over `DERPART-SIG-V1\0 || manifest bytes`; wasm bound by `wasmSha256` in the manifest)
 is verified and executed by the hardened wasmtime host in `src-tauri/src/fragments.rs` (zero
 imports allowed, fuel + epoch deadline + memory limiter, fresh instance per call,
@@ -236,7 +245,8 @@ Parts and the signing tool live in `fragments/` as standalone crates (NOT src-ta
 members); committed signed bundles keep `cargo test` hermetic; rebuilding needs
 `rustup target add wasm32-unknown-unknown`. Current library: expr-evaluate and dates and
 stats-summary (compute), frankfurter and openweather and coingecko and wikipedia
-(integrations), ui-basics (entry_row, stat_tile).
+(integrations), ui-basics (entry_row, stat_tile), starter-apps (the apps.expense_tracker
+recipe, taken verbatim from the proven eval corpus).
 
 ### Component repository
 

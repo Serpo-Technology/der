@@ -5,10 +5,11 @@
  * through the shared llm-mocks fixtures.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IntegratedExperienceService } from '../../services/IntegratedExperienceService';
 import { Blueprint } from '../../models/blueprint';
 import { Contract } from '../../models/contract';
+import { FRAGMENT_RECIPES } from '../../services/operations/registry';
 import { SAMPLE_TODO_CONTRACT } from '../../test/llm-mocks';
 import { installInvokeMock, invokeMock } from '../support/tauri-invoke-mock';
 
@@ -194,6 +195,70 @@ describe('End-to-End Workflow Integration', () => {
 
       const stateAfterCleanup = await integratedService.getExperienceState(result.experienceId);
       expect(stateAfterCleanup).toBeNull();
+    });
+  });
+
+  describe('Recipe to Rendered Experience', () => {
+    afterEach(() => {
+      delete FRAGMENT_RECIPES['starter.counter'];
+    });
+
+    it('opens an installed recipe with no model call', async () => {
+      FRAGMENT_RECIPES['starter.counter'] = {
+        name: 'starter.counter',
+        title: 'Click Counter',
+        description: 'Counts button clicks.',
+        keywords: ['counter'],
+        spec: { goal: 'Count clicks', assumptions: ['Starts at zero'], openQuestions: [] },
+        contract: {
+          name: 'counter',
+          version: '1.0.0',
+          elements: [
+            {
+              id: 'count-text',
+              type: 'text',
+              dataBindings: [{ property: 'content', source: 'state', sourceId: 'clicks' }],
+            },
+            {
+              id: 'click-btn',
+              type: 'button',
+              properties: { text: 'Click' },
+              eventBindings: [{ event: 'click', operationId: 'op-add' }],
+            },
+          ],
+          operations: [
+            {
+              id: 'op-add',
+              operationName: 'counter.add',
+              inputs: [{ name: 'key', source: 'constant', sourceId: 'clicks' }],
+            },
+          ],
+        },
+        partId: 'test.starter',
+        publisher: 'test-pub',
+      };
+
+      const result = await integratedService.createExperienceFromRecipe('starter.counter', {
+        preserveEdits: true,
+        autoSave: true,
+      });
+
+      expect(result.experienceId).toMatch(/^exp-\d+-[a-z0-9]+$/);
+      expect(result.contract).toBeInstanceOf(Contract);
+      expect(result.contract.name).toBe('counter');
+      expect(result.blueprint).toBeInstanceOf(Blueprint);
+      expect(result.blueprint.goal).toBe('Count clicks');
+      expect(result.warnings?.some((w) => w.code === 'SPEC_ASSUMPTION')).toBe(true);
+
+      // Instantiation is a reuse path: the model is never consulted.
+      const llmCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === 'llm_chat');
+      expect(llmCalls).toHaveLength(0);
+    });
+
+    it('surfaces a readable error for an unknown recipe', async () => {
+      await expect(
+        integratedService.createExperienceFromRecipe('starter.missing')
+      ).rejects.toThrow(/starter\.missing/);
     });
   });
 });

@@ -73,6 +73,21 @@
       "bundleBytes": 3668
     },
     {
+      "id": "der-labs.starter-apps",
+      "name": "Starter Apps",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "apps",
+      "description": "Ready-made apps you can open and edit like any generated app.",
+      "operations": [],
+      "recipes": [
+        "apps.expense_tracker"
+      ],
+      "bundleUrl": "der-labs.starter-apps.derpart",
+      "bundleSha256": "b6a9edeefba88a38fa5ed20153cd7a366d3c6fabe74011cb07dd31af6af8dbb0",
+      "bundleBytes": 16572
+    },
+    {
       "id": "der-labs.stats-summary",
       "name": "Statistics",
       "version": "1.0.0",

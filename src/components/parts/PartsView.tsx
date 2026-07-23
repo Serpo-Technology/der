@@ -4,7 +4,7 @@
  * what you confirm is exactly what gets pinned.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fragmentsService,
   InstalledFragment,
@@ -12,6 +12,9 @@ import {
   RegistryPartEntry,
   StageSummary,
 } from '../../services/fragments/FragmentsService';
+import { getRecipeDef } from '../../services/operations/registry';
+import { RecipeCheck, checkRecipe } from '../../services/recipes/RecipeService';
+import { integratedExperienceService } from '../../services/IntegratedExperienceService';
 import './PartsView.css';
 
 interface PartsViewProps {
@@ -113,6 +116,38 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
   const [busy, setBusy] = useState(false);
   const [forceDowngrade, setForceDowngrade] = useState(false);
   const fileInput = useRef<HTMLInputElement | null>(null);
+
+  // Each installed recipe is validated against the current part vocabulary;
+  // one whose parts are missing shows as unavailable instead of opening
+  // broken.
+  const recipeChecks = useMemo(() => {
+    const checks: Record<string, RecipeCheck> = {};
+    for (const part of installed) {
+      for (const recipe of part.manifest.recipes ?? []) {
+        const def = getRecipeDef(recipe.name);
+        if (def) checks[recipe.name] = checkRecipe(def);
+      }
+    }
+    return checks;
+  }, [installed]);
+
+  const handleOpenRecipe = useCallback(
+    async (name: string) => {
+      setBusy(true);
+      try {
+        await integratedExperienceService.createExperienceFromRecipe(name, {
+          preserveEdits: true,
+          autoSave: true,
+          enableRealTimeUpdates: true,
+        });
+      } catch (error) {
+        onError?.(error instanceof Error ? error.message : describeInvokeError(error));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onError]
+  );
 
   const refresh = useCallback(async () => {
     await fragmentsService.init();
@@ -262,7 +297,7 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
                   <p>{entry.description}</p>
                   <div className="parts-meta">
                     <span>Publisher: {entry.publisher}</span>
-                    <span>{entry.operations.join(', ')}</span>
+                    <span>{[...entry.operations, ...(entry.recipes ?? [])].join(', ')}</span>
                   </div>
                 </div>
               );
@@ -289,14 +324,30 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
             )}
             <span>Key fingerprint</span>
             <code>{staged.fingerprintGrouped}</code>
-            <span>Operations</span>
-            <div>
-              {staged.operations.map((op) => (
-                <div key={op.name}>
-                  <code>{op.name}</code> {op.description}
+            {staged.operations.length > 0 && (
+              <>
+                <span>Operations</span>
+                <div>
+                  {staged.operations.map((op) => (
+                    <div key={op.name}>
+                      <code>{op.name}</code> {op.description}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
+            {(staged.recipes ?? []).length > 0 && (
+              <>
+                <span>Apps</span>
+                <div>
+                  {staged.recipes.map((recipe) => (
+                    <div key={recipe.name}>
+                      <strong>{recipe.title}</strong> {recipe.description}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
           {staged.publisherStatus === 'new' && (
             <p className="parts-note">
@@ -434,6 +485,34 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
                   </div>
                 ))}
               </div>
+              {(part.manifest.recipes ?? []).length > 0 && (
+                <div className="parts-recipes">
+                  {(part.manifest.recipes ?? []).map((recipe) => {
+                    const check = recipeChecks[recipe.name];
+                    const blocked = !!check && !check.ok;
+                    return (
+                      <div key={recipe.name} className="parts-recipe">
+                        <div className="parts-recipe-text">
+                          <strong>{recipe.title}</strong>
+                          <span>{recipe.description}</span>
+                        </div>
+                        <button
+                          className="primary"
+                          onClick={() => handleOpenRecipe(recipe.name)}
+                          disabled={busy || blocked}
+                          title={
+                            blocked
+                              ? check.problems.join('\n')
+                              : 'Open this app in its own window'
+                          }
+                        >
+                          {blocked ? 'Unavailable' : 'Open'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             );
           })}

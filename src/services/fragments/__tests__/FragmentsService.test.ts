@@ -11,6 +11,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { FragmentsService } from '../FragmentsService';
 import {
   FRAGMENT_OPERATIONS,
+  FRAGMENT_RECIPES,
   getOperationDef,
   BUILTIN_OPERATIONS,
 } from '../../operations/registry';
@@ -68,6 +69,45 @@ describe('FragmentsService', () => {
     invokeMock.mockResolvedValueOnce([]);
     await service.init();
     expect(FRAGMENT_OPERATIONS['stats.summary']).toBeUndefined();
+  });
+
+  it('publishes and clears recipes with their owning part', async () => {
+    const withRecipes = [
+      {
+        manifest: {
+          id: 'test.starter',
+          name: 'Starter Apps',
+          version: '1.0.0',
+          publisher: 'test-pub',
+          description: 'Proven apps ready to open.',
+          namespace: 'starter',
+          operations: [],
+          recipes: [
+            {
+              name: 'starter.counter',
+              title: 'Click Counter',
+              description: 'Counts button clicks.',
+              keywords: ['counter'],
+              contract: { name: 'counter', elements: [{ id: 'a', type: 'text' }] },
+            },
+          ],
+        },
+        fingerprint: 'abc123',
+        fingerprintGrouped: 'abc1 23',
+      },
+    ];
+    invokeMock.mockResolvedValueOnce(withRecipes);
+    await service.init();
+
+    expect(FRAGMENT_RECIPES['starter.counter']).toMatchObject({
+      title: 'Click Counter',
+      partId: 'test.starter',
+      publisher: 'test-pub',
+    });
+
+    invokeMock.mockResolvedValueOnce([]);
+    await service.init();
+    expect(FRAGMENT_RECIPES['starter.counter']).toBeUndefined();
   });
 
   it('never shadows a builtin operation', async () => {
