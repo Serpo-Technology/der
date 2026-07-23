@@ -111,7 +111,9 @@ export function assembleStructured(
   for (const [name, value] of Object.entries(raw)) {
     const prefix = prefixes.find((p) => name.startsWith(`${p}.`));
     if (prefix) {
-      (groups[prefix] ??= {})[name.slice(prefix.length + 1)] = value;
+      // Keep unresolved fields as null: JSON drops undefined, and a part
+      // diagnosing "variable x is not a number" beats "unknown name x".
+      (groups[prefix] ??= {})[name.slice(prefix.length + 1)] = value === undefined ? null : value;
     } else {
       flat[name] = value;
     }

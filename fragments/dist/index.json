@@ -12,8 +12,8 @@
         "expr.evaluate"
       ],
       "bundleUrl": "der-labs.expr-evaluate.derpart",
-      "bundleSha256": "684de3e4a81eb1f8bd4fb2d8ffc971b81edcf3078802189c13412c33d2261733",
-      "bundleBytes": 143816
+      "bundleSha256": "2afb5c909b9673fa125ff8e6e6e3541839695ccd52ed13e3913e1d8e4fbaf161",
+      "bundleBytes": 144368
     },
     {
       "id": "der-labs.frankfurter",

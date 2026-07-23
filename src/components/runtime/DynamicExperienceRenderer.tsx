@@ -78,6 +78,7 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
 
   // Handle operation execution
   const [operationError, setOperationError] = useState<string | null>(null);
+  const dismissedErrorRef = React.useRef<string | null>(null);
 
   const handleOperationExecution = useCallback(
     async (operationId: string, eventContext: EventContext) => {
@@ -96,7 +97,10 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
 
       } catch (error) {
         stateManager.setError(operationId, error as Error);
-        setOperationError(error instanceof Error ? error.message : String(error));
+        const message = error instanceof Error ? error.message : String(error);
+        if (dismissedErrorRef.current !== message) {
+          setOperationError(message);
+        }
         onError?.(error as Error);
       } finally {
         stateManager.setLoading(operationId, false);
@@ -196,7 +200,14 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
       {operationError && (
         <div className="der-operation-error" role="alert">
           <span>{operationError}</span>
-          <button type="button" onClick={() => setOperationError(null)} aria-label="Dismiss error">
+          <button
+            type="button"
+            onClick={() => {
+              dismissedErrorRef.current = operationError;
+              setOperationError(null);
+            }}
+            aria-label="Dismiss error"
+          >
             Dismiss
           </button>
         </div>

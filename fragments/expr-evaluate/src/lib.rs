@@ -85,6 +85,12 @@ fn evaluate(inputs: &Map<String, Value>) -> Vec<u8> {
             let number = match value {
                 Value::Number(n) => n.as_f64(),
                 Value::String(text) => text.trim().parse::<f64>().ok(),
+                Value::Null => {
+                    return err_response(&format!(
+                        "variable {} has no value yet; run the operation that sets it first",
+                        name
+                    ));
+                }
                 _ => None,
             };
             match number {
