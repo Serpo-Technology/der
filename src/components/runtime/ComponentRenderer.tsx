@@ -456,7 +456,11 @@ function InputComponent({ label, ...props }: any) {
   return input;
 }
 
-function TextareaComponent({ label, children: _children, ...props }: any) {
+function TextareaComponent({
+  label,
+  children: _children,
+  ...props
+}: { label?: string; children?: React.ReactNode } & React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const area = <textarea {...props} />;
   if (label) {
     return (
@@ -474,7 +478,15 @@ function TextareaComponent({ label, children: _children, ...props }: any) {
  * re-renders do not reset the pending interval; unmounting (visibleWhen going
  * false) stops it.
  */
-function TimerComponent({ seconds, onTick, 'data-element-id': dataElementId }: any) {
+function TimerComponent({
+  seconds,
+  onTick,
+  'data-element-id': dataElementId
+}: {
+  seconds?: unknown;
+  onTick?: () => void | Promise<void>;
+  'data-element-id'?: string;
+}) {
   const tickRef = React.useRef(onTick);
   tickRef.current = onTick;
   const intervalSeconds = Number(seconds) > 0 ? Number(seconds) : 1;
