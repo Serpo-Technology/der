@@ -12,6 +12,7 @@ pub const PROVIDERS: &[&str] = &[
     "deepseek",
     "gemini",
     "openai",
+    "mercury",
     "local",
 ];
 
@@ -46,6 +47,7 @@ pub fn default_model(provider: &str) -> &'static str {
         "deepseek" => "deepseek-chat",
         "gemini" => "gemini-2.0-flash",
         "openai" => "gpt-4o-mini",
+        "mercury" => "mercury-2",
         _ => "",
     }
 }

@@ -14,6 +14,7 @@ export type LLMProvider =
   | 'deepseek'
   | 'gemini'
   | 'openai'
+  | 'mercury'
   | 'local';
 
 export interface LLMConfig {

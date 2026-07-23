@@ -34,6 +34,7 @@ export const PROVIDER_LABELS: Record<string, string> = {
   deepseek: 'DeepSeek',
   gemini: 'Google Gemini',
   openai: 'OpenAI',
+  mercury: 'Mercury (Inception diffusion)',
   local: 'Local / OpenAI-compatible',
 };
 
@@ -43,6 +44,7 @@ export const MODEL_SUGGESTIONS: Record<string, string[]> = {
   deepseek: ['deepseek-chat', 'deepseek-reasoner'],
   gemini: ['gemini-2.0-flash'],
   openai: ['gpt-4o-mini', 'gpt-4o'],
+  mercury: ['mercury-2'],
   local: [],
 };
 

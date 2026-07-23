@@ -613,6 +613,21 @@ async fn llm_chat_impl(
             )
             .await?
         }
+        "mercury" => {
+            let key = api_key(&app, "mercury")?;
+            let base = base_url.unwrap_or_else(|| "https://api.inceptionlabs.ai/v1".to_string());
+            openai_compat_chat(
+                &base,
+                Some(&key),
+                &model,
+                flat_messages,
+                max_tokens,
+                temperature,
+                false,
+                chunk_sink,
+            )
+            .await?
+        }
         "local" => {
             let base = normalize_openai_base(&base_url.ok_or(
                 "Local provider needs a base URL (for example http://localhost:11434/v1). Set one in Settings.",

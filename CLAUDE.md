@@ -119,7 +119,9 @@ object or a model instance depending on where it came from. Calling model method
 `llm_chat` command; provider, model, and credentials resolve on the Rust side from stored
 settings, so the webview never holds secrets and CORS does not apply. Providers:
 `claude-subscription` (OAuth bearer + auto-refresh; sign-in lives in the Settings view),
-`anthropic` (API key), `deepseek`, `gemini`, `openai`, and `local` (OpenAI-compatible base URL).
+`anthropic` (API key), `deepseek`, `gemini`, `openai`, `mercury` (Inception's diffusion models
+behind an OpenAI-shaped API; response_format is never sent since diffusion serving may not
+implement it), and `local` (OpenAI-compatible base URL).
 Anthropic requests never send sampling parameters (modern Claude models reject them). `llm_chat`
 accepts an optional `systemBlocks: [{text, cache}]` array: on Anthropic-shaped providers each
 `cache: true` block gets `cache_control: {type: "ephemeral"}` (prompt caching for the static
