@@ -61,6 +61,46 @@ fn evaluates_expressions_in_the_sandbox() {
 }
 
 #[test]
+fn evaluates_with_variables_from_structured_inputs() {
+    let state = FragmentsState::new();
+    let dir = tempfile::tempdir().unwrap();
+    let id = install(&state, dir.path(), EXPR_BUNDLE);
+    let loaded = state.load(dir.path(), &id).unwrap();
+
+    // The executor groups var.<name> inputs into this object shape; strings
+    // coerce because element values arrive as text.
+    let result = execute_in_module(
+        state.engine(),
+        &loaded,
+        "expr.evaluate",
+        &json!({ "expression": "w / (h ^ 2)", "var": { "w": "70", "h": 1.75 } }),
+    )
+    .expect("bmi evaluates");
+    let value = result.get("value").and_then(Value::as_f64).unwrap();
+    assert!((value - 22.857).abs() < 0.01);
+
+    let err = execute_in_module(
+        state.engine(),
+        &loaded,
+        "expr.evaluate",
+        &json!({ "expression": "x + 1", "var": { "w": 1 } }),
+    )
+    .unwrap_err();
+    assert_eq!(err.kind, FragmentErrorKind::GuestError);
+}
+
+#[test]
+fn manifest_declares_the_var_prefix() {
+    let raw = std::fs::read(EXPR_BUNDLE).unwrap();
+    let verified = verify_bundle(&raw).expect("verifies");
+    assert_eq!(verified.manifest.version, "1.1.0");
+    assert_eq!(
+        verified.manifest.operations[0].structured_prefixes,
+        vec!["var".to_string()]
+    );
+}
+
+#[test]
 fn malformed_expressions_report_guest_errors() {
     let state = FragmentsState::new();
     let dir = tempfile::tempdir().unwrap();

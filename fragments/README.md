@@ -19,8 +19,9 @@ access to the network, the file system, or any host function.
   that gets signed.
 - `expr-evaluate/` is a demo part providing `expr.evaluate`: a safe
   arithmetic expression evaluator (+ - * / % ^, parentheses, unary minus,
-  sqrt/abs/floor/ceil/round, two-argument min/max/pow, pi and e). It lets
-  calculator-style apps compute locally instead of calling a public API.
+  sqrt/abs/floor/ceil/round, two-argument min/max/pow, pi and e, and
+  caller-bound variables via `var.<name>` inputs). It lets calculator and
+  converter apps compute locally instead of calling a public API.
 - `keys/` holds publisher keys. Only the public half (`demo.pub`) is
   tracked; the secret half (`demo.key`) is gitignored.
 - `dist/` holds signed bundles ready to install through the app.

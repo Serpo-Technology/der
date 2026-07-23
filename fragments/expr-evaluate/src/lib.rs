@@ -7,7 +7,8 @@
 //!
 //! Grammar: numbers, + - * / % ^ (right-associative), unary minus,
 //! parentheses, the functions sqrt/abs/floor/ceil/round and two-argument
-//! min/max/pow, and the constants pi and e.
+//! min/max/pow, the constants pi and e, and caller-supplied variables
+//! (the "var" input object; numeric strings coerce).
 
 use std::alloc::{alloc, Layout};
 use std::mem;
@@ -78,15 +79,36 @@ fn evaluate(inputs: &Map<String, Value>) -> Vec<u8> {
         }
         _ => return err_response("expression must be a string"),
     };
-    match eval(expression) {
+    let mut vars: Vec<(String, f64)> = Vec::new();
+    if let Some(Value::Object(entries)) = inputs.get("var") {
+        for (name, value) in entries {
+            let number = match value {
+                Value::Number(n) => n.as_f64(),
+                Value::String(text) => text.trim().parse::<f64>().ok(),
+                _ => None,
+            };
+            match number {
+                Some(number) => vars.push((name.to_ascii_lowercase(), number)),
+                None => {
+                    return err_response(&format!("variable {} is not a number", name));
+                }
+            }
+        }
+    }
+    match eval_with(expression, &vars) {
         Ok(value) => ok_response(json!({ "value": value })),
         Err(message) => err_response(&message),
     }
 }
 
-/// Evaluates an arithmetic expression. Public so native tests cover the
-/// parser without the wasm ABI in the way.
+/// Evaluates an arithmetic expression with no variables.
 pub fn eval(source: &str) -> Result<f64, String> {
+    eval_with(source, &[])
+}
+
+/// Evaluates an arithmetic expression against named variables. Public so
+/// native tests cover the parser without the wasm ABI in the way.
+pub fn eval_with(source: &str, vars: &[(String, f64)]) -> Result<f64, String> {
     if source.len() > MAX_EXPRESSION_BYTES {
         return Err("expression is too long".to_string());
     }
@@ -94,6 +116,7 @@ pub fn eval(source: &str) -> Result<f64, String> {
         bytes: source.as_bytes(),
         pos: 0,
         depth: 0,
+        vars,
     };
     parser.skip_ws();
     if parser.pos == parser.bytes.len() {
@@ -117,6 +140,7 @@ struct Parser<'a> {
     bytes: &'a [u8],
     pos: usize,
     depth: u32,
+    vars: &'a [(String, f64)],
 }
 
 impl<'a> Parser<'a> {
@@ -292,10 +316,25 @@ impl<'a> Parser<'a> {
             }
             return apply_function(&name, &args);
         }
+        if let Some((_, value)) = self.vars.iter().find(|(var, _)| var == &name) {
+            return Ok(*value);
+        }
         match name.as_str() {
             "pi" => Ok(std::f64::consts::PI),
             "e" => Ok(std::f64::consts::E),
-            other => Err(format!("unknown name '{}'", other)),
+            other => {
+                let known = self
+                    .vars
+                    .iter()
+                    .map(|(var, _)| var.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                Err(if known.is_empty() {
+                    format!("unknown name '{}'", other)
+                } else {
+                    format!("unknown name '{}'; variables: {}", other, known)
+                })
+            }
         }
     }
 }
@@ -385,6 +424,16 @@ mod tests {
         assert_eq!(eval("abs(-4)*ceil(1.2)").unwrap(), 8.0);
         assert!((eval("pi").unwrap() - std::f64::consts::PI).abs() < 1e-12);
         assert_eq!(eval("pow(2, 8)").unwrap(), 256.0);
+    }
+
+    #[test]
+    fn variables_resolve_case_insensitively() {
+        let vars = vec![("w".to_string(), 70.0), ("h".to_string(), 1.75)];
+        let bmi = super::eval_with("w / (h ^ 2)", &vars).unwrap();
+        assert!((bmi - 22.857).abs() < 0.01);
+        assert_eq!(super::eval_with("W + 1", &vars).unwrap(), 71.0);
+        let err = super::eval_with("x + 1", &vars).unwrap_err();
+        assert!(err.contains("variables: w, h"));
     }
 
     #[test]

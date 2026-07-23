@@ -89,6 +89,8 @@ pub struct OpSpec {
     pub howto: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub example: Option<Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub structured_prefixes: Vec<String>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]

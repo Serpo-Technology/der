@@ -142,8 +142,9 @@ primitives `state.set`, `counter.add`, `list.append`/`updateWhere`/`removeWhere`
 `math.add`, `time.now`, `http.get`; todos.* survive as hidden compat parts). A `timer` element
 ticks on an interval while rendered (visibleWhen gates double as pause buttons) and `textarea`
 is a first-class labeled part. Structured inputs use dotted
-prefixes (`item.<field>`, `set.<field>`) grouped by `assembleStructured`; `list.append` generates
-ids itself. The shared transform registry (`src/services/operations/transforms.ts`) provides the
+prefixes (`item.<field>`, `set.<field>`, and part-declared ones like expr's `var.<name>`) grouped
+by `assembleStructured`; fragment manifests may declare `structuredPrefixes`; `list.append`
+generates ids itself. The shared transform registry (`src/services/operations/transforms.ts`) provides the
 declarative derivations (`count`, `sum`, `filterBy`, `filterContains`, `sortBy`, `pick`,
 `parseNumber`, `round`, `format`, `map`, ...) used by binding `transforms` pipelines and
 `visibleWhen` conditions; transform parameter values may be live references

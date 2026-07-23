@@ -3,13 +3,13 @@
   "abiVersion": 1,
   "id": "der-labs.expr-evaluate",
   "name": "Expressions",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "der-labs",
   "description": "Safe arithmetic expression evaluation for calculators and derived values.",
   "namespace": "expr",
   "capabilities": [],
-  "wasmSha256": "e68fa4cb9f6cc687229899f7ee52b9d773397c1c735091f7420f76ca66a94aea",
-  "createdAt": "2026-07-23T04:23:52Z",
+  "wasmSha256": "b2cad368968d853ca9e47b4fefb5a29cf95570009d280f150707a765453963c8",
+  "createdAt": "2026-07-23T05:18:48Z",
   "operations": [
     {
       "name": "expr.evaluate",
@@ -19,7 +19,13 @@
           "name": "expression",
           "type": "string",
           "required": true,
-          "description": "Arithmetic expression: + - * / % ^, parentheses, unary minus, sqrt/abs/floor/ceil/round, two-argument min/max/pow, and the constants pi and e"
+          "description": "Arithmetic expression: + - * / % ^, parentheses, unary minus, sqrt/abs/floor/ceil/round, two-argument min/max/pow, the constants pi and e, and any bound variables"
+        },
+        {
+          "name": "var.<name>",
+          "type": "any",
+          "required": false,
+          "description": "One input per variable used in the expression; numeric strings from inputs coerce automatically"
         }
       ],
       "outputs": [
@@ -29,27 +35,40 @@
           "description": "The evaluated result"
         }
       ],
-      "howto": "Calculator pattern: bind expression from the input element ({\"source\": \"ui-element\", \"sourceId\": \"expr-in\"}) and wire the operation to a Calculate button click; route the value output to a state key shown by a text element (add a round transform on the display binding for fixed decimals). Everything runs locally; no network. A malformed expression, division by zero, or sqrt of a negative number is an error.",
+      "howto": "Calculator pattern: bind expression from an input element and wire the operation to a button click; route the value output to a state key shown by a text element. Multi-field math: put the formula in a constant expression and bind each variable with a var.<name> input, e.g. expression \"w / (h ^ 2)\" with var.w and var.h from two inputs (no parseNumber needed; numeric strings coerce). Everything runs locally; a malformed expression, division by zero, or unknown variable is an error.",
       "example": {
-        "id": "op-calc",
+        "id": "op-bmi",
         "operationName": "expr.evaluate",
         "executionType": "builtin",
         "inputs": [
           {
             "name": "expression",
+            "source": "constant",
+            "sourceId": "w / (h ^ 2)"
+          },
+          {
+            "name": "var.w",
             "source": "ui-element",
-            "sourceId": "expr-in"
+            "sourceId": "weight-in"
+          },
+          {
+            "name": "var.h",
+            "source": "ui-element",
+            "sourceId": "height-in"
           }
         ],
         "outputs": [
           {
             "name": "value",
             "target": "state",
-            "targetId": "result"
+            "targetId": "bmi"
           }
         ],
         "triggers": []
-      }
+      },
+      "structuredPrefixes": [
+        "var"
+      ]
     }
   ]
 }

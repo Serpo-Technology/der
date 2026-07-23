@@ -27,6 +27,7 @@ interface FragmentOpSpec {
   outputs?: FragmentIoSpec[];
   howto?: string;
   example?: unknown;
+  structuredPrefixes?: string[];
 }
 
 export interface InstalledFragment {
@@ -142,6 +143,7 @@ export class FragmentsService {
       outputs: (op.outputs ?? []).map(toIoSpec),
       howto: op.howto,
       example: op.example as BuiltinOperationDef['example'],
+      structuredPrefixes: op.structuredPrefixes,
       execute: async (inputs) => {
         const result = await invoke<FragmentExecResult>('execute_fragment', {
           fragmentId,
