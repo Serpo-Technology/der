@@ -283,7 +283,9 @@ function checkPipeline(
     if (!TRANSFORMS[step.type]) {
       fail(
         owner,
-        `Unknown transform "${step.type}". Use only transforms from the catalog.`,
+        `Unknown transform "${step.type}"; available transforms: ${Object.keys(TRANSFORMS).join(
+          ', '
+        )}. Math on values belongs in expr.evaluate.`,
         'UNKNOWN_TRANSFORM'
       );
       continue;
@@ -355,6 +357,9 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
   }
 
   const checkParamRef = (path: string, ref: { source: string; sourceId: unknown }) => {
+    if (ref.source === 'element' && typeof ref.sourceId === 'string') {
+      consumedElementIds.add(ref.sourceId);
+    }
     if (ref.source !== 'state' && ref.source !== 'element') {
       fail(
         path,
@@ -390,16 +395,167 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
   const stateReads = new Map<string, string>(); // key -> first reading property
   const stateWrites = new Set<string>(Object.keys(contract.initialState ?? {}));
   const objectArrayKeys = new Set<string>();
+  // Fields rows of a list-built key actually carry: append item.* inputs
+  // (plus the generated id) and initialState seed objects. updateWhere's
+  // set.* fields are tracked apart because new rows start without them.
+  const appendFieldsByKey = new Map<string, Set<string>>();
+  const laterFieldsByKey = new Map<string, Set<string>>();
   for (const op of contract.operations) {
     if (op.operationName.startsWith('list.')) {
       const keyInput = op.inputs.find((input) => input.name === 'key');
-      if (keyInput) {
-        objectArrayKeys.add(String(keyInput.value ?? keyInput.sourceId));
+      if (!keyInput) continue;
+      const key = String(keyInput.value ?? keyInput.sourceId);
+      objectArrayKeys.add(key);
+      if (op.operationName === 'list.append') {
+        const fields = appendFieldsByKey.get(key) ?? new Set<string>(['id']);
+        for (const input of op.inputs) {
+          if (input.name.startsWith('item.')) fields.add(input.name.slice('item.'.length));
+        }
+        appendFieldsByKey.set(key, fields);
+      } else {
+        const later = laterFieldsByKey.get(key) ?? new Set<string>();
+        for (const input of op.inputs) {
+          if (input.name.startsWith('set.')) later.add(input.name.slice('set.'.length));
+          if (input.name === 'field' && op.operationName === 'list.toggleField') {
+            later.add(String(input.value ?? input.sourceId));
+          }
+        }
+        laterFieldsByKey.set(key, later);
       }
     }
   }
+  for (const [key, seed] of Object.entries(contract.initialState ?? {})) {
+    if (!Array.isArray(seed)) continue;
+    const objects = seed.filter(
+      (entry): entry is Record<string, unknown> =>
+        !!entry && typeof entry === 'object' && !Array.isArray(entry)
+    );
+    if (objects.length === 0) continue;
+    const fields = appendFieldsByKey.get(key) ?? new Set<string>();
+    for (const entry of objects) {
+      for (const field of Object.keys(entry)) fields.add(field);
+    }
+    appendFieldsByKey.set(key, fields);
+  }
+
+  // Transforms that read a row field while the value is still the original
+  // object array. Anything else changes the shape and ends the check.
+  const FIELD_READING_TRANSFORMS = new Set([
+    'filterBy',
+    'filterContains',
+    'sortBy',
+    'pluck',
+    'sum',
+  ]);
+  const SHAPE_PRESERVING_TRANSFORMS = new Set([
+    'filterBy',
+    'filterContains',
+    'filterTruthy',
+    'filterFalsy',
+    'sortBy',
+  ]);
+  const checkListFieldReads = (
+    path: string,
+    binding: {
+      source?: string;
+      sourceId?: string;
+      transform?: TransformStep;
+      transforms?: TransformStep[];
+    }
+  ) => {
+    if (binding.source !== 'state' || !binding.sourceId) return;
+    const fields = appendFieldsByKey.get(binding.sourceId);
+    if (!fields) return;
+    const steps = [
+      ...(binding.transforms ?? []),
+      ...(binding.transform ? [binding.transform] : []),
+    ];
+    for (const step of steps) {
+      const field = step.parameters?.field;
+      if (FIELD_READING_TRANSFORMS.has(step.type) && typeof field === 'string' && field) {
+        if (!fields.has(field)) {
+          const later = laterFieldsByKey.get(binding.sourceId);
+          const hint = later?.has(field)
+            ? `only a later list operation sets "${field}", so new rows start without it; give the append an item.${field} input with the starting value`
+            : `add an item.${field} input to the append or fix the field name`;
+          fail(
+            path,
+            `${step.type} reads field "${field}" from "${binding.sourceId}", but its rows carry: ${
+              [...fields].join(', ') || 'nothing'
+            }; ${hint}`,
+            'LIST_FIELD_UNWRITTEN'
+          );
+        }
+      }
+      // A filter driven by the same control that feeds the append hides the
+      // other rows the moment anything is added.
+      if (step.type === 'filterBy' || step.type === 'filterContains') {
+        for (const value of Object.values(step.parameters ?? {})) {
+          const ref = paramRefOf(value);
+          if (
+            ref &&
+            ref.source === 'element' &&
+            appendElementsByKey.get(binding.sourceId)?.has(String(ref.sourceId))
+          ) {
+            fail(
+              path,
+              `The filter on "${binding.sourceId}" reads entry control "${String(ref.sourceId)}", which also feeds its list.append; every add would then hide the other rows. Use a separate filter control bound to its own state key, with an "All" option whose value is ""`,
+              'FILTER_BOUND_TO_ENTRY'
+            );
+          }
+        }
+      }
+      if (!SHAPE_PRESERVING_TRANSFORMS.has(step.type)) break;
+    }
+  };
   const operationIds = new Set(contract.operations.map((op) => op.id));
   const missingOperationRefs = new Set<string>();
+  const referencedOperationIds = new Set<string>();
+  // Element ids something consumes: operation inputs and outputs, or live
+  // transform parameters. A control outside every one of these does nothing.
+  const consumedElementIds = new Set<string>();
+  const controlCandidates: Array<{ id: string; type: string; path: string }> = [];
+  for (const op of contract.operations) {
+    for (const input of op.inputs) {
+      if (input.source === 'ui-element') consumedElementIds.add(input.sourceId);
+    }
+    for (const output of op.outputs) {
+      if (output.target === 'ui-element') consumedElementIds.add(output.targetId);
+    }
+    // Legacy trigger wiring references elements too; normalization converts
+    // it to event bindings only after this check runs.
+    for (const trigger of op.triggers ?? []) {
+      const elementId = (trigger.parameters as Record<string, unknown> | undefined)?.elementId;
+      if (typeof elementId === 'string') consumedElementIds.add(elementId);
+    }
+  }
+  // State keys some list element actually displays, and the entry controls
+  // feeding each list-built key's append.
+  const displayedListKeys = new Set<string>();
+  const appendElementsByKey = new Map<string, Set<string>>();
+  for (const op of contract.operations) {
+    if (op.operationName !== 'list.append') continue;
+    const keyInput = op.inputs.find((input) => input.name === 'key');
+    if (!keyInput) continue;
+    const key = String(keyInput.value ?? keyInput.sourceId);
+    const sources = appendElementsByKey.get(key) ?? new Set<string>();
+    for (const input of op.inputs) {
+      if (input.name.startsWith('item.') && input.source === 'ui-element') {
+        sources.add(input.sourceId);
+      }
+    }
+    appendElementsByKey.set(key, sources);
+  }
+  const collectDisplayedKeys = (element: UIElement) => {
+    if (element.type === 'list') {
+      for (const binding of element.dataBindings ?? []) {
+        if (binding.property === 'items' && binding.source === 'state') {
+          displayedListKeys.add(binding.sourceId);
+        }
+      }
+    }
+    element.children?.forEach(collectDisplayedKeys);
+  };
 
   const collectExpandedIds = (element: UIElement) => {
     elementIds.add(element.id);
@@ -408,6 +564,23 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
   walkElements(contract.elements as UIElement[], (element, path, inListTemplate) => {
     fixCenteredEntryRows(element, path);
     elementIds.add(element.id);
+    if (element.type === 'list') {
+      for (const binding of element.dataBindings ?? []) {
+        if (binding.property === 'items' && binding.source === 'state') {
+          displayedListKeys.add(binding.sourceId);
+        }
+      }
+    }
+    // Row controls act through their template's item scope; top-level
+    // controls must be consumed by something to matter.
+    const INTERACTIVE_TYPES = new Set(['button', 'input', 'select', 'textarea', 'checkbox']);
+    if (
+      INTERACTIVE_TYPES.has(element.type) &&
+      !inListTemplate &&
+      element.eventBindings.length === 0
+    ) {
+      controlCandidates.push({ id: element.id, type: element.type, path });
+    }
 
     // Installed UI fragments: enforce their parameter contract. A fragment
     // instance renders its expanded subtree, so references to those ids
@@ -415,7 +588,9 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     const fragmentDef = getUiFragmentDef(element.type);
     if (fragmentDef) {
       try {
-        collectExpandedIds(expandUiFragment(element, fragmentDef));
+        const expanded = expandUiFragment(element, fragmentDef);
+        collectExpandedIds(expanded);
+        collectDisplayedKeys(expanded);
       } catch {
         // Param problems surface through the checks below.
       }
@@ -431,6 +606,9 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
           continue;
         }
         if (value !== undefined && param.type === 'operationId') {
+          if (typeof value === 'string') {
+            referencedOperationIds.add(value);
+          }
           if (typeof value !== 'string' || !operationIds.has(value)) {
             fail(
               `${path}.properties.${param.name}`,
@@ -472,6 +650,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     element.dataBindings.forEach((binding, bindingIndex) => {
       const bindingPath = `${path}.dataBindings.${bindingIndex}`;
       checkPipeline(bindingPath, binding, fail, checkParamRef);
+      checkListFieldReads(bindingPath, binding);
 
       // Inside list templates auto-control is off and item bindings drive
       // the control; the ban applies only outside them.
@@ -524,6 +703,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
         : [];
     conditions.forEach((condition, conditionIndex) => {
       checkPipeline(`${path}.visibleWhen.${conditionIndex}`, condition, fail, checkParamRef);
+      checkListFieldReads(`${path}.visibleWhen.${conditionIndex}`, condition);
       if (condition.source === 'state') {
         if (!stateReads.has(condition.sourceId)) {
           stateReads.set(condition.sourceId, 'visibleWhen');
@@ -538,6 +718,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     });
 
     element.eventBindings.forEach((binding: EventBinding, bindingIndex) => {
+      referencedOperationIds.add(binding.operationId);
       if (!operationIds.has(binding.operationId)) {
         missingOperationRefs.add(binding.operationId);
         const defined = [...operationIds].join(', ') || 'none';
@@ -622,6 +803,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       const input = op.inputs[i] as InputBinding;
       const inputPath = `${opPath}.inputs.${i}`;
       checkPipeline(inputPath, input, fail, checkParamRef);
+      checkListFieldReads(inputPath, input);
 
       if (input.source === 'ui-element' && !elementIds.has(input.sourceId)) {
         fail(
@@ -794,6 +976,60 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       }
     }
   });
+
+  // An operation nothing runs is a dead feature: some binding, tick, or
+  // fragment parameter must reference it.
+  contract.operations.forEach((op, opIndex) => {
+    const wired = referencedOperationIds.has(op.id) || (op.triggers ?? []).length > 0;
+    if (!wired) {
+      fail(
+        `operations.${opIndex}`,
+        `Nothing runs operation "${op.id}"; wire it to an element event (a click, change, or timer tick) or remove it`,
+        'ORPHAN_OPERATION'
+      );
+    }
+  });
+
+  // Editing a list nothing ever fills is a feature that can never happen.
+  const LIST_EDIT_OPERATIONS = new Set(['list.updateWhere', 'list.removeWhere', 'list.toggleField']);
+  contract.operations.forEach((op, opIndex) => {
+    if (!LIST_EDIT_OPERATIONS.has(op.operationName)) return;
+    const keyInput = op.inputs.find((input) => input.name === 'key');
+    if (!keyInput) return;
+    const key = String(keyInput.value ?? keyInput.sourceId);
+    if (!appendFieldsByKey.has(key)) {
+      fail(
+        `operations.${opIndex}`,
+        `${op.operationName} edits "${key}" but nothing ever fills it; add a list.append flow with entry controls, or seed initialState.${key} with starting rows`,
+        'LIST_NEVER_FILLED'
+      );
+    }
+  });
+
+  // Rows someone adds must be visible somewhere.
+  for (const key of appendElementsByKey.keys()) {
+    if (!displayedListKeys.has(key)) {
+      fail(
+        'operations',
+        `list.append fills "${key}" but no list element displays it; bind a list element's "items" to "${key}"`,
+        'LIST_NOT_DISPLAYED'
+      );
+    }
+  }
+
+  // A control nothing consumes does nothing when used.
+  for (const control of controlCandidates) {
+    if (consumedElementIds.has(control.id)) continue;
+    const wiring =
+      control.type === 'button'
+        ? 'give it an eventBinding that runs an operation'
+        : 'read it from an operation input ({"source": "ui-element"}), reference it live from a filter parameter ({"source": "element"}), or give it a change binding';
+    fail(
+      control.path,
+      `${control.type} "${control.id}" affects nothing: ${wiring}, or remove it`,
+      'DEAD_CONTROL'
+    );
+  }
 
   // Seed state keys that are read but never written. An empty array for an
   // array-shaped reader is the normal omitted-seed case and stays silent; a

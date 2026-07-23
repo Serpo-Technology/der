@@ -365,6 +365,74 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       };
     },
   },
+  'random.int': {
+    name: 'random.int',
+    description: 'A uniform random whole number between min and max, both included.',
+    inputs: [
+      { name: 'min', type: 'number', required: true, description: 'Lowest possible value' },
+      { name: 'max', type: 'number', required: true, description: 'Highest possible value' },
+    ],
+    outputs: [{ name: 'value', type: 'number', description: 'The rolled number' }],
+    howto:
+      'Dice and roll patterns: bind min and max as typed constants, run on a click, route value into a state key shown by a text element. Numeric strings coerce.',
+    example: {
+      id: 'op-roll',
+      operationName: 'random.int',
+      executionType: 'builtin',
+      inputs: [
+        { name: 'min', source: 'constant', sourceId: '1', value: 1 },
+        { name: 'max', source: 'constant', sourceId: '6', value: 6 },
+      ],
+      outputs: [{ name: 'value', target: 'state', targetId: 'roll' }],
+      triggers: [],
+    },
+    execute: (inputs) => {
+      const min = Number(inputs.min);
+      const max = Number(inputs.max);
+      if (!Number.isFinite(min) || !Number.isFinite(max)) {
+        throw new Error('random.int needs numeric min and max');
+      }
+      const lo = Math.ceil(Math.min(min, max));
+      const hi = Math.floor(Math.max(min, max));
+      return { value: lo + Math.floor(Math.random() * (hi - lo + 1)) };
+    },
+  },
+  'random.pick': {
+    name: 'random.pick',
+    description: 'Picks one entry of an array at random.',
+    inputs: [
+      { name: 'list', type: 'array', required: true, description: 'Entries to choose from' },
+    ],
+    outputs: [
+      { name: 'value', type: 'any', description: 'The chosen entry' },
+      { name: 'index', type: 'number', description: 'Its position in the array' },
+    ],
+    howto:
+      'Random picker pattern: collect options with list.append, bind list from that state key, run on a click, and route value into a state key. When entries are objects from list.append, show a field by adding a pick transform on the value output, e.g. transforms [{"type": "pick", "parameters": {"field": "title"}}].',
+    example: {
+      id: 'op-pick',
+      operationName: 'random.pick',
+      executionType: 'builtin',
+      inputs: [{ name: 'list', source: 'state', sourceId: 'options' }],
+      outputs: [
+        {
+          name: 'value',
+          target: 'state',
+          targetId: 'chosen',
+          transforms: [{ type: 'pick', parameters: { field: 'title' } }],
+        },
+      ],
+      triggers: [],
+    },
+    execute: (inputs) => {
+      const list = Array.isArray(inputs.list) ? inputs.list : [];
+      if (list.length === 0) {
+        throw new Error('The list is empty; add entries before picking');
+      }
+      const index = Math.floor(Math.random() * list.length);
+      return { value: list[index], index };
+    },
+  },
   'http.get': {
     name: 'http.get',
     description:

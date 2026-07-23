@@ -1,0 +1,4266 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "todo-basic",
+      "wallMs": 5026,
+      "completionTokens": 928,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "basics.entry_row"
+      ],
+      "contract": {
+        "name": "todo-list",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Todo List",
+              "role": "title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "add-todo",
+            "type": "basics.entry_row",
+            "properties": {
+              "label": "Todo",
+              "operationId": "op-add"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "todo-list",
+            "type": "list",
+            "properties": {
+              "emptyText": "No todos yet"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "todos"
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "row",
+                "type": "container",
+                "properties": {
+                  "direction": "row",
+                  "gap": "8",
+                  "align": "center"
+                },
+                "dataBindings": [],
+                "eventBindings": [],
+                "children": [
+                  {
+                    "id": "todo-text",
+                    "type": "text",
+                    "properties": {},
+                    "dataBindings": [
+                      {
+                        "property": "content",
+                        "source": "item",
+                        "sourceId": "title"
+                      },
+                      {
+                        "property": "className",
+                        "source": "item",
+                        "sourceId": "completed",
+                        "transforms": [
+                          {
+                            "type": "map",
+                            "parameters": {
+                              "mapping": {
+                                "true": "done",
+                                "false": ""
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ],
+                    "eventBindings": []
+                  },
+                  {
+                    "id": "toggle-btn",
+                    "type": "button",
+                    "properties": {
+                      "text": "Done",
+                      "variant": "ghost",
+                      "size": "sm"
+                    },
+                    "dataBindings": [],
+                    "eventBindings": [
+                      {
+                        "event": "click",
+                        "operationId": "op-toggle"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "del-btn",
+                    "type": "button",
+                    "properties": {
+                      "text": "Delete",
+                      "variant": "danger",
+                      "size": "sm"
+                    },
+                    "dataBindings": [],
+                    "eventBindings": [
+                      {
+                        "event": "click",
+                        "operationId": "op-delete"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "todos"
+              },
+              {
+                "name": "item.title",
+                "source": "ui-element",
+                "sourceId": "add-todo-input"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "add-todo-input"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-delete",
+            "operationName": "list.removeWhere",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "todos"
+              },
+              {
+                "name": "value",
+                "source": "item",
+                "sourceId": "id"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-toggle",
+            "operationName": "list.toggleField",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "todos"
+              },
+              {
+                "name": "id",
+                "source": "item",
+                "sourceId": "id"
+              },
+              {
+                "name": "field",
+                "source": "constant",
+                "sourceId": "completed"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    },
+    {
+      "id": "todo-search",
+      "wallMs": 3507,
+      "completionTokens": 548,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "basics.entry_row"
+      ],
+      "contract": {
+        "name": "task-list-app",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "role": "title",
+              "content": "Task List"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "search-in",
+            "type": "input",
+            "properties": {
+              "label": "Search",
+              "placeholder": "Type to filter"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "add-task",
+            "type": "basics.entry_row",
+            "properties": {
+              "label": "New task",
+              "placeholder": "Task title",
+              "buttonText": "Add",
+              "operationId": "op-add"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "task-list",
+            "type": "list",
+            "properties": {
+              "emptyText": "No tasks"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "tasks",
+                "transforms": [
+                  {
+                    "type": "filterContains",
+                    "parameters": {
+                      "field": "title",
+                      "value": {
+                        "source": "element",
+                        "sourceId": "search-in"
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "task-title",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "title"
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "tasks"
+              },
+              {
+                "name": "item.title",
+                "source": "ui-element",
+                "sourceId": "add-task-input"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "add-task-input"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    },
+    {
+      "id": "kanban",
+      "wallMs": 6254,
+      "completionTokens": 3290,
+      "verdict": "pass",
+      "adjustments": 1,
+      "fragmentsUsed": [],
+      "contract": {
+        "name": "kanban-board",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Team Kanban Board",
+              "role": "title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "add-card",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8",
+              "align": "end"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "title-in",
+                "type": "input",
+                "properties": {
+                  "label": "Title",
+                  "placeholder": "Card title"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "owner-in",
+                "type": "input",
+                "properties": {
+                  "label": "Owner",
+                  "placeholder": "Owner name"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "add-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Add",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-add-card"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "todo-col",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "12"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "todo-heading",
+                "type": "text",
+                "properties": {
+                  "content": "Todo",
+                  "role": "subtitle"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "todo-count",
+                "type": "text",
+                "properties": {
+                  "role": "caption"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "cards",
+                    "transforms": [
+                      {
+                        "type": "filterBy",
+                        "parameters": {
+                          "field": "status",
+                          "value": "todo"
+                        }
+                      },
+                      {
+                        "type": "count",
+                        "parameters": {}
+                      },
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "{{value}} items"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "todo-list",
+                "type": "list",
+                "properties": {
+                  "emptyText": "No items"
+                },
+                "dataBindings": [
+                  {
+                    "property": "items",
+                    "source": "state",
+                    "sourceId": "cards",
+                    "transforms": [
+                      {
+                        "type": "filterBy",
+                        "parameters": {
+                          "field": "status",
+                          "value": "todo"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": [],
+                "children": [
+                  {
+                    "id": "todo-row",
+                    "type": "container",
+                    "properties": {
+                      "direction": "row",
+                      "gap": "8",
+                      "align": "center"
+                    },
+                    "dataBindings": [],
+                    "eventBindings": [],
+                    "children": [
+                      {
+                        "id": "todo-title",
+                        "type": "text",
+                        "properties": {},
+                        "dataBindings": [
+                          {
+                            "property": "content",
+                            "source": "item",
+                            "sourceId": "title"
+                          }
+                        ],
+                        "eventBindings": []
+                      },
+                      {
+                        "id": "todo-owner",
+                        "type": "text",
+                        "properties": {
+                          "role": "caption"
+                        },
+                        "dataBindings": [
+                          {
+                            "property": "content",
+                            "source": "item",
+                            "sourceId": "owner"
+                          }
+                        ],
+                        "eventBindings": []
+                      },
+                      {
+                        "id": "todo-next",
+                        "type": "button",
+                        "properties": {
+                          "text": "→",
+                          "variant": "ghost",
+                          "size": "sm"
+                        },
+                        "dataBindings": [],
+                        "eventBindings": [
+                          {
+                            "event": "click",
+                            "operationId": "op-move-todo-doing"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "todo-del",
+                        "type": "button",
+                        "properties": {
+                          "text": "Delete",
+                          "variant": "danger",
+                          "size": "sm"
+                        },
+                        "dataBindings": [],
+                        "eventBindings": [
+                          {
+                            "event": "click",
+                            "operationId": "op-delete-card"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "doing-col",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "12"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "doing-heading",
+                "type": "text",
+                "properties": {
+                  "content": "Doing",
+                  "role": "subtitle"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "doing-count",
+                "type": "text",
+                "properties": {
+                  "role": "caption"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "cards",
+                    "transforms": [
+                      {
+                        "type": "filterBy",
+                        "parameters": {
+                          "field": "status",
+                          "value": "doing"
+                        }
+                      },
+                      {
+                        "type": "count",
+                        "parameters": {}
+                      },
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "{{value}} items"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "doing-list",
+                "type": "list",
+                "properties": {
+                  "emptyText": "No items"
+                },
+                "dataBindings": [
+                  {
+                    "property": "items",
+                    "source": "state",
+                    "sourceId": "cards",
+                    "transforms": [
+                      {
+                        "type": "filterBy",
+                        "parameters": {
+                          "field": "status",
+                          "value": "doing"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": [],
+                "children": [
+                  {
+                    "id": "doing-row",
+                    "type": "container",
+                    "properties": {
+                      "direction": "row",
+                      "gap": "8",
+                      "align": "center"
+                    },
+                    "dataBindings": [],
+                    "eventBindings": [],
+                    "children": [
+                      {
+                        "id": "doing-title",
+                        "type": "text",
+                        "properties": {},
+                        "dataBindings": [
+                          {
+                            "property": "content",
+                            "source": "item",
+                            "sourceId": "title"
+                          }
+                        ],
+                        "eventBindings": []
+                      },
+                      {
+                        "id": "doing-owner",
+                        "type": "text",
+                        "properties": {
+                          "role": "caption"
+                        },
+                        "dataBindings": [
+                          {
+                            "property": "content",
+                            "source": "item",
+                            "sourceId": "owner"
+                          }
+                        ],
+                        "eventBindings": []
+                      },
+                      {
+                        "id": "doing-prev",
+                        "type": "button",
+                        "properties": {
+                          "text": "←",
+                          "variant": "ghost",
+                          "size": "sm"
+                        },
+                        "dataBindings": [],
+                        "eventBindings": [
+                          {
+                            "event": "click",
+                            "operationId": "op-move-doing-todo"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "doing-next",
+                        "type": "button",
+                        "properties": {
+                          "text": "→",
+                          "variant": "ghost",
+                          "size": "sm"
+                        },
+                        "dataBindings": [],
+                        "eventBindings": [
+                          {
+                            "event": "click",
+                            "operationId": "op-move-doing-done"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "doing-del",
+                        "type": "button",
+                        "properties": {
+                          "text": "Delete",
+                          "variant": "danger",
+                          "size": "sm"
+                        },
+                        "dataBindings": [],
+                        "eventBindings": [
+                          {
+                            "event": "click",
+                            "operationId": "op-delete-card"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "done-col",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "12"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "done-heading",
+                "type": "text",
+                "properties": {
+                  "content": "Done",
+                  "role": "subtitle"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "done-count",
+                "type": "text",
+                "properties": {
+                  "role": "caption"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "cards",
+                    "transforms": [
+                      {
+                        "type": "filterBy",
+                        "parameters": {
+                          "field": "status",
+                          "value": "done"
+                        }
+                      },
+                      {
+                        "type": "count",
+                        "parameters": {}
+                      },
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "{{value}} items"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "done-list",
+                "type": "list",
+                "properties": {
+                  "emptyText": "No items"
+                },
+                "dataBindings": [
+                  {
+                    "property": "items",
+                    "source": "state",
+                    "sourceId": "cards",
+                    "transforms": [
+                      {
+                        "type": "filterBy",
+                        "parameters": {
+                          "field": "status",
+                          "value": "done"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": [],
+                "children": [
+                  {
+                    "id": "done-row",
+                    "type": "container",
+                    "properties": {
+                      "direction": "row",
+                      "gap": "8",
+                      "align": "center"
+                    },
+                    "dataBindings": [],
+                    "eventBindings": [],
+                    "children": [
+                      {
+                        "id": "done-title",
+                        "type": "text",
+                        "properties": {},
+                        "dataBindings": [
+                          {
+                            "property": "content",
+                            "source": "item",
+                            "sourceId": "title"
+                          }
+                        ],
+                        "eventBindings": []
+                      },
+                      {
+                        "id": "done-owner",
+                        "type": "text",
+                        "properties": {
+                          "role": "caption"
+                        },
+                        "dataBindings": [
+                          {
+                            "property": "content",
+                            "source": "item",
+                            "sourceId": "owner"
+                          }
+                        ],
+                        "eventBindings": []
+                      },
+                      {
+                        "id": "done-prev",
+                        "type": "button",
+                        "properties": {
+                          "text": "←",
+                          "variant": "ghost",
+                          "size": "sm"
+                        },
+                        "dataBindings": [],
+                        "eventBindings": [
+                          {
+                            "event": "click",
+                            "operationId": "op-move-done-doing"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "done-del",
+                        "type": "button",
+                        "properties": {
+                          "text": "Delete",
+                          "variant": "danger",
+                          "size": "sm"
+                        },
+                        "dataBindings": [],
+                        "eventBindings": [
+                          {
+                            "event": "click",
+                            "operationId": "op-delete-card"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add-card",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "cards"
+              },
+              {
+                "name": "item.title",
+                "source": "ui-element",
+                "sourceId": "title-in"
+              },
+              {
+                "name": "item.owner",
+                "source": "ui-element",
+                "sourceId": "owner-in"
+              },
+              {
+                "name": "item.status",
+                "source": "constant",
+                "sourceId": "todo",
+                "value": "todo"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "title-in"
+              },
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "owner-in"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-delete-card",
+            "operationName": "list.removeWhere",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "cards"
+              },
+              {
+                "name": "field",
+                "source": "constant",
+                "sourceId": "id"
+              },
+              {
+                "name": "value",
+                "source": "item",
+                "sourceId": "id"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-move-todo-doing",
+            "operationName": "list.updateWhere",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "cards"
+              },
+              {
+                "name": "field",
+                "source": "constant",
+                "sourceId": "id"
+              },
+              {
+                "name": "value",
+                "source": "item",
+                "sourceId": "id"
+              },
+              {
+                "name": "set.status",
+                "source": "constant",
+                "sourceId": "doing",
+                "value": "doing"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-move-doing-done",
+            "operationName": "list.updateWhere",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "cards"
+              },
+              {
+                "name": "field",
+                "source": "constant",
+                "sourceId": "id"
+              },
+              {
+                "name": "value",
+                "source": "item",
+                "sourceId": "id"
+              },
+              {
+                "name": "set.status",
+                "source": "constant",
+                "sourceId": "done",
+                "value": "done"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-move-done-doing",
+            "operationName": "list.updateWhere",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "cards"
+              },
+              {
+                "name": "field",
+                "source": "constant",
+                "sourceId": "id"
+              },
+              {
+                "name": "value",
+                "source": "item",
+                "sourceId": "id"
+              },
+              {
+                "name": "set.status",
+                "source": "constant",
+                "sourceId": "doing",
+                "value": "doing"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-move-doing-todo",
+            "operationName": "list.updateWhere",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "cards"
+              },
+              {
+                "name": "field",
+                "source": "constant",
+                "sourceId": "id"
+              },
+              {
+                "name": "value",
+                "source": "item",
+                "sourceId": "id"
+              },
+              {
+                "name": "set.status",
+                "source": "constant",
+                "sourceId": "todo",
+                "value": "todo"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "dark"
+        }
+      },
+      "behavior": "pass"
+    },
+    {
+      "id": "contacts",
+      "wallMs": 3195,
+      "completionTokens": 1780,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [],
+      "contract": {
+        "name": "contact-manager",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Contact Manager",
+              "role": "title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "add-section",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "8",
+              "align": "start"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "name-in",
+                "type": "input",
+                "properties": {
+                  "label": "Name",
+                  "placeholder": "John Doe"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "company-in",
+                "type": "input",
+                "properties": {
+                  "label": "Company",
+                  "placeholder": "Acme Corp"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "email-in",
+                "type": "input",
+                "properties": {
+                  "label": "Email",
+                  "placeholder": "john@example.com"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "add-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Add Contact",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-add-contact"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "contact-list",
+            "type": "list",
+            "properties": {
+              "emptyText": "No contacts yet"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "contacts"
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "row-btn",
+                "type": "button",
+                "properties": {
+                  "variant": "ghost",
+                  "size": "sm"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "name"
+                  }
+                ],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-select-contact"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {
+              "role": "caption"
+            },
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "contacts",
+                "transforms": [
+                  {
+                    "type": "count",
+                    "parameters": {}
+                  },
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "Total contacts: {{value}}"
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "detail-panel",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "8",
+              "align": "start",
+              "padding": "12"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "visibleWhen": {
+              "source": "state",
+              "sourceId": "selectedContactId",
+              "operator": "truthy"
+            },
+            "children": [
+              {
+                "id": "detail-name",
+                "type": "text",
+                "properties": {
+                  "role": "subtitle"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "contacts",
+                    "transforms": [
+                      {
+                        "type": "filterBy",
+                        "parameters": {
+                          "field": "id",
+                          "value": {
+                            "source": "state",
+                            "sourceId": "selectedContactId"
+                          }
+                        }
+                      },
+                      {
+                        "type": "pick",
+                        "parameters": {
+                          "field": "name"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "detail-company",
+                "type": "text",
+                "properties": {
+                  "role": "body"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "contacts",
+                    "transforms": [
+                      {
+                        "type": "filterBy",
+                        "parameters": {
+                          "field": "id",
+                          "value": {
+                            "source": "state",
+                            "sourceId": "selectedContactId"
+                          }
+                        }
+                      },
+                      {
+                        "type": "pick",
+                        "parameters": {
+                          "field": "company"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "detail-email",
+                "type": "text",
+                "properties": {
+                  "role": "body"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "contacts",
+                    "transforms": [
+                      {
+                        "type": "filterBy",
+                        "parameters": {
+                          "field": "id",
+                          "value": {
+                            "source": "state",
+                            "sourceId": "selectedContactId"
+                          }
+                        }
+                      },
+                      {
+                        "type": "pick",
+                        "parameters": {
+                          "field": "email"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "delete-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Delete Contact",
+                  "variant": "danger"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-delete-contact"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-clear-selection"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add-contact",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "contacts"
+              },
+              {
+                "name": "item.name",
+                "source": "ui-element",
+                "sourceId": "name-in"
+              },
+              {
+                "name": "item.company",
+                "source": "ui-element",
+                "sourceId": "company-in"
+              },
+              {
+                "name": "item.email",
+                "source": "ui-element",
+                "sourceId": "email-in"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "name-in"
+              },
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "company-in"
+              },
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "email-in"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-select-contact",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "selectedContactId"
+              },
+              {
+                "name": "value",
+                "source": "item",
+                "sourceId": "id"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-delete-contact",
+            "operationName": "list.removeWhere",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "contacts"
+              },
+              {
+                "name": "value",
+                "source": "state",
+                "sourceId": "selectedContactId"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-clear-selection",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "selectedContactId"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "",
+                "value": ""
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    },
+    {
+      "id": "inventory",
+      "wallMs": 11546,
+      "completionTokens": 1987,
+      "verdict": "manifest",
+      "errors": "operations.3.inputs.0: \"items\" holds objects (built by a list operation); project the numeric field first, e.g. transforms [{\"type\": \"pluck\", \"parameters\": {\"field\": \"<field>\"}}]",
+      "fragmentsUsed": [
+        "expr.evaluate",
+        "stats.summary",
+        "basics.stat_tile"
+      ]
+    },
+    {
+      "id": "calculator",
+      "wallMs": 2461,
+      "completionTokens": 405,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "expr.evaluate",
+        "basics.entry_row"
+      ],
+      "contract": {
+        "name": "calc-app",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Calculator",
+              "role": "title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "calc-entry",
+            "type": "basics.entry_row",
+            "properties": {
+              "label": "Expression",
+              "placeholder": "e.g. 2+2*5",
+              "buttonText": "Eval",
+              "operationId": "op-eval"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "result",
+            "type": "text",
+            "properties": {
+              "role": "subtitle"
+            },
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "result",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "Result: {{value}}"
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": []
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-eval",
+            "operationName": "expr.evaluate",
+            "inputs": [
+              {
+                "name": "expression",
+                "source": "ui-element",
+                "sourceId": "calc-entry-input"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "value",
+                "target": "state",
+                "targetId": "result"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    },
+    {
+      "id": "bmi",
+      "wallMs": 3256,
+      "completionTokens": 609,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "expr.evaluate"
+      ],
+      "contract": {
+        "name": "bmi-calculator",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "root",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "8",
+              "align": "center"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "weight-in",
+                "type": "input",
+                "properties": {
+                  "label": "Weight (kg)"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "height-in",
+                "type": "input",
+                "properties": {
+                  "label": "Height (m)"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "calc-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Calculate BMI",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-calc"
+                  }
+                ]
+              },
+              {
+                "id": "bmi-display",
+                "type": "text",
+                "properties": {
+                  "role": "subtitle"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "bmi",
+                    "transforms": [
+                      {
+                        "type": "round",
+                        "parameters": {
+                          "decimals": 2
+                        }
+                      },
+                      {
+                        "type": "formatNumber",
+                        "parameters": {
+                          "decimals": 2
+                        }
+                      },
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "BMI: {{value}}"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-calc",
+            "operationName": "expr.evaluate",
+            "inputs": [
+              {
+                "name": "expression",
+                "source": "constant",
+                "sourceId": "weight / (height ^ 2)",
+                "value": "weight / (height ^ 2)"
+              },
+              {
+                "name": "var.weight",
+                "source": "ui-element",
+                "sourceId": "weight-in"
+              },
+              {
+                "name": "var.height",
+                "source": "ui-element",
+                "sourceId": "height-in"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "value",
+                "target": "state",
+                "targetId": "bmi"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    },
+    {
+      "id": "stopwatch",
+      "wallMs": 5179,
+      "completionTokens": 1026,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [],
+      "contract": {
+        "name": "stopwatch",
+        "version": "1.0.0",
+        "initialState": {
+          "elapsed": 0,
+          "running": false
+        },
+        "elements": [
+          {
+            "id": "elapsed-text",
+            "type": "text",
+            "properties": {
+              "role": "title"
+            },
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "elapsed",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "{{value}} s"
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "controls",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8",
+              "align": "center"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "start-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Start",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-start"
+                  }
+                ]
+              },
+              {
+                "id": "stop-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Stop",
+                  "variant": "danger"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-stop"
+                  }
+                ]
+              },
+              {
+                "id": "reset-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Reset"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-reset-elapsed"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-reset-stop"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "timer",
+            "type": "timer",
+            "properties": {
+              "seconds": 1
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "tick",
+                "operationId": "op-tick"
+              }
+            ],
+            "visibleWhen": {
+              "source": "state",
+              "sourceId": "running",
+              "operator": "truthy"
+            }
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-start",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "running"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "true",
+                "value": true
+              }
+            ],
+            "outputs": [],
+            "triggers": [],
+            "executionType": "builtin"
+          },
+          {
+            "id": "op-stop",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "running"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "false",
+                "value": false
+              }
+            ],
+            "outputs": [],
+            "triggers": [],
+            "executionType": "builtin"
+          },
+          {
+            "id": "op-reset-elapsed",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "elapsed"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "0",
+                "value": 0
+              }
+            ],
+            "outputs": [],
+            "triggers": [],
+            "executionType": "builtin"
+          },
+          {
+            "id": "op-reset-stop",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "running"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "false",
+                "value": false
+              }
+            ],
+            "outputs": [],
+            "triggers": [],
+            "executionType": "builtin"
+          },
+          {
+            "id": "op-tick",
+            "operationName": "counter.add",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "elapsed"
+              },
+              {
+                "name": "amount",
+                "source": "constant",
+                "sourceId": "1",
+                "value": 1
+              }
+            ],
+            "outputs": [],
+            "triggers": [],
+            "executionType": "builtin"
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    },
+    {
+      "id": "journal",
+      "wallMs": 4758,
+      "completionTokens": 835,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [],
+      "contract": {
+        "name": "daily-journal",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Daily Journal",
+              "role": "title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "entry-container",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "8"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "entry-in",
+                "type": "textarea",
+                "properties": {
+                  "label": "Entry",
+                  "rows": 5
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "save-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Save",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-time"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-add"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "entries-list",
+            "type": "list",
+            "properties": {
+              "emptyText": "No entries yet"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "entries",
+                "transforms": [
+                  {
+                    "type": "sortBy",
+                    "parameters": {
+                      "field": "date",
+                      "direction": "desc"
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "row-container",
+                "type": "container",
+                "properties": {
+                  "direction": "row",
+                  "gap": "8",
+                  "align": "center"
+                },
+                "dataBindings": [],
+                "eventBindings": [],
+                "children": [
+                  {
+                    "id": "date-text",
+                    "type": "text",
+                    "properties": {
+                      "role": "caption"
+                    },
+                    "dataBindings": [
+                      {
+                        "property": "content",
+                        "source": "item",
+                        "sourceId": "date",
+                        "transforms": [
+                          {
+                            "type": "formatDate",
+                            "parameters": {
+                              "style": "date"
+                            }
+                          }
+                        ]
+                      }
+                    ],
+                    "eventBindings": []
+                  },
+                  {
+                    "id": "content-text",
+                    "type": "text",
+                    "properties": {
+                      "role": "body"
+                    },
+                    "dataBindings": [
+                      {
+                        "property": "content",
+                        "source": "item",
+                        "sourceId": "content"
+                      }
+                    ],
+                    "eventBindings": []
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-time",
+            "operationName": "time.now",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "iso",
+                "target": "state",
+                "targetId": "now"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-add",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entries"
+              },
+              {
+                "name": "item.date",
+                "source": "state",
+                "sourceId": "now"
+              },
+              {
+                "name": "item.content",
+                "source": "ui-element",
+                "sourceId": "entry-in"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "entry-in"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    },
+    {
+      "id": "expense-split",
+      "wallMs": 3071,
+      "completionTokens": 1733,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [],
+      "contract": {
+        "name": "expense-tracker",
+        "version": "1.0.0",
+        "initialState": {
+          "filterCategory": ""
+        },
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Expense Tracker",
+              "role": "title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "entry-container",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8",
+              "align": "end"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "desc-in",
+                "type": "input",
+                "properties": {
+                  "label": "Description",
+                  "placeholder": "What"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "amt-in",
+                "type": "input",
+                "properties": {
+                  "label": "Amount",
+                  "placeholder": "0.00",
+                  "type": "number"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "category-in",
+                "type": "select",
+                "properties": {
+                  "label": "Category",
+                  "options": [
+                    {
+                      "value": "food",
+                      "label": "Food"
+                    },
+                    {
+                      "value": "travel",
+                      "label": "Travel"
+                    },
+                    {
+                      "value": "other",
+                      "label": "Other"
+                    }
+                  ]
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "add-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Add",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-add"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "filter-container",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8",
+              "align": "center"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "filter-select",
+                "type": "select",
+                "properties": {
+                  "label": "Filter by Category",
+                  "options": [
+                    {
+                      "value": "",
+                      "label": "All"
+                    },
+                    {
+                      "value": "food",
+                      "label": "Food"
+                    },
+                    {
+                      "value": "travel",
+                      "label": "Travel"
+                    },
+                    {
+                      "value": "other",
+                      "label": "Other"
+                    }
+                  ]
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "change",
+                    "operationId": "op-set-filter"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "rows",
+            "type": "list",
+            "properties": {
+              "emptyText": "No expenses"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "expenses",
+                "transforms": [
+                  {
+                    "type": "filterBy",
+                    "parameters": {
+                      "field": "category",
+                      "value": {
+                        "source": "state",
+                        "sourceId": "filterCategory"
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "r-desc",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "description"
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "r-amt",
+                "type": "text",
+                "properties": {
+                  "role": "caption"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "amount",
+                    "transforms": [
+                      {
+                        "type": "round",
+                        "parameters": {
+                          "decimals": 2
+                        }
+                      },
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "$ {{value}}"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "r-cat",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "category"
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "r-del",
+                "type": "button",
+                "properties": {
+                  "text": "Delete",
+                  "variant": "danger",
+                  "size": "sm"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-delete"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "total-container",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "justify": "end"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "total-text",
+                "type": "text",
+                "properties": {
+                  "role": "subtitle"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "expenses",
+                    "transforms": [
+                      {
+                        "type": "filterBy",
+                        "parameters": {
+                          "field": "category",
+                          "value": {
+                            "source": "state",
+                            "sourceId": "filterCategory"
+                          }
+                        }
+                      },
+                      {
+                        "type": "sum",
+                        "parameters": {
+                          "field": "amount"
+                        }
+                      },
+                      {
+                        "type": "round",
+                        "parameters": {
+                          "decimals": 2
+                        }
+                      },
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "Total: $ {{value}}"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "expenses"
+              },
+              {
+                "name": "item.description",
+                "source": "ui-element",
+                "sourceId": "desc-in"
+              },
+              {
+                "name": "item.amount",
+                "source": "ui-element",
+                "sourceId": "amt-in",
+                "transforms": [
+                  {
+                    "type": "parseNumber",
+                    "parameters": {}
+                  }
+                ]
+              },
+              {
+                "name": "item.category",
+                "source": "ui-element",
+                "sourceId": "category-in"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "desc-in"
+              },
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "amt-in"
+              },
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "category-in"
+              }
+            ],
+            "triggers": [],
+            "executionType": "builtin"
+          },
+          {
+            "id": "op-delete",
+            "operationName": "list.removeWhere",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "expenses"
+              },
+              {
+                "name": "value",
+                "source": "item",
+                "sourceId": "id"
+              }
+            ],
+            "outputs": [],
+            "triggers": [],
+            "executionType": "builtin"
+          },
+          {
+            "id": "op-set-filter",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "filterCategory"
+              },
+              {
+                "name": "value",
+                "source": "ui-element",
+                "sourceId": "filter-select"
+              }
+            ],
+            "outputs": [],
+            "triggers": [],
+            "executionType": "builtin"
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    },
+    {
+      "id": "countdown",
+      "wallMs": 3275,
+      "completionTokens": 981,
+      "verdict": "pass",
+      "adjustments": 1,
+      "fragmentsUsed": [
+        "date.diffDays"
+      ],
+      "contract": {
+        "name": "days-until-countdown",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "role": "title",
+              "content": "Days Until"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "inputs",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8",
+              "align": "end"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "event-name-in",
+                "type": "input",
+                "properties": {
+                  "label": "Event name",
+                  "placeholder": "e.g. Birthday"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "event-date-in",
+                "type": "input",
+                "properties": {
+                  "label": "Date",
+                  "type": "date"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "calc-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Calculate",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-set-name"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-now"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-diff"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "result",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "8"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "visibleWhen": {
+              "source": "state",
+              "sourceId": "daysLeft",
+              "operator": "truthy"
+            },
+            "children": [
+              {
+                "id": "event-display",
+                "type": "text",
+                "properties": {
+                  "role": "subtitle"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "eventName",
+                    "transforms": [
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "Event: {{value}}"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "days-display",
+                "type": "text",
+                "properties": {
+                  "role": "subtitle"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "daysLeft",
+                    "transforms": [
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "{{value}} days left"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-set-name",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "eventName"
+              },
+              {
+                "name": "value",
+                "source": "ui-element",
+                "sourceId": "event-name-in"
+              }
+            ],
+            "outputs": [],
+            "triggers": [],
+            "executionType": "builtin"
+          },
+          {
+            "id": "op-now",
+            "operationName": "time.now",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "date",
+                "target": "state",
+                "targetId": "today"
+              }
+            ],
+            "triggers": [],
+            "executionType": "builtin"
+          },
+          {
+            "id": "op-diff",
+            "operationName": "date.diffDays",
+            "inputs": [
+              {
+                "name": "from",
+                "source": "state",
+                "sourceId": "today"
+              },
+              {
+                "name": "to",
+                "source": "ui-element",
+                "sourceId": "event-date-in"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "days",
+                "target": "state",
+                "targetId": "daysLeft"
+              }
+            ],
+            "triggers": [],
+            "executionType": "builtin"
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    },
+    {
+      "id": "crypto-watch",
+      "wallMs": 1633,
+      "completionTokens": 524,
+      "verdict": "pass",
+      "adjustments": 1,
+      "fragmentsUsed": [
+        "crypto.price"
+      ],
+      "contract": {
+        "name": "crypto-watch",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "controls",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8",
+              "align": "end"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "coin-select",
+                "type": "select",
+                "properties": {
+                  "label": "Coin",
+                  "options": [
+                    {
+                      "value": "bitcoin",
+                      "label": "Bitcoin"
+                    },
+                    {
+                      "value": "ethereum",
+                      "label": "Ethereum"
+                    },
+                    {
+                      "value": "solana",
+                      "label": "Solana"
+                    }
+                  ]
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "fetch-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Get Price",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-price"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "price-text",
+            "type": "text",
+            "properties": {
+              "role": "subtitle"
+            },
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "price",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "$ {{value}}"
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": []
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-price",
+            "operationName": "crypto.price",
+            "inputs": [
+              {
+                "name": "coin",
+                "source": "ui-element",
+                "sourceId": "coin-select"
+              },
+              {
+                "name": "currency",
+                "source": "constant",
+                "sourceId": "usd",
+                "value": "usd"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "price",
+                "target": "state",
+                "targetId": "price"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    },
+    {
+      "id": "topic-lookup",
+      "wallMs": 2655,
+      "completionTokens": 440,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "wiki.summary",
+        "basics.entry_row"
+      ],
+      "contract": {
+        "name": "wiki-lookup",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "lookup-row",
+            "type": "basics.entry_row",
+            "properties": {
+              "label": "Topic",
+              "buttonText": "Search",
+              "operationId": "op-lookup"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "sep",
+            "type": "divider",
+            "properties": {},
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "article-title",
+            "type": "text",
+            "properties": {
+              "role": "title"
+            },
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "articleTitle"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "article-summary",
+            "type": "text",
+            "properties": {
+              "role": "body"
+            },
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "summary"
+              }
+            ],
+            "eventBindings": []
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-lookup",
+            "operationName": "wiki.summary",
+            "inputs": [
+              {
+                "name": "topic",
+                "source": "ui-element",
+                "sourceId": "lookup-row-input"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "title",
+                "target": "state",
+                "targetId": "articleTitle"
+              },
+              {
+                "name": "summary",
+                "target": "state",
+                "targetId": "summary"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    },
+    {
+      "id": "random-picker",
+      "wallMs": 5478,
+      "completionTokens": 879,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "basics.entry_row"
+      ],
+      "contract": {
+        "name": "decision-picker",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "root",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "12"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "title",
+                "type": "text",
+                "properties": {
+                  "content": "Decision Picker",
+                  "role": "title"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "add-option",
+                "type": "basics.entry_row",
+                "properties": {
+                  "label": "Option",
+                  "operationId": "op-add"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "options-list",
+                "type": "list",
+                "properties": {
+                  "emptyText": "No options yet"
+                },
+                "dataBindings": [
+                  {
+                    "property": "items",
+                    "source": "state",
+                    "sourceId": "options"
+                  }
+                ],
+                "eventBindings": [],
+                "children": [
+                  {
+                    "id": "opt-label",
+                    "type": "text",
+                    "properties": {},
+                    "dataBindings": [
+                      {
+                        "property": "content",
+                        "source": "item",
+                        "sourceId": "label"
+                      }
+                    ],
+                    "eventBindings": []
+                  },
+                  {
+                    "id": "opt-del",
+                    "type": "button",
+                    "properties": {
+                      "text": "Delete",
+                      "variant": "danger",
+                      "size": "sm"
+                    },
+                    "dataBindings": [],
+                    "eventBindings": [
+                      {
+                        "event": "click",
+                        "operationId": "op-del"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "pick-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Pick",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-pick"
+                  }
+                ]
+              },
+              {
+                "id": "chosen-text",
+                "type": "text",
+                "properties": {
+                  "role": "subtitle"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "chosen",
+                    "transforms": [
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "Chosen: {{value}}"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "options"
+              },
+              {
+                "name": "item.label",
+                "source": "ui-element",
+                "sourceId": "add-option-input"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "add-option-input"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-del",
+            "operationName": "list.removeWhere",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "options"
+              },
+              {
+                "name": "value",
+                "source": "item",
+                "sourceId": "id"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-pick",
+            "operationName": "random.pick",
+            "inputs": [
+              {
+                "name": "list",
+                "source": "state",
+                "sourceId": "options"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "value",
+                "target": "state",
+                "targetId": "chosen"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    },
+    {
+      "id": "trip-planner",
+      "wallMs": 6701,
+      "completionTokens": 1556,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "weather.current"
+      ],
+      "contract": {
+        "name": "trip-planner",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Trip Planner",
+              "role": "title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "entry",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8",
+              "align": "end"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "city-in",
+                "type": "input",
+                "properties": {
+                  "label": "City",
+                  "placeholder": "City name"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "date-in",
+                "type": "input",
+                "properties": {
+                  "label": "Date",
+                  "type": "date"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "add-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Add Destination",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-add"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "dest-list",
+            "type": "list",
+            "properties": {
+              "emptyText": "No destinations yet"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "destinations"
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "row-city",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "city"
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "row-date",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "date",
+                    "transforms": [
+                      {
+                        "type": "formatDate",
+                        "parameters": {
+                          "style": "date"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "weather-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Check weather"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-weather"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "weather-panel",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "8"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "visibleWhen": {
+              "source": "state",
+              "sourceId": "weatherCity",
+              "operator": "truthy"
+            },
+            "children": [
+              {
+                "id": "weather-city",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "weatherCity"
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "weather-temp",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "temp",
+                    "transforms": [
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "{{value}}°C"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "weather-desc",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "conditions"
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          },
+          {
+            "id": "stats",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "16",
+              "justify": "between"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "dest-count",
+                "type": "text",
+                "properties": {
+                  "role": "caption"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "destinations",
+                    "transforms": [
+                      {
+                        "type": "count",
+                        "parameters": {}
+                      },
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "{{value}} destinations"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "soonest-date",
+                "type": "text",
+                "properties": {
+                  "role": "caption"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "destinations",
+                    "transforms": [
+                      {
+                        "type": "sortBy",
+                        "parameters": {
+                          "field": "date",
+                          "direction": "asc"
+                        }
+                      },
+                      {
+                        "type": "pick",
+                        "parameters": {
+                          "field": "date"
+                        }
+                      },
+                      {
+                        "type": "formatDate",
+                        "parameters": {
+                          "style": "date"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "destinations"
+              },
+              {
+                "name": "item.city",
+                "source": "ui-element",
+                "sourceId": "city-in"
+              },
+              {
+                "name": "item.date",
+                "source": "ui-element",
+                "sourceId": "date-in"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "city-in"
+              },
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "date-in"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-weather",
+            "operationName": "weather.current",
+            "inputs": [
+              {
+                "name": "city",
+                "source": "item",
+                "sourceId": "city"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "temperature",
+                "target": "state",
+                "targetId": "temp"
+              },
+              {
+                "name": "description",
+                "target": "state",
+                "targetId": "conditions"
+              },
+              {
+                "name": "city",
+                "target": "state",
+                "targetId": "weatherCity"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "paper"
+        }
+      },
+      "behavior": "pass"
+    },
+    {
+      "id": "finance-dashboard",
+      "wallMs": 7303,
+      "completionTokens": 3428,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "expr.evaluate",
+        "fx.rate",
+        "stats.summary"
+      ],
+      "contract": {
+        "name": "personal-finance-dashboard",
+        "version": "1.0.0",
+        "initialState": {
+          "view": "entries",
+          "filterCategory": "",
+          "totalUsd": 0,
+          "count": 0,
+          "usdToEur": 0,
+          "totalEur": 0,
+          "average": 0
+        },
+        "elements": [
+          {
+            "id": "tabs",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8",
+              "align": "center"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "tab-entries",
+                "type": "button",
+                "properties": {
+                  "text": "Entries",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-set-view-entries"
+                  }
+                ]
+              },
+              {
+                "id": "tab-overview",
+                "type": "button",
+                "properties": {
+                  "text": "Overview",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-set-view-overview"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "view-entries",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "8"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "visibleWhen": {
+              "source": "state",
+              "sourceId": "view",
+              "operator": "equals",
+              "value": "entries"
+            },
+            "children": [
+              {
+                "id": "entry-row",
+                "type": "container",
+                "properties": {
+                  "direction": "row",
+                  "gap": "8",
+                  "align": "end"
+                },
+                "dataBindings": [],
+                "eventBindings": [],
+                "children": [
+                  {
+                    "id": "desc-in",
+                    "type": "input",
+                    "properties": {
+                      "label": "Description",
+                      "placeholder": "Description"
+                    },
+                    "dataBindings": [],
+                    "eventBindings": []
+                  },
+                  {
+                    "id": "amount-in",
+                    "type": "input",
+                    "properties": {
+                      "label": "Amount (USD)",
+                      "placeholder": "0.00"
+                    },
+                    "dataBindings": [],
+                    "eventBindings": []
+                  },
+                  {
+                    "id": "cat-in",
+                    "type": "select",
+                    "properties": {
+                      "label": "Category",
+                      "placeholder": "Select",
+                      "options": [
+                        {
+                          "value": "food",
+                          "label": "Food"
+                        },
+                        {
+                          "value": "travel",
+                          "label": "Travel"
+                        },
+                        {
+                          "value": "other",
+                          "label": "Other"
+                        }
+                      ]
+                    },
+                    "dataBindings": [],
+                    "eventBindings": []
+                  },
+                  {
+                    "id": "add-btn",
+                    "type": "button",
+                    "properties": {
+                      "text": "Add",
+                      "variant": "primary"
+                    },
+                    "dataBindings": [],
+                    "eventBindings": [
+                      {
+                        "event": "click",
+                        "operationId": "op-add-expense"
+                      },
+                      {
+                        "event": "click",
+                        "operationId": "op-stats"
+                      },
+                      {
+                        "event": "click",
+                        "operationId": "op-calc-avg"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "filter-row",
+                "type": "container",
+                "properties": {
+                  "direction": "row",
+                  "gap": "8",
+                  "align": "center"
+                },
+                "dataBindings": [],
+                "eventBindings": [],
+                "children": [
+                  {
+                    "id": "filter-cat-in",
+                    "type": "select",
+                    "properties": {
+                      "label": "Filter by category",
+                      "placeholder": "All",
+                      "options": [
+                        {
+                          "value": "",
+                          "label": "All"
+                        },
+                        {
+                          "value": "food",
+                          "label": "Food"
+                        },
+                        {
+                          "value": "travel",
+                          "label": "Travel"
+                        },
+                        {
+                          "value": "other",
+                          "label": "Other"
+                        }
+                      ]
+                    },
+                    "dataBindings": [],
+                    "eventBindings": [
+                      {
+                        "event": "change",
+                        "operationId": "op-set-filter-category"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "expenses-list",
+                "type": "list",
+                "properties": {
+                  "emptyText": "No expenses yet"
+                },
+                "dataBindings": [
+                  {
+                    "property": "items",
+                    "source": "state",
+                    "sourceId": "expenses",
+                    "transforms": [
+                      {
+                        "type": "filterBy",
+                        "parameters": {
+                          "field": "category",
+                          "value": {
+                            "source": "state",
+                            "sourceId": "filterCategory"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": [],
+                "children": [
+                  {
+                    "id": "expense-row",
+                    "type": "container",
+                    "properties": {
+                      "direction": "row",
+                      "gap": "8",
+                      "align": "center"
+                    },
+                    "dataBindings": [],
+                    "eventBindings": [],
+                    "children": [
+                      {
+                        "id": "row-desc",
+                        "type": "text",
+                        "properties": {},
+                        "dataBindings": [
+                          {
+                            "property": "content",
+                            "source": "item",
+                            "sourceId": "description"
+                          }
+                        ],
+                        "eventBindings": []
+                      },
+                      {
+                        "id": "row-amt",
+                        "type": "text",
+                        "properties": {
+                          "role": "caption"
+                        },
+                        "dataBindings": [
+                          {
+                            "property": "content",
+                            "source": "item",
+                            "sourceId": "amount",
+                            "transforms": [
+                              {
+                                "type": "round",
+                                "parameters": {
+                                  "decimals": 2
+                                }
+                              },
+                              {
+                                "type": "format",
+                                "parameters": {
+                                  "template": "$ {{value}}"
+                                }
+                              }
+                            ]
+                          }
+                        ],
+                        "eventBindings": []
+                      },
+                      {
+                        "id": "row-cat",
+                        "type": "text",
+                        "properties": {},
+                        "dataBindings": [
+                          {
+                            "property": "content",
+                            "source": "item",
+                            "sourceId": "category"
+                          }
+                        ],
+                        "eventBindings": []
+                      },
+                      {
+                        "id": "row-del",
+                        "type": "button",
+                        "properties": {
+                          "text": "Delete",
+                          "variant": "danger",
+                          "size": "sm"
+                        },
+                        "dataBindings": [],
+                        "eventBindings": [
+                          {
+                            "event": "click",
+                            "operationId": "op-delete-expense"
+                          },
+                          {
+                            "event": "click",
+                            "operationId": "op-stats"
+                          },
+                          {
+                            "event": "click",
+                            "operationId": "op-calc-avg"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "view-overview",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "8"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "visibleWhen": {
+              "source": "state",
+              "sourceId": "view",
+              "operator": "equals",
+              "value": "overview"
+            },
+            "children": [
+              {
+                "id": "total-usd",
+                "type": "text",
+                "properties": {
+                  "role": "subtitle"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "totalUsd",
+                    "transforms": [
+                      {
+                        "type": "round",
+                        "parameters": {
+                          "decimals": 2
+                        }
+                      },
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "$ {{value}}"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "average",
+                "type": "text",
+                "properties": {
+                  "role": "subtitle"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "average",
+                    "transforms": [
+                      {
+                        "type": "round",
+                        "parameters": {
+                          "decimals": 2
+                        }
+                      },
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "$ {{value}}"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "food-count",
+                "type": "text",
+                "properties": {
+                  "role": "caption"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "expenses",
+                    "transforms": [
+                      {
+                        "type": "filterBy",
+                        "parameters": {
+                          "field": "category",
+                          "value": "food"
+                        }
+                      },
+                      {
+                        "type": "count",
+                        "parameters": {}
+                      },
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "{{value}} food items"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "total-eur",
+                "type": "text",
+                "properties": {
+                  "role": "subtitle"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "totalEur",
+                    "transforms": [
+                      {
+                        "type": "round",
+                        "parameters": {
+                          "decimals": 2
+                        }
+                      },
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "€ {{value}}"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "refresh-rate-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Refresh rate",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-fetch-rate"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-calc-converted"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add-expense",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "expenses"
+              },
+              {
+                "name": "item.description",
+                "source": "ui-element",
+                "sourceId": "desc-in"
+              },
+              {
+                "name": "item.amount",
+                "source": "ui-element",
+                "sourceId": "amount-in",
+                "transforms": [
+                  {
+                    "type": "parseNumber",
+                    "parameters": {}
+                  }
+                ]
+              },
+              {
+                "name": "item.category",
+                "source": "ui-element",
+                "sourceId": "cat-in"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "desc-in"
+              },
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "amount-in"
+              },
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "cat-in"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-delete-expense",
+            "operationName": "list.removeWhere",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "expenses"
+              },
+              {
+                "name": "value",
+                "source": "item",
+                "sourceId": "id"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-set-view-entries",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "view"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "entries",
+                "value": "entries"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-set-view-overview",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "view"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "overview",
+                "value": "overview"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-set-filter-category",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "filterCategory"
+              },
+              {
+                "name": "value",
+                "source": "ui-element",
+                "sourceId": "filter-cat-in"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-fetch-rate",
+            "operationName": "fx.rate",
+            "inputs": [
+              {
+                "name": "from",
+                "source": "constant",
+                "sourceId": "USD"
+              },
+              {
+                "name": "to",
+                "source": "constant",
+                "sourceId": "EUR"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "rate",
+                "target": "state",
+                "targetId": "usdToEur"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-calc-converted",
+            "operationName": "expr.evaluate",
+            "inputs": [
+              {
+                "name": "expression",
+                "source": "constant",
+                "sourceId": "totalUsd * usdToEur"
+              },
+              {
+                "name": "var.totalUsd",
+                "source": "state",
+                "sourceId": "totalUsd"
+              },
+              {
+                "name": "var.usdToEur",
+                "source": "state",
+                "sourceId": "usdToEur"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "value",
+                "target": "state",
+                "targetId": "totalEur"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-stats",
+            "operationName": "stats.summary",
+            "inputs": [
+              {
+                "name": "values",
+                "source": "state",
+                "sourceId": "expenses",
+                "transforms": [
+                  {
+                    "type": "pluck",
+                    "parameters": {
+                      "field": "amount"
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [
+              {
+                "name": "sum",
+                "target": "state",
+                "targetId": "totalUsd"
+              },
+              {
+                "name": "count",
+                "target": "state",
+                "targetId": "count"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-calc-avg",
+            "operationName": "expr.evaluate",
+            "inputs": [
+              {
+                "name": "expression",
+                "source": "constant",
+                "sourceId": "totalUsd / count"
+              },
+              {
+                "name": "var.totalUsd",
+                "source": "state",
+                "sourceId": "totalUsd"
+              },
+              {
+                "name": "var.count",
+                "source": "state",
+                "sourceId": "count"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "value",
+                "target": "state",
+                "targetId": "average"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "dark",
+          "accent": "green"
+        }
+      },
+      "behavior": "pass"
+    }
+  ]
+}

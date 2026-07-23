@@ -2,6 +2,35 @@
   "formatVersion": 1,
   "parts": [
     {
+      "id": "der-labs.coingecko",
+      "name": "Crypto prices",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "crypto",
+      "description": "Cryptocurrency spot prices from the free CoinGecko API. No key needed.",
+      "operations": [
+        "crypto.price"
+      ],
+      "bundleUrl": "der-labs.coingecko.derpart",
+      "bundleSha256": "e2288140d5ed5e3e585643f021963f5d090e14b18b7bd2e173b27ed651090895",
+      "bundleBytes": 3092
+    },
+    {
+      "id": "der-labs.dates",
+      "name": "Dates",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "date",
+      "description": "Calendar-date arithmetic for countdowns, deadlines, and age calculations.",
+      "operations": [
+        "date.diffDays",
+        "date.addDays"
+      ],
+      "bundleUrl": "der-labs.dates.derpart",
+      "bundleSha256": "d2d54bce1f1efdc4001e4b60b20f3a79a40c8bc26334c247306d8461a6a400f2",
+      "bundleBytes": 113700
+    },
+    {
       "id": "der-labs.expr-evaluate",
       "name": "Expressions",
       "version": "1.1.2",
@@ -69,6 +98,20 @@
       "bundleUrl": "der-labs.ui-basics.derpart",
       "bundleSha256": "02c12cc9621db07b38b6e5ea6b6349777d8bd2d76d8dee4545deb7d2e9d03a4c",
       "bundleBytes": 5024
+    },
+    {
+      "id": "der-labs.wikipedia",
+      "name": "Wikipedia",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "wiki",
+      "description": "Article summaries from English Wikipedia. No key needed.",
+      "operations": [
+        "wiki.summary"
+      ],
+      "bundleUrl": "der-labs.wikipedia.derpart",
+      "bundleSha256": "2cb85a06872261e45b5512186e2c86300023827478c21f2bcf576f80799dc2e5",
+      "bundleBytes": 3024
     }
   ]
 }

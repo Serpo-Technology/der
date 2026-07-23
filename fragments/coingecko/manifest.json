@@ -1,0 +1,69 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.coingecko",
+  "name": "Crypto prices",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Cryptocurrency spot prices from the free CoinGecko API. No key needed.",
+  "namespace": "crypto",
+  "capabilities": ["net:https://api.coingecko.com"],
+  "wasmSha256": "",
+  "createdAt": "2026-07-23T20:00:00Z",
+  "service": {
+    "baseUrl": "https://api.coingecko.com",
+    "credentials": []
+  },
+  "operations": [
+    {
+      "name": "crypto.price",
+      "description": "The current spot price of a cryptocurrency in a fiat currency.",
+      "inputs": [
+        {
+          "name": "coin",
+          "type": "string",
+          "required": true,
+          "description": "CoinGecko coin id, lowercase: bitcoin, ethereum, solana, dogecoin"
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "required": true,
+          "description": "Fiat currency code, lowercase: usd, eur, try"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "price",
+          "type": "number",
+          "description": "One coin in the requested currency"
+        }
+      ],
+      "howto": "Bind coin and currency as lowercase constants or from select elements; run on a click and route price into a state key. Multiply holdings with expr.evaluate (vars). Coin ids are full names like \"bitcoin\", never ticker symbols. No credential needed.",
+      "example": {
+        "id": "op-price",
+        "operationName": "crypto.price",
+        "executionType": "builtin",
+        "inputs": [
+          { "name": "coin", "source": "constant", "sourceId": "bitcoin" },
+          { "name": "currency", "source": "constant", "sourceId": "usd" }
+        ],
+        "outputs": [
+          { "name": "price", "target": "state", "targetId": "btcPrice" }
+        ],
+        "triggers": []
+      },
+      "remote": {
+        "endpoint": "/api/v3/simple/price",
+        "method": "GET",
+        "query": {
+          "ids": "{coin}",
+          "vs_currencies": "{currency}"
+        },
+        "project": {
+          "price": "{coin}.{currency}"
+        }
+      }
+    }
+  ]
+}

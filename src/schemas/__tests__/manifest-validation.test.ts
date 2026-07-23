@@ -27,11 +27,48 @@ function checkContract(raw: Record<string, unknown>) {
 }
 
 function rawContract(overrides: Record<string, unknown> = {}) {
+  // Minimal fixtures get their operations wired to a button and their
+  // append keys shown by a list, so orphan- and display-completeness rules
+  // stay out of tests that target other rules.
+  interface FixtureOp {
+    id: string;
+    operationName?: string;
+    inputs?: Array<{ name: string; value?: unknown; sourceId?: string }>;
+  }
+  const ops = (overrides.operations ?? []) as FixtureOp[];
+  const listKeys = [
+    ...new Set(
+      ops
+        .filter((op) => op.operationName === 'list.append')
+        .map((op) => {
+          const key = (op.inputs ?? []).find((input) => input.name === 'key');
+          return key ? String(key.value ?? key.sourceId) : '';
+        })
+        .filter(Boolean)
+    )
+  ];
+  // The shared source element is a text node: usable as a ui-element input
+  // source in fixtures without tripping the dead-control rule when a test's
+  // operations read only constants.
   return {
     name: 'manifest-check',
     elements: [
-      { id: 'title-in', type: 'input' },
-      { id: 'add-btn', type: 'button', properties: { text: 'Add' } }
+      { id: 'title-in', type: 'text' },
+      ...(ops.length
+        ? [
+            {
+              id: 'add-btn',
+              type: 'button',
+              properties: { text: 'Add' },
+              eventBindings: ops.map((op) => ({ event: 'click', operationId: op.id }))
+            }
+          ]
+        : []),
+      ...listKeys.map((key) => ({
+        id: `list-${key}`,
+        type: 'list',
+        dataBindings: [{ property: 'items', source: 'state', sourceId: key }]
+      }))
     ],
     ...overrides
   };
@@ -202,7 +239,10 @@ describe('checkAgainstManifests hard errors', () => {
             id: 'add-btn',
             type: 'button',
             properties: { text: 'Add' },
-            eventBindings: [{ event: 'click', operationId: 'op-ghost' }]
+            eventBindings: [
+              { event: 'click', operationId: 'op-ghost' },
+              { event: 'click', operationId: 'op-count' }
+            ]
           }
         ],
         operations: [
@@ -364,6 +404,13 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
                 sourceId: 'rows',
                 transforms: [
                   {
+                    type: 'filterContains',
+                    parameters: {
+                      field: 'title',
+                      value: { source: 'element', sourceId: 'search-in' }
+                    }
+                  },
+                  {
                     type: 'filterBy',
                     parameters: {
                       field: 'category',
@@ -392,7 +439,12 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
             properties: { direction: 'row', align: 'center', gap: '8' },
             children: [
               { id: 'task-in', type: 'input', properties: { label: 'New task' } },
-              { id: 'add-btn', type: 'button', properties: { text: 'Add' } }
+              {
+                id: 'add-btn',
+                type: 'button',
+                properties: { text: 'Add' },
+                eventBindings: [{ event: 'click', operationId: 'op-add' }]
+              }
             ]
           },
           {
@@ -402,6 +454,16 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
             children: [
               { id: 'a', type: 'text', properties: { content: 'x' } },
               { id: 'b', type: 'text', properties: { content: 'y' } }
+            ]
+          }
+        ],
+        operations: [
+          {
+            id: 'op-add',
+            operationName: 'counter.add',
+            inputs: [
+              { name: 'key', source: 'constant', sourceId: 'n' },
+              { name: 'amount', source: 'ui-element', sourceId: 'task-in' }
             ]
           }
         ]
@@ -433,6 +495,12 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
               id: 'entry',
               type: 'basics.entry_row',
               properties: { operationId: 'op-ghost' }
+            },
+            {
+              id: 'wire-btn',
+              type: 'button',
+              properties: { text: 'Add' },
+              eventBindings: [{ event: 'click', operationId: 'op-add' }]
             }
           ],
           operations: [
@@ -484,6 +552,11 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
               id: 'task-entry',
               type: 'basics.entry_row',
               properties: { label: 'New task', operationId: 'op-add' }
+            },
+            {
+              id: 'task-list',
+              type: 'list',
+              dataBindings: [{ property: 'items', source: 'state', sourceId: 'tasks' }]
             }
           ],
           operations: [
@@ -534,6 +607,326 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
     } finally {
       delete FRAGMENT_OPERATIONS['expr.evaluate'];
     }
+  });
+
+  it('rejects filtering a list-built key on a field its append never writes', () => {
+    const { result } = checkContract(
+      rawContract({
+        elements: [
+          { id: 'title-in', type: 'input' },
+          { id: 'add-btn', type: 'button', properties: { text: 'Add' } },
+          {
+            id: 'todo-col',
+            type: 'list',
+            dataBindings: [
+              {
+                property: 'items',
+                source: 'state',
+                sourceId: 'cards',
+                transforms: [
+                  { type: 'filterBy', parameters: { field: 'status', value: 'todo' } }
+                ]
+              }
+            ]
+          }
+        ],
+        operations: [
+          {
+            id: 'op-add',
+            operationName: 'list.append',
+            inputs: [
+              { name: 'key', source: 'constant', sourceId: 'cards' },
+              { name: 'item.title', source: 'ui-element', sourceId: 'title-in' }
+            ]
+          },
+          {
+            id: 'op-move',
+            operationName: 'list.updateWhere',
+            inputs: [
+              { name: 'key', source: 'constant', sourceId: 'cards' },
+              { name: 'field', source: 'constant', sourceId: 'id' },
+              { name: 'value', source: 'item', sourceId: 'id' },
+              { name: 'set.status', source: 'constant', sourceId: 'doing' }
+            ]
+          }
+        ]
+      })
+    );
+
+    const fieldErrors = result.errors.filter((e) => e.code === 'LIST_FIELD_UNWRITTEN');
+    expect(fieldErrors).toHaveLength(1);
+    expect(fieldErrors[0].message).toContain('"status"');
+    expect(fieldErrors[0].message).toContain('item.status');
+    expect(fieldErrors[0].message).toContain('new rows start without it');
+  });
+
+  it('accepts filters on appended and seeded fields', () => {
+    const { result } = checkContract(
+      rawContract({
+        initialState: { archive: [{ kind: 'old' }] },
+        elements: [
+          { id: 'title-in', type: 'input' },
+          { id: 'add-btn', type: 'button', properties: { text: 'Add' } },
+          {
+            id: 'rows',
+            type: 'list',
+            dataBindings: [
+              {
+                property: 'items',
+                source: 'state',
+                sourceId: 'cards',
+                transforms: [
+                  { type: 'filterBy', parameters: { field: 'title', value: 'x' } },
+                  { type: 'sortBy', parameters: { field: 'title' } }
+                ]
+              }
+            ]
+          },
+          {
+            id: 'old-rows',
+            type: 'list',
+            dataBindings: [
+              {
+                property: 'items',
+                source: 'state',
+                sourceId: 'archive',
+                transforms: [{ type: 'filterBy', parameters: { field: 'kind', value: 'old' } }]
+              }
+            ]
+          }
+        ],
+        operations: [
+          {
+            id: 'op-add',
+            operationName: 'list.append',
+            inputs: [
+              { name: 'key', source: 'constant', sourceId: 'cards' },
+              { name: 'item.title', source: 'ui-element', sourceId: 'title-in' }
+            ]
+          },
+          {
+            id: 'op-archive-add',
+            operationName: 'list.append',
+            inputs: [
+              { name: 'key', source: 'constant', sourceId: 'archive' },
+              { name: 'item.kind', source: 'constant', sourceId: 'old' }
+            ]
+          }
+        ]
+      })
+    );
+
+    expect(result.errors.filter((e) => e.code === 'LIST_FIELD_UNWRITTEN')).toEqual([]);
+  });
+
+  it('flags operations nothing runs', () => {
+    const { result } = checkContract(
+      rawContract({
+        elements: [
+          {
+            id: 'go-btn',
+            type: 'button',
+            properties: { text: 'Go' },
+            eventBindings: [{ event: 'click', operationId: 'op-used' }]
+          }
+        ],
+        operations: [
+          {
+            id: 'op-used',
+            operationName: 'counter.add',
+            inputs: [{ name: 'key', source: 'constant', sourceId: 'n' }]
+          },
+          {
+            id: 'op-forgotten',
+            operationName: 'counter.add',
+            inputs: [{ name: 'key', source: 'constant', sourceId: 'm' }]
+          }
+        ]
+      })
+    );
+
+    const orphans = result.errors.filter((e) => e.code === 'ORPHAN_OPERATION');
+    expect(orphans).toHaveLength(1);
+    expect(orphans[0].message).toContain('op-forgotten');
+  });
+
+  it('flags appended lists no list element displays', () => {
+    const { result } = checkContract(
+      rawContract({
+        elements: [
+          { id: 'opt-in', type: 'input', properties: { label: 'Option' } },
+          {
+            id: 'add-btn',
+            type: 'button',
+            properties: { text: 'Add' },
+            eventBindings: [{ event: 'click', operationId: 'op-add' }]
+          }
+        ],
+        operations: [
+          {
+            id: 'op-add',
+            operationName: 'list.append',
+            inputs: [
+              { name: 'key', source: 'constant', sourceId: 'options' },
+              { name: 'item.value', source: 'ui-element', sourceId: 'opt-in' }
+            ]
+          }
+        ]
+      })
+    );
+
+    const missing = result.errors.filter((e) => e.code === 'LIST_NOT_DISPLAYED');
+    expect(missing).toHaveLength(1);
+    expect(missing[0].message).toContain('"options"');
+  });
+
+  it('flags filters driven by the entry control that feeds the append', () => {
+    const { result } = checkContract(
+      rawContract({
+        elements: [
+          {
+            id: 'cat-in',
+            type: 'select',
+            properties: { options: ['food', 'travel'] }
+          },
+          {
+            id: 'add-btn',
+            type: 'button',
+            properties: { text: 'Add' },
+            eventBindings: [{ event: 'click', operationId: 'op-add' }]
+          },
+          {
+            id: 'rows',
+            type: 'list',
+            dataBindings: [
+              {
+                property: 'items',
+                source: 'state',
+                sourceId: 'expenses',
+                transforms: [
+                  {
+                    type: 'filterBy',
+                    parameters: {
+                      field: 'category',
+                      value: { source: 'element', sourceId: 'cat-in' }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        operations: [
+          {
+            id: 'op-add',
+            operationName: 'list.append',
+            inputs: [
+              { name: 'key', source: 'constant', sourceId: 'expenses' },
+              { name: 'item.category', source: 'ui-element', sourceId: 'cat-in' }
+            ]
+          }
+        ]
+      })
+    );
+
+    const coupled = result.errors.filter((e) => e.code === 'FILTER_BOUND_TO_ENTRY');
+    expect(coupled).toHaveLength(1);
+    expect(coupled[0].message).toContain('cat-in');
+  });
+
+  it('flags controls nothing consumes', () => {
+    const { result } = checkContract(
+      rawContract({
+        elements: [
+          { id: 'lonely-in', type: 'select', properties: { options: ['a'] } },
+          {
+            id: 'go-btn',
+            type: 'button',
+            properties: { text: 'Go' },
+            eventBindings: [{ event: 'click', operationId: 'op-n' }]
+          }
+        ],
+        operations: [
+          {
+            id: 'op-n',
+            operationName: 'counter.add',
+            inputs: [{ name: 'key', source: 'constant', sourceId: 'n' }]
+          }
+        ]
+      })
+    );
+
+    const dead = result.errors.filter((e) => e.code === 'DEAD_CONTROL');
+    expect(dead).toHaveLength(1);
+    expect(dead[0].message).toContain('lonely-in');
+  });
+
+  it('flags list edits on a key nothing fills', () => {
+    const { result } = checkContract(
+      rawContract({
+        elements: [
+          {
+            id: 'rows',
+            type: 'list',
+            dataBindings: [{ property: 'items', source: 'state', sourceId: 'cards' }],
+            children: [
+              {
+                id: 'row-del',
+                type: 'button',
+                properties: { text: 'Delete' },
+                eventBindings: [{ event: 'click', operationId: 'op-del' }]
+              }
+            ]
+          }
+        ],
+        operations: [
+          {
+            id: 'op-del',
+            operationName: 'list.removeWhere',
+            inputs: [
+              { name: 'key', source: 'constant', sourceId: 'cards' },
+              { name: 'value', source: 'item', sourceId: 'id' }
+            ]
+          }
+        ]
+      })
+    );
+
+    const unfilled = result.errors.filter((e) => e.code === 'LIST_NEVER_FILLED');
+    expect(unfilled).toHaveLength(1);
+    expect(unfilled[0].message).toContain('"cards"');
+
+    const seeded = checkContract(
+      rawContract({
+        initialState: { cards: [{ id: 'c1', title: 'Seeded' }] },
+        elements: [
+          {
+            id: 'rows',
+            type: 'list',
+            dataBindings: [{ property: 'items', source: 'state', sourceId: 'cards' }],
+            children: [
+              {
+                id: 'row-del',
+                type: 'button',
+                properties: { text: 'Delete' },
+                eventBindings: [{ event: 'click', operationId: 'op-del' }]
+              }
+            ]
+          }
+        ],
+        operations: [
+          {
+            id: 'op-del',
+            operationName: 'list.removeWhere',
+            inputs: [
+              { name: 'key', source: 'constant', sourceId: 'cards' },
+              { name: 'value', source: 'item', sourceId: 'id' }
+            ]
+          }
+        ]
+      })
+    );
+    expect(seeded.result.errors.filter((e) => e.code === 'LIST_NEVER_FILLED')).toEqual([]);
   });
 
   it('rejects expression identifiers with no matching var binding', () => {
@@ -688,7 +1081,22 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
     };
     try {
       const base = {
-        elements: [{ id: 'add-btn', type: 'button', properties: { text: 'Add' } }],
+        elements: [
+          {
+            id: 'add-btn',
+            type: 'button',
+            properties: { text: 'Add' },
+            eventBindings: [
+              { event: 'click', operationId: 'op-add' },
+              { event: 'click', operationId: 'op-stats' }
+            ]
+          },
+          {
+            id: 'expense-list',
+            type: 'list',
+            dataBindings: [{ property: 'items', source: 'state', sourceId: 'expenses' }]
+          }
+        ],
         operations: [
           {
             id: 'op-add',
@@ -728,7 +1136,18 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
             id: 'cat-filter',
             type: 'select',
             properties: { options: ['a', 'b'] },
-            dataBindings: [{ property: 'value', source: 'state', sourceId: 'categoryFilter' }]
+            dataBindings: [{ property: 'value', source: 'state', sourceId: 'categoryFilter' }],
+            eventBindings: [{ event: 'change', operationId: 'op-use' }]
+          }
+        ],
+        operations: [
+          {
+            id: 'op-use',
+            operationName: 'state.set',
+            inputs: [
+              { name: 'key', source: 'constant', sourceId: 'chosen' },
+              { name: 'value', source: 'ui-element', sourceId: 'cat-filter' }
+            ]
           }
         ]
       })
@@ -806,7 +1225,21 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
   it('resets an invalid knob value to the manifest default', () => {
     const { contract, result } = checkContract(
       rawContract({
-        elements: [{ id: 'add-btn', type: 'button', properties: { text: 'Add', variant: 'sparkle' } }]
+        elements: [
+          {
+            id: 'add-btn',
+            type: 'button',
+            properties: { text: 'Add', variant: 'sparkle' },
+            eventBindings: [{ event: 'click', operationId: 'op-n' }]
+          }
+        ],
+        operations: [
+          {
+            id: 'op-n',
+            operationName: 'counter.add',
+            inputs: [{ name: 'key', source: 'constant', sourceId: 'n' }]
+          }
+        ]
       })
     );
 
@@ -891,6 +1324,12 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
             id: 'view-text',
             type: 'text',
             dataBindings: [{ property: 'content', source: 'state', sourceId: 'view' }]
+          },
+          {
+            id: 'view-btn',
+            type: 'button',
+            properties: { text: 'Done' },
+            eventBindings: [{ event: 'click', operationId: 'op-view' }]
           }
         ],
         operations: [

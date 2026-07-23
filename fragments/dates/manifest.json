@@ -1,0 +1,93 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.dates",
+  "name": "Dates",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Calendar-date arithmetic for countdowns, deadlines, and age calculations.",
+  "namespace": "date",
+  "capabilities": [],
+  "wasmSha256": "8eb692aba982c3beea20d259f47b6c8222ce5d89f90f39d95e7dcbab9d24b90a",
+  "createdAt": "2026-07-23T20:00:00Z",
+  "operations": [
+    {
+      "name": "date.diffDays",
+      "description": "Whole days from one date to another (negative when \"to\" is earlier).",
+      "inputs": [
+        {
+          "name": "from",
+          "type": "string",
+          "required": true,
+          "description": "Start date, YYYY-MM-DD (a full ISO timestamp also works)"
+        },
+        {
+          "name": "to",
+          "type": "string",
+          "required": true,
+          "description": "End date, YYYY-MM-DD (a full ISO timestamp also works)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "days",
+          "type": "number",
+          "description": "Calendar days from \"from\" to \"to\""
+        }
+      ],
+      "howto": "Countdown pattern: run time.now first and route its iso output to a state key, then bind \"from\" to that key and \"to\" to the target date (a date input's value or an item field); chain both operations on the same trigger, time.now first. The output is named \"days\". For a per-row countdown inside a list, run the operations on a button click and store days in state; bindings inside list templates read item fields directly.",
+      "example": {
+        "id": "op-days-left",
+        "operationName": "date.diffDays",
+        "executionType": "builtin",
+        "inputs": [
+          { "name": "from", "source": "state", "sourceId": "today" },
+          { "name": "to", "source": "ui-element", "sourceId": "event-date-in" }
+        ],
+        "outputs": [
+          { "name": "days", "target": "state", "targetId": "daysLeft" }
+        ],
+        "triggers": []
+      }
+    },
+    {
+      "name": "date.addDays",
+      "description": "Shifts a date by a number of days and returns the new date.",
+      "inputs": [
+        {
+          "name": "date",
+          "type": "string",
+          "required": true,
+          "description": "Base date, YYYY-MM-DD (a full ISO timestamp also works)"
+        },
+        {
+          "name": "days",
+          "type": "number",
+          "required": true,
+          "description": "Days to add; negative subtracts"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "date",
+          "type": "string",
+          "description": "The shifted date as YYYY-MM-DD"
+        }
+      ],
+      "howto": "Deadline pattern: bind \"date\" to a date input or time.now's iso state key and \"days\" to a number input (numeric strings coerce); route the date output to state and show it with formatDate. The output is named \"date\".",
+      "example": {
+        "id": "op-due-date",
+        "operationName": "date.addDays",
+        "executionType": "builtin",
+        "inputs": [
+          { "name": "date", "source": "state", "sourceId": "today" },
+          { "name": "days", "source": "ui-element", "sourceId": "days-in" }
+        ],
+        "outputs": [
+          { "name": "date", "target": "state", "targetId": "dueDate" }
+        ],
+        "triggers": []
+      }
+    }
+  ]
+}

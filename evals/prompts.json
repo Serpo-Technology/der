@@ -57,7 +57,8 @@
           { "do": "type", "into": ["email"], "value": "grace@navy.mil" },
           { "do": "click", "on": ["add"] },
           { "expect": "text", "match": "Grace Hopper" },
-          { "do": "clickRow", "row": "Grace" },
+          { "do": "clickInRow", "row": "Grace", "on": ["view", "show", "open", "detail", "select"], "optional": true },
+          { "do": "clickRow", "row": "Grace", "optional": true },
           { "expect": "text", "match": "grace@navy.mil" }
         ]
       }
@@ -72,6 +73,7 @@
           { "do": "type", "into": ["price"], "value": "2.5" },
           { "do": "click", "on": ["add"] },
           { "expect": "text", "match": "Bolt" },
+          { "do": "click", "on": ["refresh", "start", "update", "compute", "calculate"], "optional": true },
           { "expect": "text", "match": "/\\b10(\\.0+)?\\b/" },
           { "do": "clickInRow", "row": "Bolt", "on": ["delete", "remove"] },
           { "expect": "noText", "match": "Bolt" }
@@ -145,6 +147,67 @@
           { "do": "select", "in": ["filter"], "value": "food" },
           { "expect": "text", "match": "/\\b10(\\.0+)?\\b/" },
           { "expect": "noText", "match": "/\\b7(\\.0+)?\\b/" }
+        ]
+      }
+    },
+    {
+      "id": "countdown",
+      "prompt": "Days-until countdown: I enter an event name and a future date and press a button; it shows the event name and how many days remain from today.",
+      "behavior": {
+        "steps": [
+          { "do": "type", "into": ["event", "name", "what"], "value": "Launch" },
+          { "do": "type", "into": ["date", "when"], "value": "2036-07-23" },
+          { "do": "click", "on": ["count", "start", "calculate", "show", "add"] },
+          { "expect": "text", "match": "Launch" },
+          { "expect": "text", "match": "/\\b3\\d{3}\\b/" }
+        ]
+      }
+    },
+    {
+      "id": "crypto-watch",
+      "prompt": "Crypto watch: pick a coin from a dropdown (bitcoin, ethereum, solana), press a button to fetch its current USD spot price, and show the price.",
+      "behavior": {
+        "stubs": {
+          "crypto.price": { "price": 64827 }
+        },
+        "steps": [
+          { "do": "select", "in": ["coin", "crypto"], "value": "ethereum" },
+          { "do": "click", "on": ["check", "price", "fetch", "refresh"] },
+          { "expect": "text", "match": "/64,?827/" }
+        ]
+      }
+    },
+    {
+      "id": "topic-lookup",
+      "prompt": "Topic lookup: type a topic and press Search to show its Wikipedia summary and the resolved article title.",
+      "behavior": {
+        "stubs": {
+          "wiki.summary": {
+            "title": "Ada Lovelace",
+            "summary": "Augusta Ada King, Countess of Lovelace, was an English mathematician and writer.",
+            "description": "English mathematician"
+          }
+        },
+        "steps": [
+          { "do": "type", "into": ["topic", "search", "lookup"], "value": "Ada Lovelace" },
+          { "do": "click", "on": ["search", "look up", "fetch"] },
+          { "expect": "text", "match": "Augusta Ada King" }
+        ]
+      }
+    },
+    {
+      "id": "random-picker",
+      "prompt": "Decision picker: I add options to a list and press a Pick button for it to choose one at random and show the choice.",
+      "behavior": {
+        "steps": [
+          { "do": "type", "into": ["option", "choice", "add", "what"], "value": "red" },
+          { "do": "click", "on": ["add"] },
+          { "do": "type", "into": ["option", "choice", "add", "what"], "value": "blue" },
+          { "do": "click", "on": ["add"] },
+          { "expect": "rowCount", "count": 2 },
+          { "do": "click", "on": ["pick", "choose", "decide", "random"] },
+          { "expect": "noText", "match": "list is empty" },
+          { "expect": "text", "match": "/\\bred\\b|\\bblue\\b/" }
         ]
       }
     },

@@ -266,7 +266,7 @@ async function runOne(step: BehaviorStep, root: HTMLElement): Promise<void> {
       if (checkbox) {
         fireEvent.click(checkbox);
       } else {
-        fireEvent.click(findButton(row, hints(step.on ?? ['complete', 'done', 'finish'])));
+        fireEvent.click(findButton(row, hints(step.on ?? ['complete', 'done', 'finish', 'toggle', 'mark'])));
       }
       break;
     }

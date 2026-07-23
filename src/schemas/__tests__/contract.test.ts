@@ -97,7 +97,19 @@ describe('ContractSchema', () => {
 
 describe('validateContractObject', () => {
   it('returns valid for a well-formed contract', () => {
-    const result = validateContractObject(baseContract());
+    const result = validateContractObject(
+      baseContract({
+        elements: [
+          {
+            id: 'btn',
+            type: 'button',
+            properties: { text: 'Go' },
+            dataBindings: [],
+            eventBindings: [{ event: 'click', operationId: 'op-1' }]
+          }
+        ]
+      })
+    );
 
     expect(result.isValid).toBe(true);
     expect(result.errors).toHaveLength(0);

@@ -1,0 +1,71 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.wikipedia",
+  "name": "Wikipedia",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Article summaries from English Wikipedia. No key needed.",
+  "namespace": "wiki",
+  "capabilities": ["net:https://en.wikipedia.org"],
+  "wasmSha256": "",
+  "createdAt": "2026-07-23T20:00:00Z",
+  "service": {
+    "baseUrl": "https://en.wikipedia.org",
+    "credentials": []
+  },
+  "operations": [
+    {
+      "name": "wiki.summary",
+      "description": "The lead summary of an English Wikipedia article by topic.",
+      "inputs": [
+        {
+          "name": "topic",
+          "type": "string",
+          "required": true,
+          "description": "Article topic, e.g. Ada Lovelace; spaces are fine"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "title",
+          "type": "string",
+          "description": "Resolved article title"
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "description": "One-paragraph lead summary"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "description": "Short one-line description"
+        }
+      ],
+      "howto": "Bind topic from an input element, run on a click, and route summary into a state key shown by a text element. An unknown topic is an error the app surfaces. No credential needed.",
+      "example": {
+        "id": "op-lookup",
+        "operationName": "wiki.summary",
+        "executionType": "builtin",
+        "inputs": [
+          { "name": "topic", "source": "ui-element", "sourceId": "topic-in" }
+        ],
+        "outputs": [
+          { "name": "summary", "target": "state", "targetId": "summary" },
+          { "name": "title", "target": "state", "targetId": "articleTitle" }
+        ],
+        "triggers": []
+      },
+      "remote": {
+        "endpoint": "/api/rest_v1/page/summary/{topic}",
+        "method": "GET",
+        "project": {
+          "title": "title",
+          "summary": "extract",
+          "description": "description"
+        }
+      }
+    }
+  ]
+}

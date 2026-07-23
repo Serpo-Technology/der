@@ -370,7 +370,22 @@ describe('ContractBuilder', () => {
           elements: [
             { id: 'weird', type: 'sparkle-widget', properties: {}, dataBindings: [], eventBindings: [] },
             { id: 'markup', type: 'DIV', properties: {}, dataBindings: [], eventBindings: [] },
-            { id: 'plain', type: 'button', properties: {}, dataBindings: [], eventBindings: [] }
+            {
+              id: 'plain',
+              type: 'button',
+              properties: {},
+              dataBindings: [],
+              eventBindings: [{ event: 'click', operationId: 'op-n' }]
+            }
+          ],
+          operations: [
+            {
+              id: 'op-n',
+              operationName: 'counter.add',
+              inputs: [{ name: 'key', source: 'constant', sourceId: 'n' }],
+              outputs: [],
+              triggers: []
+            }
           ]
         })
       );
@@ -390,7 +405,10 @@ describe('ContractBuilder', () => {
               type: 'button',
               properties: {},
               dataBindings: [],
-              eventBindings: [{ event: 'click', operationId: 'op-builtin' }]
+              eventBindings: [
+                { event: 'click', operationId: 'op-builtin' },
+                { event: 'click', operationId: 'op-remote' }
+              ]
             }
           ],
           operations: [
@@ -660,7 +678,9 @@ describe('ContractBuilder', () => {
 
     it('warns about parts the edit removed', async () => {
       const trimmed = JSON.parse(JSON.stringify(SAMPLE_TODO_CONTRACT));
-      const removed = trimmed.elements.pop();
+      // Dropping the title keeps the contract valid; removing a load-bearing
+      // element (the list) would now fail validation instead of warning.
+      const removed = trimmed.elements.shift();
       mockLLMResponse(JSON.stringify(trimmed));
 
       await builder.editContract(SAMPLE_TODO_CONTRACT as any, 'remove the list');
@@ -682,7 +702,7 @@ describe('ContractBuilder', () => {
           type: 'input',
           properties: {},
           dataBindings: [],
-          eventBindings: [],
+          eventBindings: [{ event: 'change', operationId: 'operation1' }],
           children: []
         }
       ],

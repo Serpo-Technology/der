@@ -454,13 +454,15 @@ export class ComponentRenderer {
 }
 
 // Standard UI Components
-function ButtonComponent({ children, text, type, ...props }: any) {
+function ButtonComponent({ children, text, content, type, ...props }: any) {
   // Inside a form a typeless button becomes type="submit" and navigates the
   // webview away; operations wire through eventBindings, so default to a
   // plain button unless the contract asks for a submit type explicitly.
+  // Bound labels arrive as "content" (list rows bind item fields onto row
+  // buttons), so it labels the button like "text" does.
   return (
     <button type={type ?? 'button'} {...props}>
-      {children || text}
+      {children || displayable(content ?? text)}
     </button>
   );
 }

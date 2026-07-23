@@ -1356,6 +1356,18 @@ mod registry_tests {
 // ---------------------------------------------------------------------------
 
 fn substitute_placeholders(template: &str, inputs: &serde_json::Map<String, Value>) -> String {
+    substitute(template, inputs, false)
+}
+
+/// Endpoint-path variant: substituted values are percent-encoded so a topic
+/// like "Ada Lovelace" forms a valid URL and cannot smuggle path segments.
+/// Query values stay raw (reqwest encodes them) and projection paths must
+/// match response keys byte for byte.
+fn substitute_placeholders_encoded(template: &str, inputs: &serde_json::Map<String, Value>) -> String {
+    substitute(template, inputs, true)
+}
+
+fn substitute(template: &str, inputs: &serde_json::Map<String, Value>, encode: bool) -> String {
     let mut out = template.to_string();
     for (name, value) in inputs {
         let placeholder = format!("{{{}}}", name);
@@ -1364,7 +1376,21 @@ fn substitute_placeholders(template: &str, inputs: &serde_json::Map<String, Valu
                 Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
-            out = out.replace(&placeholder, &raw);
+            let substituted = if encode { percent_encode(&raw) } else { raw };
+            out = out.replace(&placeholder, &substituted);
+        }
+    }
+    out
+}
+
+fn percent_encode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(byte as char)
+            }
+            other => out.push_str(&format!("%{:02X}", other)),
         }
     }
     out
@@ -1453,7 +1479,7 @@ pub async fn execute_part_remote(
 
     let empty = serde_json::Map::new();
     let input_map = inputs.as_object().unwrap_or(&empty);
-    let endpoint = substitute_placeholders(&remote.endpoint, input_map);
+    let endpoint = substitute_placeholders_encoded(&remote.endpoint, input_map);
     if endpoint.contains("..") {
         return Err(fail(FragmentErrorKind::Io, "Endpoint escaped its path"));
     }
@@ -1606,6 +1632,21 @@ mod remote_tests {
         let mut inputs = serde_json::Map::new();
         inputs.insert("to".to_string(), json!("EUR"));
         assert_eq!(super::substitute_placeholders("rates.{to}", &inputs), "rates.EUR");
+    }
+
+    #[test]
+    fn endpoint_substitution_percent_encodes_values() {
+        let mut inputs = serde_json::Map::new();
+        inputs.insert("topic".to_string(), json!("Ada Lovelace"));
+        assert_eq!(
+            super::substitute_placeholders_encoded("/api/rest_v1/page/summary/{topic}", &inputs),
+            "/api/rest_v1/page/summary/Ada%20Lovelace"
+        );
+        inputs.insert("topic".to_string(), json!("a/b?c=d"));
+        assert_eq!(
+            super::substitute_placeholders_encoded("/summary/{topic}", &inputs),
+            "/summary/a%2Fb%3Fc%3Dd"
+        );
     }
 
     #[test]
