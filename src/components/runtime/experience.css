@@ -209,8 +209,13 @@
 }
 
 /* Entry rows pair labeled fields with buttons; bottoms align so the button
-   sits level with the input, and knob classes still override. */
+   sits level with the input, and knob classes still override. The :where()
+   keeps the row rule at base specificity. */
 .dynamic-experience-container form {
+  align-items: flex-end;
+}
+
+.dynamic-experience-container :where(div[data-element-id]:has(> .der-field)) {
   align-items: flex-end;
 }
 
