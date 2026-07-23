@@ -404,7 +404,7 @@ describe('ContractBuilder', () => {
             {
               id: 'op-remote',
               operationName: 'fetch.data',
-              implementation: { type: 'remote', endpoint: 'https://api.example.com' },
+              implementation: { type: 'remote', endpoint: 'https://api.acme-tools.dev' },
               inputs: [],
               outputs: [],
               triggers: []
@@ -419,7 +419,7 @@ describe('ContractBuilder', () => {
       expect(builtinOp.executionType).toBe('builtin');
       expect(builtinOp.implementation).toBeUndefined();
       expect(remoteOp.executionType).toBe('remote');
-      expect(remoteOp.implementation?.endpoint).toBe('https://api.example.com');
+      expect(remoteOp.implementation?.endpoint).toBe('https://api.acme-tools.dev');
     });
 
     it('should reject model-authored code through the repair round', async () => {

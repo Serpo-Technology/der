@@ -454,9 +454,21 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       }
     }
 
+    const INPUT_LIKE_TYPES = new Set(['input', 'textarea', 'select', 'checkbox']);
     element.dataBindings.forEach((binding, bindingIndex) => {
       const bindingPath = `${path}.dataBindings.${bindingIndex}`;
       checkPipeline(bindingPath, binding, fail, checkParamRef);
+
+      if (
+        INPUT_LIKE_TYPES.has(element.type) &&
+        (binding.property === 'value' || binding.property === 'checked')
+      ) {
+        fail(
+          bindingPath,
+          `${element.type} elements are auto-controlled; never bind "${binding.property}". Read the element from operations ({"source": "ui-element"}) or from transform parameters ({"source": "element", "sourceId": "${element.id}"}).`,
+          'BOUND_INPUT_VALUE'
+        );
+      }
 
       // Text-bound pipelines must end in a single value, or React receives a
       // list where a string belongs.
@@ -542,6 +554,15 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     const isBuiltinName = Boolean(def);
     const hasEndpoint = Boolean(op.implementation?.endpoint);
     const hasCode = Boolean(op.implementation?.code);
+
+    const endpoint = op.implementation?.endpoint ?? '';
+    if (/https?:\/\/(api\.)?example\.(com|org|net)/i.test(endpoint)) {
+      fail(
+        `${opPath}.implementation.endpoint`,
+        `"${endpoint}" is a placeholder, not a real service. Use an installed integration part if one fits, a real documented API recorded in the assumptions, or leave the feature out.`,
+        'PLACEHOLDER_ENDPOINT'
+      );
+    }
 
     // An auth reference must name a configured integration credential.
     const auth = (op.implementation as { auth?: string } | undefined)?.auth;

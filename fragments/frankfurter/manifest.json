@@ -3,17 +3,17 @@
   "abiVersion": 1,
   "id": "der-labs.frankfurter",
   "name": "Exchange rates",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "der-labs",
   "description": "Currency exchange rates from the free Frankfurter API. No key needed.",
   "namespace": "fx",
   "capabilities": [
-    "net:https://api.frankfurter.app"
+    "net:https://api.frankfurter.dev"
   ],
   "wasmSha256": "",
   "createdAt": "2026-07-23T16:24:47Z",
   "service": {
-    "baseUrl": "https://api.frankfurter.app",
+    "baseUrl": "https://api.frankfurter.dev",
     "credentials": []
   },
   "operations": [
@@ -73,7 +73,7 @@
         "triggers": []
       },
       "remote": {
-        "endpoint": "/latest",
+        "endpoint": "/v1/latest",
         "method": "GET",
         "query": {
           "from": "{from}",

@@ -58,7 +58,7 @@ describe('checkAgainstManifests hard errors', () => {
           {
             id: 'op-x',
             operationName: 'wizardry.cast',
-            implementation: { type: 'remote', endpoint: 'https://api.example.com/cast' }
+            implementation: { type: 'remote', endpoint: 'https://api.acme-tools.dev/cast' }
           }
         ]
       })
@@ -542,7 +542,7 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
         {
           id: 'op-fetch',
           operationName: 'weather.now',
-          implementation: { type: 'remote', endpoint: 'https://api.example.com/now', auth }
+          implementation: { type: 'remote', endpoint: 'https://api.acme-tools.dev/now', auth }
         }
       ]
     });
@@ -555,7 +555,7 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
         name: 'weather-api',
         kind: 'query',
         target: 'appid',
-        baseUrl: 'https://api.example.com'
+        baseUrl: 'https://api.acme-tools.dev'
       }
     ]);
     try {
@@ -643,6 +643,40 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
     } finally {
       delete FRAGMENT_OPERATIONS['stats.summary'];
     }
+  });
+
+  it('rejects value bindings on auto-controlled inputs', () => {
+    const { result } = checkContract(
+      rawContract({
+        elements: [
+          {
+            id: 'cat-filter',
+            type: 'select',
+            properties: { options: ['a', 'b'] },
+            dataBindings: [{ property: 'value', source: 'state', sourceId: 'categoryFilter' }]
+          }
+        ]
+      })
+    );
+
+    expect(result.errors.map((e) => e.code)).toEqual(['BOUND_INPUT_VALUE']);
+    expect(result.errors[0].message).toContain('auto-controlled');
+  });
+
+  it('rejects placeholder endpoints', () => {
+    const { result } = checkContract(
+      rawContract({
+        operations: [
+          {
+            id: 'op-fake',
+            operationName: 'totals.fetch',
+            implementation: { type: 'remote', endpoint: 'https://api.example.com/totals' }
+          }
+        ]
+      })
+    );
+
+    expect(result.errors.map((e) => e.code)).toEqual(['PLACEHOLDER_ENDPOINT']);
   });
 
   it('normalizes unknown themes and accents with a warning', () => {

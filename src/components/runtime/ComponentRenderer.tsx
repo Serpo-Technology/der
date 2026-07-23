@@ -602,6 +602,20 @@ function normalizeOptions(options: unknown): SelectOption[] {
 
 function SelectComponent({ label, placeholder, options, children: _children, ...props }: any) {
   const normalized = normalizeOptions(options);
+  // Without a placeholder the browser shows the first option while the
+  // runtime state is still unset; commit it so what you see is what
+  // operations read.
+  const { value, onChange } = props;
+  const commitRef = React.useRef(onChange);
+  commitRef.current = onChange;
+  const firstValue = normalized[0]?.value;
+  // No dependency array: state initialization is async, so the first commit
+  // can land before the store exists; retry each render until it sticks.
+  React.useEffect(() => {
+    if (placeholder === undefined && !value && firstValue) {
+      commitRef.current?.({ target: { value: firstValue } });
+    }
+  });
   const select = (
     <select {...props}>
       {placeholder !== undefined && (props.value === '' || props.value === undefined) && (

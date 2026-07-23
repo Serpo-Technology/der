@@ -1425,8 +1425,18 @@ pub async fn execute_part_remote(
         return Err(fail(FragmentErrorKind::Io, "Endpoint escaped the service"));
     }
 
+    // Redirects must stay inside the service: a credential in the query
+    // string would otherwise travel to wherever the service points.
+    let base_for_redirect = service.base_url.clone();
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+            if attempt.url().as_str().starts_with(&base_for_redirect) {
+                attempt.follow()
+            } else {
+                attempt.stop()
+            }
+        }))
         .build()
         .map_err(|e| fail(FragmentErrorKind::Io, format!("HTTP client: {}", e)))?;
     let method = remote.method.clone().unwrap_or_else(|| "GET".to_string()).to_uppercase();

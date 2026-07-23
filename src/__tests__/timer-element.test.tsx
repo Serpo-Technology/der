@@ -178,3 +178,41 @@ describe('select options tolerance', () => {
     expect([...options].map((o) => o.textContent)).toContain('Travel');
   });
 });
+
+describe('select default commit', () => {
+  it('commits the visible first option to element state on mount', async () => {
+    const contract = {
+      name: 'select-default-demo',
+      version: '1.0.0',
+      elements: [
+        {
+          id: 'cat-in',
+          type: 'select',
+          properties: {
+            label: 'Category',
+            options: [
+              { value: 'food', label: 'Food' },
+              { value: 'travel', label: 'Travel' }
+            ]
+          },
+          dataBindings: [],
+          eventBindings: []
+        },
+        {
+          id: 'echo',
+          type: 'text',
+          properties: {},
+          dataBindings: [{ property: 'content', source: 'state', sourceId: 'element_cat-in' }],
+          eventBindings: []
+        }
+      ],
+      operations: []
+    } as unknown as import('../types/contract').Contract;
+
+    const { render: r, waitFor: w } = await import('@testing-library/react');
+    const view = r(
+      <DynamicExperienceRenderer contract={contract} experienceId="select-default-demo" />
+    );
+    await w(() => expect(view.container.textContent).toContain('food'));
+  });
+});

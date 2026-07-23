@@ -77,6 +77,8 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
   }, [stateManager, onStateChange]);
 
   // Handle operation execution
+  const [operationError, setOperationError] = useState<string | null>(null);
+
   const handleOperationExecution = useCallback(
     async (operationId: string, eventContext: EventContext) => {
       try {
@@ -90,9 +92,11 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
 
         // Update state with operation results
         stateManager.updateStateFromOperationResult(operationId, result, operation.outputs);
+        setOperationError(null);
 
       } catch (error) {
         stateManager.setError(operationId, error as Error);
+        setOperationError(error instanceof Error ? error.message : String(error));
         onError?.(error as Error);
       } finally {
         stateManager.setLoading(operationId, false);
@@ -189,6 +193,14 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
       data-contract-name={normalizedContract.name}
       data-testid="dynamic-experience-container"
     >
+      {operationError && (
+        <div className="der-operation-error" role="alert">
+          <span>{operationError}</span>
+          <button type="button" onClick={() => setOperationError(null)} aria-label="Dismiss error">
+            Dismiss
+          </button>
+        </div>
+      )}
       <ErrorBoundary
         fallback={<div style={{ color: '#b91c1c' }}>This experience failed to render.</div>}
       >

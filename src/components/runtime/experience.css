@@ -549,3 +549,29 @@
   font-size: 0.8rem;
   color: var(--der-danger, #b91c1c);
 }
+
+/* --- Operation failure surface --- */
+
+.dynamic-experience-container .der-operation-error {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--der-danger-border);
+  border-radius: var(--der-radius);
+  background: var(--der-danger-soft);
+  color: var(--der-danger);
+  font-size: 0.85rem;
+}
+
+.dynamic-experience-container .der-operation-error button {
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
