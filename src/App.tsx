@@ -176,6 +176,15 @@ const ExperienceWindow: React.FC<{
     return () => { if (unlisten) unlisten(); };
   }, [initialExperienceId]);
 
+  // A crashed render recovers when the next contract lands: the boundary is
+  // keyed by a revision that advances with every contract change.
+  const revisionRef = React.useRef(0);
+  const contractRevision = useMemo(() => {
+    revisionRef.current += 1;
+    return revisionRef.current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentContract]);
+
   // The window chrome follows the app's theme so the whole window reads as
   // one surface.
   const styling = (currentContract?.styling ?? {}) as { theme?: string; accent?: string };
@@ -208,14 +217,24 @@ const ExperienceWindow: React.FC<{
         onDismissWarnings={() => setEditWarnings([])}
       />
       <div style={{ flex: 1, minHeight: 0 }}>
-        <LiveExperienceRenderer
-          initialContract={currentContract}
-          experienceId={initialExperienceId}
-          initialData={rehydrationData}
-          onStateChange={handleStateChange}
-          enableRealTimeUpdates={true}
-          onContractUpdate={(c) => setCurrentContract(c as unknown as ContractType)}
-        />
+        <ErrorBoundary
+          key={contractRevision}
+          fallback={
+            <div style={{ padding: 16, opacity: 0.75 }}>
+              The app view hit an error. It retries with the next update; close and reopen the
+              window if this persists.
+            </div>
+          }
+        >
+          <LiveExperienceRenderer
+            initialContract={currentContract}
+            experienceId={initialExperienceId}
+            initialData={rehydrationData}
+            onStateChange={handleStateChange}
+            enableRealTimeUpdates={true}
+            onContractUpdate={(c) => setCurrentContract(c as unknown as ContractType)}
+          />
+        </ErrorBoundary>
       </div>
     </div>
   );

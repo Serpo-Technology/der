@@ -88,6 +88,7 @@ export interface StreamingContract {
   version: string;
   elements: StreamingElement[];
   operations: [];
+  layout: { type: 'flex'; properties: Record<string, unknown> };
   styling?: { theme?: string; accent?: string };
 }
 
@@ -172,6 +173,12 @@ export function extractStreamingContract(raw: string): StreamingContract | null 
     version: '1.0.0',
     elements,
     operations: [],
+    // The renderer expects a complete contract; mirror the standard column
+    // layout the pipeline fills for omitted layouts.
+    layout: {
+      type: 'flex',
+      properties: { flexDirection: 'column', gap: '12px', padding: '16px' }
+    },
     ...(styling ? { styling } : {})
   };
 }

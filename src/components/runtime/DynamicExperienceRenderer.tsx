@@ -129,9 +129,9 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
     ));
   }, [componentRenderer, experienceState, handleOperationExecution, setElementValue]);
 
-  // Apply layout styling
+  // Apply layout styling; hand-made or partial contracts may omit layout.
   const layoutStyles = useMemo(() => {
-    const { layout } = normalizedContract;
+    const layout = normalizedContract.layout ?? { type: 'flex' as const, properties: {} };
     const baseStyles: React.CSSProperties = {
       width: '100%',
       height: '100%'
