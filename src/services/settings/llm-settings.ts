@@ -81,7 +81,8 @@ export async function testLlmConnection(): Promise<string> {
   const response = await invoke<{ content: string; provider: string; model: string }>('llm_chat', {
     request: {
       messages: [{ role: 'user', content: 'Reply with the single word: ok' }],
-      maxTokens: 32,
+      // Thinking models burn budget before answering; leave them room.
+      maxTokens: 512,
     },
   });
   return `${response.provider} / ${response.model} responded: ${response.content.slice(0, 80)}`;

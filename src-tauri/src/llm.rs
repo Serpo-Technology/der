@@ -212,16 +212,32 @@ fn openai_delta_text(payload: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+fn openai_delta_reasoning(payload: &str) -> bool {
+    let value: Value = match serde_json::from_str(payload) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    let delta = &value["choices"][0]["delta"];
+    delta["reasoning"].as_str().map_or(false, |s| !s.is_empty())
+        || delta["reasoning_content"].as_str().map_or(false, |s| !s.is_empty())
+}
+
+const THINKING_ONLY_ERROR: &str =
+    "The model spent its entire token budget thinking and returned no answer. Raise max tokens, or use a non-thinking model.";
+
 /// Reads an SSE response to completion, forwarding each extracted text delta
-/// over the channel and returning the accumulated content.
+/// over the channel. Returns the accumulated content and whether any
+/// reasoning-only deltas were seen (thinking models).
 async fn consume_sse(
     response: reqwest::Response,
     extract: fn(&str) -> Option<String>,
+    detect_reasoning: fn(&str) -> bool,
     on_chunk: &Channel<String>,
-) -> Result<String, String> {
+) -> Result<(String, bool), String> {
     let mut stream = response.bytes_stream();
     let mut buffer: Vec<u8> = Vec::new();
     let mut content = String::new();
+    let mut saw_reasoning = false;
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("Stream read failed: {}", e))?;
         buffer.extend_from_slice(&chunk);
@@ -229,6 +245,7 @@ async fn consume_sse(
             if payload == "[DONE]" {
                 continue;
             }
+            saw_reasoning = saw_reasoning || detect_reasoning(&payload);
             if let Some(text) = extract(&payload) {
                 if !text.is_empty() {
                     let _ = on_chunk.send(text.clone());
@@ -237,7 +254,7 @@ async fn consume_sse(
             }
         }
     }
-    Ok(content)
+    Ok((content, saw_reasoning))
 }
 
 async fn anthropic_chat(
@@ -286,7 +303,7 @@ async fn anthropic_chat(
     }
 
     if let Some(channel) = on_chunk {
-        let content = consume_sse(response, anthropic_delta_text, channel).await?;
+        let (content, _) = consume_sse(response, anthropic_delta_text, |_| false, channel).await?;
         if content.is_empty() {
             return Err("Anthropic returned an empty response.".to_string());
         }
@@ -365,9 +382,14 @@ async fn openai_compat_chat(
     }
 
     if let Some(channel) = on_chunk {
-        let content = consume_sse(response, openai_delta_text, channel).await?;
+        let (content, saw_reasoning) =
+            consume_sse(response, openai_delta_text, openai_delta_reasoning, channel).await?;
         if content.is_empty() {
-            return Err("Model returned an empty response.".to_string());
+            return Err(if saw_reasoning {
+                THINKING_ONLY_ERROR.to_string()
+            } else {
+                "Model returned an empty response.".to_string()
+            });
         }
         return Ok(content);
     }
@@ -378,11 +400,19 @@ async fn openai_compat_chat(
         .map_err(|e| format!("Failed to read response: {}", e))?;
     let value: Value =
         serde_json::from_str(&text).map_err(|e| format!("Unexpected response: {}", e))?;
-    value["choices"][0]["message"]["content"]
-        .as_str()
-        .map(|s| s.to_string())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| "Model returned an empty response.".to_string())
+    let message = &value["choices"][0]["message"];
+    let content = message["content"].as_str().unwrap_or_default();
+    if content.is_empty() {
+        let thought = message["reasoning"]
+            .as_str()
+            .or_else(|| message["reasoning_content"].as_str())
+            .unwrap_or_default();
+        if !thought.is_empty() {
+            return Err(THINKING_ONLY_ERROR.to_string());
+        }
+        return Err("Model returned an empty response.".to_string());
+    }
+    Ok(content.to_string())
 }
 
 async fn gemini_chat(
@@ -655,6 +685,15 @@ mod tests {
         assert!(system[0].get("cache_control").is_none());
         assert_eq!(system[1]["text"], "BASE");
         assert_eq!(system[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn reasoning_deltas_are_detected_but_carry_no_text() {
+        let thinking = r#"{"choices":[{"delta":{"reasoning":"hmm","content":null}}]}"#;
+        assert!(openai_delta_reasoning(thinking));
+        assert_eq!(openai_delta_text(thinking), None);
+        let answering = r#"{"choices":[{"delta":{"content":"{"}}]}"#;
+        assert!(!openai_delta_reasoning(answering));
     }
 
     #[test]
