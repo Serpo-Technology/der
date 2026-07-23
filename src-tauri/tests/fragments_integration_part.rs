@@ -5,6 +5,7 @@ use dynamic_experience_runtime_lib::fragments::{
 };
 
 const BUNDLE: &str = "../fragments/dist/der-labs.openweather.derpart";
+const FX_BUNDLE: &str = "../fragments/dist/der-labs.frankfurter.derpart";
 
 #[test]
 fn integration_bundle_verifies_with_confined_service() {
@@ -34,4 +35,15 @@ fn integration_bundle_installs_and_lists() {
     commit_core(&state, dir.path(), &summary.staging_token, &summary.fingerprint, false)
         .expect("commit");
     assert_eq!(list_core(dir.path()).len(), 1);
+}
+
+
+#[test]
+fn keyless_integration_bundle_verifies() {
+    let raw = std::fs::read(FX_BUNDLE).expect("committed bundle present");
+    let verified = verify_bundle(&raw).expect("verifies");
+    let service = verified.manifest.service.expect("service block");
+    assert!(service.credentials.is_empty());
+    let remote = verified.manifest.operations[0].remote.clone().expect("remote");
+    assert_eq!(remote.project.unwrap().get("rate").unwrap(), "rates.{to}");
 }

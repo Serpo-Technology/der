@@ -223,6 +223,27 @@ export const TRANSFORMS: Record<string, TransformDef> = {
       return template.replace('{{value}}', value === null || value === undefined ? '' : String(value));
     },
   },
+  formatNumber: {
+    name: 'formatNumber',
+    output: 'scalar',
+    description:
+      'Formats a number with thousands separators and fixed decimals, optional prefix/suffix (e.g. "$ ", " EUR").',
+    parameters: [
+      { name: 'decimals', type: 'number', default: 2, description: 'Decimal places' },
+      { name: 'prefix', type: 'string', default: '', description: 'Text before the number' },
+      { name: 'suffix', type: 'string', default: '', description: 'Text after the number' },
+    ],
+    apply: (value, parameters) => {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return value;
+      const decimals = Math.max(0, Math.min(8, Number(parameters.decimals ?? 2) || 0));
+      const formatted = new Intl.NumberFormat(undefined, {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      }).format(n);
+      return `${parameters.prefix ?? ''}${formatted}${parameters.suffix ?? ''}`;
+    },
+  },
   formatDate: {
     name: 'formatDate',
     output: 'scalar',

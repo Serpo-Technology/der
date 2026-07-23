@@ -12,8 +12,22 @@
         "expr.evaluate"
       ],
       "bundleUrl": "der-labs.expr-evaluate.derpart",
-      "bundleSha256": "03ebe1b73bf84c1697d901a4a3b6a38fdaadd7cb1c9a396d62d0290895680f90",
-      "bundleBytes": 143740
+      "bundleSha256": "ee5dbc69027b5509a4842915fa6cce4a449726e43bd79d21d6a04d8279f5cf63",
+      "bundleBytes": 143816
+    },
+    {
+      "id": "der-labs.frankfurter",
+      "name": "Exchange rates",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "fx",
+      "description": "Currency exchange rates from the free Frankfurter API. No key needed.",
+      "operations": [
+        "fx.rate"
+      ],
+      "bundleUrl": "der-labs.frankfurter.derpart",
+      "bundleSha256": "b02fcb122b2a3be509f71b49501605c537730fbc4f1a502571dc8eab55f405c5",
+      "bundleBytes": 3248
     },
     {
       "id": "der-labs.openweather",

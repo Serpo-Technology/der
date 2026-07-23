@@ -1496,7 +1496,8 @@ pub async fn execute_part_remote(
         Some(projection) => {
             let mut out = serde_json::Map::new();
             for (name, path) in projection {
-                out.insert(name.clone(), project_path(&body, path));
+                let resolved = substitute_placeholders(path, input_map);
+                out.insert(name.clone(), project_path(&body, &resolved));
             }
             Value::Object(out)
         }
@@ -1558,6 +1559,13 @@ pub fn list_part_credentials(app: tauri::AppHandle, fragment_id: String) -> Vec<
 mod remote_tests {
     use super::project_path;
     use serde_json::json;
+
+    #[test]
+    fn placeholders_substitute_in_projection_paths() {
+        let mut inputs = serde_json::Map::new();
+        inputs.insert("to".to_string(), json!("EUR"));
+        assert_eq!(super::substitute_placeholders("rates.{to}", &inputs), "rates.EUR");
+    }
 
     #[test]
     fn projection_walks_objects_and_arrays() {

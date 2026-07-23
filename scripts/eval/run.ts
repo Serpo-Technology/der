@@ -24,6 +24,10 @@ import {
 } from '../../src/schemas/contract';
 import type { ContractShape } from '../../src/schemas/contract';
 import { loadDistParts } from '../diffusion-probe/load-parts';
+import {
+  FRAGMENT_ELEMENTS,
+  FRAGMENT_OPERATIONS,
+} from '../../src/services/operations/registry';
 
 console.warn = () => {};
 console.error = () => {};
@@ -41,6 +45,7 @@ interface EvalResult {
   adjustments?: number;
   fragmentsUsed?: string[];
   errors?: string;
+  contract?: unknown;
 }
 
 function arg(name: string): string | undefined {
@@ -121,11 +126,9 @@ function judge(raw: string): Omit<EvalResult, 'id' | 'wallMs' | 'completionToken
     return { verdict: 'schema', errors: formatZodError(parsed.error).slice(0, 300) };
   }
   const result = checkAgainstManifests(parsed.data.contract as ContractShape);
-  const fragmentsUsed = [
-    ...new Set(
-      JSON.stringify(parsed.data.contract).match(/"basics\.[a-z_]+"|"stats\.[a-z_]+"|"expr\.[a-z_]+"/g) ?? []
-    ),
-  ].map((s) => s.replace(/"/g, ''));
+  const serialized = JSON.stringify(parsed.data.contract);
+  const partNames = [...Object.keys(FRAGMENT_OPERATIONS), ...Object.keys(FRAGMENT_ELEMENTS)];
+  const fragmentsUsed = partNames.filter((name) => serialized.includes(`"${name}"`));
   if (result.errors.length > 0) {
     return {
       verdict: 'manifest',
@@ -133,7 +136,12 @@ function judge(raw: string): Omit<EvalResult, 'id' | 'wallMs' | 'completionToken
       fragmentsUsed,
     };
   }
-  return { verdict: 'pass', adjustments: result.warnings.length, fragmentsUsed };
+  return {
+    verdict: 'pass',
+    adjustments: result.warnings.length,
+    fragmentsUsed,
+    contract: parsed.data.contract as unknown,
+  };
 }
 
 async function main() {

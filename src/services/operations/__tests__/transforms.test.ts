@@ -327,3 +327,15 @@ describe('formatDate', () => {
     expect(String(TRANSFORMS.formatDate.apply(iso, { style: 'weekday' })).length).toBeGreaterThan(3);
   });
 });
+
+describe('formatNumber', () => {
+  it('groups thousands with fixed decimals and affixes', () => {
+    const out = String(
+      TRANSFORMS.formatNumber.apply(1234567.891, { decimals: 2, prefix: '$ ', suffix: '' })
+    );
+    expect(out.startsWith('$ ')).toBe(true);
+    expect(out).toContain('567');
+    expect(out.endsWith('89')).toBe(true);
+    expect(TRANSFORMS.formatNumber.apply('junk', { decimals: 2 })).toBe('junk');
+  });
+});

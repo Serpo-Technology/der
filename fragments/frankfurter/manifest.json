@@ -1,0 +1,89 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.frankfurter",
+  "name": "Exchange rates",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Currency exchange rates from the free Frankfurter API. No key needed.",
+  "namespace": "fx",
+  "capabilities": [
+    "net:https://api.frankfurter.app"
+  ],
+  "wasmSha256": "",
+  "createdAt": "2026-07-23T16:24:47Z",
+  "service": {
+    "baseUrl": "https://api.frankfurter.app",
+    "credentials": []
+  },
+  "operations": [
+    {
+      "name": "fx.rate",
+      "description": "The latest exchange rate between two currencies (ISO codes like USD, EUR, TRY).",
+      "inputs": [
+        {
+          "name": "from",
+          "type": "string",
+          "required": true,
+          "description": "Base currency code"
+        },
+        {
+          "name": "to",
+          "type": "string",
+          "required": true,
+          "description": "Target currency code"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "rate",
+          "type": "number",
+          "description": "One unit of from in to"
+        },
+        {
+          "name": "date",
+          "type": "string",
+          "description": "Rate date, YYYY-MM-DD"
+        }
+      ],
+      "howto": "Bind from and to as constants or from select elements with ISO codes; run on a click and route rate into a state key. Multiply amounts with expr.evaluate (vars) or display directly. No credential needed.",
+      "example": {
+        "id": "op-rate",
+        "operationName": "fx.rate",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "from",
+            "source": "constant",
+            "sourceId": "USD"
+          },
+          {
+            "name": "to",
+            "source": "constant",
+            "sourceId": "EUR"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "rate",
+            "target": "state",
+            "targetId": "usd-eur"
+          }
+        ],
+        "triggers": []
+      },
+      "remote": {
+        "endpoint": "/latest",
+        "method": "GET",
+        "query": {
+          "from": "{from}",
+          "to": "{to}"
+        },
+        "project": {
+          "rate": "rates.{to}",
+          "date": "date"
+        }
+      }
+    }
+  ]
+}

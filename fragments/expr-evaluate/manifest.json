@@ -35,7 +35,7 @@
           "description": "The evaluated result"
         }
       ],
-      "howto": "Calculator pattern: bind expression from an input element and wire the operation to a button click; route the value output to a state key shown by a text element. Multi-field math: put the formula in a constant expression and bind each variable with a var.<name> input, e.g. expression \"w / (h ^ 2)\" with var.w and var.h from two inputs (no parseNumber needed; numeric strings coerce). Everything runs locally; a malformed expression, division by zero, or unknown variable is an error.",
+      "howto": "Calculator pattern: bind expression from an input element and wire the operation to a button click; route the value output to a state key shown by a text element. Multi-field math: put the formula in a constant expression and bind each variable with a var.<name> input, e.g. expression \"w / (h ^ 2)\" with var.w and var.h from two inputs (no parseNumber needed; numeric strings coerce). Everything runs locally; a malformed expression, division by zero, or unknown variable is an error. The single output is named \"value\" (not \"result\").",
       "example": {
         "id": "op-bmi",
         "operationName": "expr.evaluate",
