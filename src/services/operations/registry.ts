@@ -505,7 +505,8 @@ export const ELEMENT_MANIFESTS: Record<string, ElementManifest> = {
         type: 'enum',
         values: ['start', 'center', 'end', 'stretch'],
         default: 'center',
-        description: 'Cross-axis alignment',
+        description:
+          "Cross-axis alignment. Rows that pair labeled inputs with buttons need 'end' so the buttons sit level with the input boxes; 'center' floats them against the taller labeled field.",
       },
       {
         name: 'justify',

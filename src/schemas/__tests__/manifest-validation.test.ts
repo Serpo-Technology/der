@@ -377,6 +377,39 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
     expect(contract.initialState?.['active-category']).toBeDefined();
   });
 
+  it('rewrites center alignment on rows mixing labeled fields and buttons', () => {
+    const { contract, result } = checkContract(
+      rawContract({
+        elements: [
+          {
+            id: 'entry',
+            type: 'container',
+            properties: { direction: 'row', align: 'center', gap: '8' },
+            children: [
+              { id: 'task-in', type: 'input', properties: { label: 'New task' } },
+              { id: 'add-btn', type: 'button', properties: { text: 'Add' } }
+            ]
+          },
+          {
+            id: 'texts-row',
+            type: 'container',
+            properties: { direction: 'row', align: 'center' },
+            children: [
+              { id: 'a', type: 'text', properties: { content: 'x' } },
+              { id: 'b', type: 'text', properties: { content: 'y' } }
+            ]
+          }
+        ]
+      })
+    );
+
+    expect(result.errors).toHaveLength(0);
+    expect(contract.elements[0].properties.align).toBe('end');
+    expect(result.warnings.some((w) => w.path === 'elements.0.properties.align')).toBe(true);
+    // A centered row of plain texts is legitimate and stays untouched.
+    expect(contract.elements[1].properties.align).toBe('center');
+  });
+
   it('normalizes unknown themes and accents with a warning', () => {
     const { contract, result } = checkContract(
       rawContract({ styling: { theme: 'neon', accent: 'plaid' } })

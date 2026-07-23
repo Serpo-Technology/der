@@ -215,7 +215,7 @@
   align-items: flex-end;
 }
 
-.dynamic-experience-container :where(div[data-element-id]:has(> .der-field)) {
+.dynamic-experience-container :where(div[data-element-id]:has(.der-field)) {
   align-items: flex-end;
 }
 

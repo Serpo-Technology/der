@@ -291,6 +291,29 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
   const fail = (path: string, message: string, code: string) =>
     errors.push({ path, message, code });
 
+  const INPUT_LIKE = new Set(['input', 'select', 'textarea']);
+  const fixCenteredEntryRows = (element: UIElement, path: string) => {
+    if (element.type !== 'container' && element.type !== 'form') return;
+    const props = (element.properties ?? {}) as Record<string, unknown>;
+    if (props.align !== 'center') return;
+    if (props.direction === 'column') return;
+    const children = element.children ?? [];
+    const hasLabeledField = children.some(
+      (child) =>
+        INPUT_LIKE.has(child.type) &&
+        Boolean((child.properties as Record<string, unknown> | undefined)?.label)
+    );
+    const hasOtherControl = children.some((child) => !INPUT_LIKE.has(child.type));
+    if (hasLabeledField && hasOtherControl) {
+      props.align = 'end';
+      warn(
+        warnings,
+        `${path}.properties.align`,
+        `Row mixes labeled fields with other controls; align "center" floats them, using "end"`
+      );
+    }
+  };
+
   // Styling is cosmetic vocabulary: unknown values normalize with a warning.
   if (contract.styling) {
     const styling = contract.styling as { theme?: string; accent?: string };
@@ -351,6 +374,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
   const missingOperationRefs = new Set<string>();
 
   walkElements(contract.elements as UIElement[], (element, path, inListTemplate) => {
+    fixCenteredEntryRows(element, path);
     elementIds.add(element.id);
 
     // Knob normalization against the element manifest.
