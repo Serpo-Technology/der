@@ -163,7 +163,10 @@ export class ComponentRenderer {
       condition.source === 'state'
         ? experienceState.data[condition.sourceId]
         : getValueAtPath(scope?.item, condition.sourceId);
-    const value = applyTransformPipeline(read, condition.transforms);
+    const value = applyTransformPipeline(read, condition.transforms, {
+      lookup: (source, sourceId) =>
+        experienceState.data[source === 'element' ? `element_${sourceId}` : sourceId]
+    });
 
     switch (condition.operator) {
       case 'truthy':
@@ -346,7 +349,10 @@ export class ComponentRenderer {
         value = null;
     }
 
-    return applyBindingTransforms(value, binding);
+    return applyBindingTransforms(value, binding, {
+      lookup: (source, sourceId) =>
+        experienceState.data[source === 'element' ? `element_${sourceId}` : sourceId]
+    });
   }
 
   private createEventHandlers(

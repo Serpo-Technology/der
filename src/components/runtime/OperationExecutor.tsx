@@ -112,7 +112,10 @@ export class OperationExecutor {
       default:
         value = undefined;
     }
-    return applyBindingTransforms(value, binding);
+    return applyBindingTransforms(value, binding, {
+      lookup: (source, sourceId) =>
+        state.getData(source === 'element' ? `element_${sourceId}` : sourceId)
+    });
   }
 
   private operationContext(state: StateAccess): OperationContext {

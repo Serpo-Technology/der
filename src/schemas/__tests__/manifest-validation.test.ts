@@ -311,6 +311,72 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
     expect(result.errors).toHaveLength(0);
   });
 
+  it('rejects transform parameter references to unknown elements', () => {
+    const { result } = checkContract(
+      rawContract({
+        initialState: { rows: [] },
+        elements: [
+          {
+            id: 'rows-list',
+            type: 'list',
+            dataBindings: [
+              {
+                property: 'items',
+                source: 'state',
+                sourceId: 'rows',
+                transforms: [
+                  {
+                    type: 'filterContains',
+                    parameters: {
+                      field: 'title',
+                      value: { source: 'element', sourceId: 'ghost-search' }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      })
+    );
+
+    expect(result.errors.map((e) => e.code)).toEqual(['UNKNOWN_ELEMENT']);
+    expect(result.errors[0].message).toContain('ghost-search');
+  });
+
+  it('accepts a live search wiring and seeds state referenced by parameters', () => {
+    const { contract, result } = checkContract(
+      rawContract({
+        elements: [
+          { id: 'search-in', type: 'input', properties: { placeholder: 'Search' } },
+          {
+            id: 'rows-list',
+            type: 'list',
+            dataBindings: [
+              {
+                property: 'items',
+                source: 'state',
+                sourceId: 'rows',
+                transforms: [
+                  {
+                    type: 'filterBy',
+                    parameters: {
+                      field: 'category',
+                      value: { source: 'state', sourceId: 'active-category' }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      })
+    );
+
+    expect(result.errors).toHaveLength(0);
+    expect(contract.initialState?.['active-category']).toBeDefined();
+  });
+
   it('normalizes unknown themes and accents with a warning', () => {
     const { contract, result } = checkContract(
       rawContract({ styling: { theme: 'neon', accent: 'plaid' } })

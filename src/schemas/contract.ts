@@ -239,10 +239,25 @@ function walkElements(
   });
 }
 
+interface TransformStep {
+  type: string;
+  parameters?: Record<string, unknown>;
+}
+
+/** A dynamic parameter reference: {"source": "state"|"element", "sourceId"}. */
+function paramRefOf(value: unknown): { source: string; sourceId: unknown } | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const keys = Object.keys(value as object);
+  if (keys.length !== 2 || !keys.includes('source') || !keys.includes('sourceId')) return null;
+  const ref = value as { source: unknown; sourceId: unknown };
+  return typeof ref.source === 'string' ? { source: ref.source, sourceId: ref.sourceId } : null;
+}
+
 function checkPipeline(
   owner: string,
-  binding: { transform?: { type: string }; transforms?: { type: string }[] },
-  fail: (path: string, message: string, code: string) => void
+  binding: { transform?: TransformStep; transforms?: TransformStep[] },
+  fail: (path: string, message: string, code: string) => void,
+  checkRef?: (path: string, ref: { source: string; sourceId: unknown }) => void
 ): void {
   const steps = [...(binding.transforms ?? []), ...(binding.transform ? [binding.transform] : [])];
   for (const step of steps) {
@@ -252,6 +267,11 @@ function checkPipeline(
         `Unknown transform "${step.type}". Use only transforms from the catalog.`,
         'UNKNOWN_TRANSFORM'
       );
+      continue;
+    }
+    for (const value of Object.values(step.parameters ?? {})) {
+      const ref = paramRefOf(value);
+      if (ref && checkRef) checkRef(owner, ref);
     }
   }
 }
@@ -291,6 +311,32 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       delete styling.accent;
     }
   }
+
+  const checkParamRef = (path: string, ref: { source: string; sourceId: unknown }) => {
+    if (ref.source !== 'state' && ref.source !== 'element') {
+      fail(
+        path,
+        `Transform parameter reference source must be "state" or "element", got "${ref.source}"`,
+        'INVALID_PARAM_REF'
+      );
+      return;
+    }
+    if (typeof ref.sourceId !== 'string' || ref.sourceId.length === 0) {
+      fail(path, 'Transform parameter reference needs a sourceId', 'INVALID_PARAM_REF');
+      return;
+    }
+    if (ref.source === 'element' && !elementIds.has(ref.sourceId)) {
+      fail(
+        path,
+        `Transform parameter references unknown element "${ref.sourceId}"; existing element ids: ${knownElementIds()}`,
+        'UNKNOWN_ELEMENT'
+      );
+      return;
+    }
+    if (ref.source === 'state' && !stateReads.has(ref.sourceId)) {
+      stateReads.set(ref.sourceId, 'transform parameter');
+    }
+  };
 
   // Collect element ids, state reads, and state writes.
   const elementIds = new Set<string>();
@@ -333,7 +379,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
 
     element.dataBindings.forEach((binding, bindingIndex) => {
       const bindingPath = `${path}.dataBindings.${bindingIndex}`;
-      checkPipeline(bindingPath, binding, fail);
+      checkPipeline(bindingPath, binding, fail, checkParamRef);
 
       // Text-bound pipelines must end in a single value, or React receives a
       // list where a string belongs.
@@ -371,7 +417,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
         ? [element.visibleWhen]
         : [];
     conditions.forEach((condition, conditionIndex) => {
-      checkPipeline(`${path}.visibleWhen.${conditionIndex}`, condition, fail);
+      checkPipeline(`${path}.visibleWhen.${conditionIndex}`, condition, fail, checkParamRef);
       if (condition.source === 'state') {
         if (!stateReads.has(condition.sourceId)) {
           stateReads.set(condition.sourceId, 'visibleWhen');
@@ -435,7 +481,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     for (let i = 0; i < op.inputs.length; i++) {
       const input = op.inputs[i] as InputBinding;
       const inputPath = `${opPath}.inputs.${i}`;
-      checkPipeline(inputPath, input, fail);
+      checkPipeline(inputPath, input, fail, checkParamRef);
 
       if (input.source === 'ui-element' && !elementIds.has(input.sourceId)) {
         fail(
@@ -533,7 +579,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
 
     // Output pipelines and element references apply to every execution type.
     op.outputs.forEach((output, outputIndex) => {
-      checkPipeline(`${opPath}.outputs.${outputIndex}`, output, fail);
+      checkPipeline(`${opPath}.outputs.${outputIndex}`, output, fail, checkParamRef);
       if (output.target === 'ui-element' && !elementIds.has(output.targetId)) {
         fail(
           `${opPath}.outputs.${outputIndex}`,

@@ -11,6 +11,35 @@ import { getValueAtPath, looseEquals } from './registry';
 
 export { looseEquals };
 
+/** Resolves dynamic parameter references against live state. */
+export interface TransformContext {
+  lookup?: (source: 'state' | 'element', sourceId: string) => unknown;
+}
+
+/** A parameter value of the shape {"source": "state"|"element", "sourceId"}. */
+function isParamRef(value: unknown): value is { source: 'state' | 'element'; sourceId: string } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const keys = Object.keys(value as object);
+  if (keys.length !== 2 || !keys.includes('source') || !keys.includes('sourceId')) return false;
+  const ref = value as { source?: unknown; sourceId?: unknown };
+  return (ref.source === 'state' || ref.source === 'element') && typeof ref.sourceId === 'string';
+}
+
+/** Replaces parameter references with live values; static parameters pass through. */
+export function resolveTransformParameters(
+  parameters: Record<string, any>,
+  context?: TransformContext
+): Record<string, any> {
+  let resolved: Record<string, any> | null = null;
+  for (const [key, value] of Object.entries(parameters)) {
+    if (isParamRef(value)) {
+      resolved = resolved ?? { ...parameters };
+      resolved[key] = context?.lookup ? context.lookup(value.source, value.sourceId) : undefined;
+    }
+  }
+  return resolved ?? parameters;
+}
+
 export interface TransformDef {
   name: string;
   description: string;
@@ -61,6 +90,25 @@ export const TRANSFORMS: Record<string, TransformDef> = {
     ],
     apply: (value, parameters) =>
       asArray(value).filter((item) => looseEquals(fieldOf(item, parameters.field), parameters.value)),
+  },
+  filterContains: {
+    name: 'filterContains',
+    output: 'array',
+    description:
+      'Keeps array entries whose field contains the given text, case-insensitive; empty text keeps everything. Bind value dynamically for live search.',
+    parameters: [
+      { name: 'field', type: 'string', description: 'Field to search' },
+      { name: 'value', type: 'string', description: 'Text to look for' },
+    ],
+    apply: (value, parameters) => {
+      const needle = String(parameters.value ?? '').toLowerCase();
+      if (!needle) return asArray(value);
+      return asArray(value).filter((item) =>
+        String(fieldOf(item, parameters.field) ?? '')
+          .toLowerCase()
+          .includes(needle)
+      );
+    },
   },
   filterTruthy: {
     name: 'filterTruthy',
@@ -192,13 +240,13 @@ export const TRANSFORMS: Record<string, TransformDef> = {
   },
 };
 
-function applyOne(value: unknown, transform: TransformFunction): unknown {
+function applyOne(value: unknown, transform: TransformFunction, context?: TransformContext): unknown {
   const def = TRANSFORMS[transform.type];
   if (!def) {
     console.warn(`Unknown transform "${transform.type}" skipped`);
     return value;
   }
-  return def.apply(value, transform.parameters ?? {});
+  return def.apply(value, resolveTransformParameters(transform.parameters ?? {}, context));
 }
 
 /**
@@ -208,20 +256,25 @@ function applyOne(value: unknown, transform: TransformFunction): unknown {
  */
 export function applyBindingTransforms(
   value: unknown,
-  binding: { transform?: TransformFunction; transforms?: TransformFunction[] }
+  binding: { transform?: TransformFunction; transforms?: TransformFunction[] },
+  context?: TransformContext
 ): unknown {
   if (binding.transforms && binding.transforms.length > 0) {
-    return binding.transforms.reduce((current, step) => applyOne(current, step), value);
+    return binding.transforms.reduce((current, step) => applyOne(current, step, context), value);
   }
   if (binding.transform) {
     if (value === null || value === undefined) return value;
-    return applyOne(value, binding.transform);
+    return applyOne(value, binding.transform, context);
   }
   return value;
 }
 
 /** Applies an explicit pipeline (used by visibleWhen conditions). */
-export function applyTransformPipeline(value: unknown, transforms?: TransformFunction[]): unknown {
+export function applyTransformPipeline(
+  value: unknown,
+  transforms?: TransformFunction[],
+  context?: TransformContext
+): unknown {
   if (!transforms || transforms.length === 0) return value;
-  return transforms.reduce((current, step) => applyOne(current, step), value);
+  return transforms.reduce((current, step) => applyOne(current, step, context), value);
 }

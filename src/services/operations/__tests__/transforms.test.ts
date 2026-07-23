@@ -277,3 +277,42 @@ describe('pluck', () => {
     expect(result).toBe(6);
   });
 });
+
+describe('dynamic parameters and filterContains', () => {
+  it('filterContains matches case-insensitively and empty text keeps all', () => {
+    const rows = [{ t: 'Buy milk' }, { t: 'Call mom' }, { t: 'milking time' }];
+    const hit = TRANSFORMS.filterContains.apply(rows, { field: 't', value: 'MILK' });
+    expect((hit as unknown[]).length).toBe(2);
+    expect(TRANSFORMS.filterContains.apply(rows, { field: 't', value: '' })).toEqual(rows);
+  });
+
+  it('resolves dynamic parameter references through the context lookup', () => {
+    const rows = [{ cat: 'a' }, { cat: 'b' }];
+    const out = applyBindingTransforms(
+      rows,
+      {
+        transforms: [
+          {
+            type: 'filterBy',
+            parameters: { field: 'cat', value: { source: 'element', sourceId: 'cat-in' } }
+          }
+        ]
+      },
+      {
+        lookup: (source, sourceId) =>
+          source === 'element' && sourceId === 'cat-in' ? 'b' : undefined
+      }
+    );
+    expect(out).toEqual([{ cat: 'b' }]);
+  });
+
+  it('treats references as undefined when no lookup is provided', () => {
+    const rows = [{ cat: 'a' }];
+    const out = applyBindingTransforms(rows, {
+      transforms: [
+        { type: 'filterBy', parameters: { field: 'cat', value: { source: 'state', sourceId: 'x' } } }
+      ]
+    });
+    expect(out).toEqual([]);
+  });
+});

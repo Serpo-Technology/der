@@ -142,8 +142,11 @@ primitives `state.set`, `counter.add`, `list.append`/`updateWhere`/`removeWhere`
 `math.add`, `http.get`; todos.* survive as hidden compat parts). Structured inputs use dotted
 prefixes (`item.<field>`, `set.<field>`) grouped by `assembleStructured`; `list.append` generates
 ids itself. The shared transform registry (`src/services/operations/transforms.ts`) provides the
-declarative derivations (`count`, `sum`, `filterBy`, `sortBy`, `pick`, `parseNumber`, `round`,
-`format`, `map`, ...) used by binding `transforms` pipelines and `visibleWhen` conditions. The
+declarative derivations (`count`, `sum`, `filterBy`, `filterContains`, `sortBy`, `pick`,
+`parseNumber`, `round`, `format`, `map`, ...) used by binding `transforms` pipelines and
+`visibleWhen` conditions; transform parameter values may be live references
+(`{"source": "state"|"element", "sourceId"}`) resolved against current state, which is how
+search boxes and dynamic filters work. The
 model's output schema (`LlmContractSchema`) rejects `local`/`implementation.code` as a parse error
 so the repair round teaches it; `checkAgainstManifests` (`src/schemas/contract.ts`) runs inside
 the repair loop. Anything the parts cannot express (unknown operations, inputs, outputs,
