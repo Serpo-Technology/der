@@ -31,6 +31,7 @@ import {
   ELEMENT_MANIFESTS,
   FRAGMENT_ELEMENTS,
   FRAGMENT_OPERATIONS,
+  INTEGRATION_CREDENTIALS,
   INTRINSIC_ELEMENT_TYPES,
   STYLE_ACCENTS,
   STYLE_THEMES,
@@ -344,6 +345,16 @@ export class ContractBuilder {
       return lines;
     });
 
+    const credentialLines = INTEGRATION_CREDENTIALS.map((cred) => {
+      const shape =
+        cred.kind === 'bearer'
+          ? 'bearer token'
+          : cred.kind === 'header'
+            ? `header "${cred.target}"`
+            : `query parameter "${cred.target}"`;
+      return `- ${cred.name} (${shape})`;
+    });
+
     const transformLines = Object.values(TRANSFORMS).map((def) => {
       const params = def.parameters.map((p) => p.name).join(', ');
       return compact
@@ -393,6 +404,13 @@ export class ContractBuilder {
       ...transformLines,
       ...(fragmentLines.length
         ? ['', 'INSTALLED PART OPERATIONS (use the exact name with executionType "builtin"):', ...fragmentLines]
+        : []),
+      ...(credentialLines.length
+        ? [
+            '',
+            'INTEGRATION CREDENTIALS (for remote operations: set implementation "auth" to a name below; the runtime injects the secret, which NEVER appears in the contract):',
+            ...credentialLines,
+          ]
         : []),
       ...(uiFragmentLines.length
         ? [
@@ -585,7 +603,7 @@ RUNTIME RULES (follow exactly):
 8. Conditional rendering: "visibleWhen": {"source": "state"|"item", "sourceId", "operator": "truthy"|"falsy"|"empty"|"notEmpty"|"equals"|"notEquals"|"gt"|"gte"|"lt"|"lte", "value"?, "transforms"?}. An array of conditions means all must hold. Combine with state.set for tabs and view switching.
 9. Element knobs (variant, size, role, direction, gap, align, justify, padding, label, emptyText) are declared per part below; use only listed values.
 10. Time: a "timer" element fires its "tick" event on an interval while rendered; gate it with visibleWhen on a state flag and flip the flag with Start/Stop buttons (state.set) for pause control. time.now stamps the current date/time into state (chain it before a list.append on the same click to date entries). Date inputs use properties {"type": "date"}; ISO date strings sort and compare correctly; display any stamp with the formatDate transform.
-11. A remote operation is configuration of an HTTP call: "implementation": {"type": "remote", "endpoint": "https://...", "method": "GET"|"POST", "headers"?}; "{name}" placeholders in the endpoint fill from same-named inputs, other inputs become query parameters (GET) or the JSON body. Builtin operations take an exact name from the catalog and no implementation. There is no way to include code and none is needed. Reach for remote only when the request genuinely involves external data or services; prefer composing builtin parts, and ALWAYS record any remote endpoint and what it is used for in the spec assumptions so the user sees the app calls out.
+11. A remote operation is configuration of an HTTP call: "implementation": {"type": "remote", "endpoint": "https://...", "method": "GET"|"POST", "headers"?}; "{name}" placeholders in the endpoint fill from same-named inputs, other inputs become query parameters (GET) or the JSON body. Builtin operations take an exact name from the catalog and no implementation. There is no way to include code and none is needed. Reach for remote only when the request genuinely involves external data or services; prefer composing builtin parts, and ALWAYS record any remote endpoint and what it is used for in the spec assumptions so the user sees the app calls out. For authenticated APIs set "auth" to one of the integration credential names in the catalog; NEVER write an API key or token into an endpoint, header, or input.
 
 ${catalog}
 

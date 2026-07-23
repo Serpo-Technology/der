@@ -82,7 +82,11 @@ commands (storage, `execute_operation`, window/tray control) plus three newer mo
 (the `llm_chat` command that performs all LLM HTTP via reqwest), `settings.rs` (LLM settings and
 credentials under `app_data_dir/settings/`, redacted reads), and `oauth.rs` (Claude subscription
 PKCE sign-in and token refresh). `execute_operation`'s `remote` branch performs real HTTP
-(`{name}` endpoint substitution, GET query / JSON body); the `local` and `repository` branches in
+(`{name}` endpoint substitution, GET query / JSON body, and named integration credentials:
+`implementation.auth` references a credential stored under `settings/integrations.json`
+(bearer/header/query kinds) that Rust injects at request time; the webview only sees redacted
+name/kind/target views, the catalog lists names for the model to bind, and validation rejects
+unknown names); the `local` and `repository` branches in
 Rust are legacy and unreachable from contracts (the TS executor handles those). Rust
 `query_repository` still returns mock components and is unused by the TS repository.
 

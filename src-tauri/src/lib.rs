@@ -131,6 +131,9 @@ struct OperationImplementation {
     headers: Option<HashMap<String, String>>,
     code: Option<String>,
     repository_id: Option<String>,
+    /// Named integration credential injected at request time; the secret
+    /// never appears in the contract.
+    auth: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -143,11 +146,11 @@ struct OperationResult {
 
 // Execute operation command
 #[tauri::command]
-async fn execute_operation(request: OperationRequest) -> Result<OperationResult, String> {
+async fn execute_operation(app: tauri::AppHandle, request: OperationRequest) -> Result<OperationResult, String> {
     let start_time = std::time::Instant::now();
     
     let result = match request.operation_type.as_str() {
-        "remote" => execute_remote_operation(&request).await,
+        "remote" => execute_remote_operation(&app, &request).await,
         "local" => execute_local_operation(&request).await,
         "repository" => execute_repository_operation(&request).await,
         _ => Err(format!("Unknown operation type: {}", request.operation_type)),
@@ -171,7 +174,7 @@ async fn execute_operation(request: OperationRequest) -> Result<OperationResult,
     }
 }
 
-async fn execute_remote_operation(request: &OperationRequest) -> Result<Value, String> {
+async fn execute_remote_operation(app: &tauri::AppHandle, request: &OperationRequest) -> Result<Value, String> {
     let endpoint_template = request.implementation.endpoint
         .as_ref()
         .ok_or("Remote operation missing endpoint")?;
@@ -217,6 +220,29 @@ async fn execute_remote_operation(request: &OperationRequest) -> Result<Value, S
     if let Some(headers) = &request.implementation.headers {
         for (key, value) in headers {
             req = req.header(key, value);
+        }
+    }
+    if let Some(auth_name) = &request.implementation.auth {
+        let integrations = settings::load_integrations(app);
+        let credential = integrations.credentials.get(auth_name).ok_or_else(|| {
+            format!(
+                "No integration credential named \"{}\"; add it in Settings under Integrations",
+                auth_name
+            )
+        })?;
+        match credential.kind.as_str() {
+            "bearer" => {
+                req = req.header("authorization", format!("Bearer {}", credential.secret));
+            }
+            "header" => {
+                let target = credential.target.clone().unwrap_or_else(|| "x-api-key".to_string());
+                req = req.header(target, credential.secret.clone());
+            }
+            "query" => {
+                let target = credential.target.clone().unwrap_or_else(|| "key".to_string());
+                req = req.query(&[(target, credential.secret.clone())]);
+            }
+            other => return Err(format!("Unknown credential kind \"{}\"", other)),
         }
     }
     if method == "GET" || method == "DELETE" {
@@ -1287,6 +1313,9 @@ pub fn run() {
             llm::llm_chat,
             llm::llm_chat_stream,
             settings::get_llm_settings,
+            settings::list_integration_credentials,
+            settings::set_integration_credential,
+            settings::delete_integration_credential,
             settings::set_llm_settings,
             settings::set_llm_credential,
             settings::clear_llm_credential,

@@ -14,7 +14,11 @@ import {
   checkAgainstManifests,
 } from '../contract';
 import type { ContractShape } from '../contract';
-import { FRAGMENT_ELEMENTS, FRAGMENT_OPERATIONS } from '../../services/operations/registry';
+import {
+  FRAGMENT_ELEMENTS,
+  FRAGMENT_OPERATIONS,
+  setIntegrationCredentials,
+} from '../../services/operations/registry';
 
 function checkContract(raw: Record<string, unknown>) {
   const contract = JSON.parse(JSON.stringify(ContractSchema.parse(raw))) as ContractShape;
@@ -529,6 +533,32 @@ describe('checkAgainstManifests vocabulary and normalizations', () => {
       expect(result.errors).toEqual([]);
     } finally {
       delete FRAGMENT_OPERATIONS['expr.evaluate'];
+    }
+  });
+
+  it('checks implementation.auth against configured credentials', () => {
+    const remoteOp = (auth: string) => ({
+      operations: [
+        {
+          id: 'op-fetch',
+          operationName: 'weather.now',
+          implementation: { type: 'remote', endpoint: 'https://api.example.com/now', auth }
+        }
+      ]
+    });
+
+    const missing = checkContract(rawContract(remoteOp('weather-api')));
+    expect(missing.result.errors.map((e) => e.code)).toEqual(['UNKNOWN_CREDENTIAL']);
+
+    setIntegrationCredentials([{ name: 'weather-api', kind: 'query', target: 'appid' }]);
+    try {
+      const known = checkContract(rawContract(remoteOp('weather-api')));
+      expect(known.result.errors).toEqual([]);
+
+      const typo = checkContract(rawContract(remoteOp('wether-api')));
+      expect(typo.result.errors[0].message).toContain('available: weather-api');
+    } finally {
+      setIntegrationCredentials([]);
     }
   });
 

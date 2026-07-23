@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ContractBuilder } from '../contract-builder';
-import { FRAGMENT_ELEMENTS } from '../../operations/registry';
+import { FRAGMENT_ELEMENTS, setIntegrationCredentials } from '../../operations/registry';
 import { LLMClient } from '../llm-client';
 import { ComponentRepository } from '../../../types/repository';
 import { OperationManifest } from '../../../types/component';
@@ -108,6 +108,20 @@ describe('ContractBuilder', () => {
         expect(system).toContain('Prefer these over hand-building');
       } finally {
         delete FRAGMENT_ELEMENTS['basics.entry_row'];
+      }
+    });
+  });
+
+  describe('integration credentials in the catalog', () => {
+    it('lists configured credential names for auth binding', async () => {
+      vi.mocked(mockRepository.queryOperations).mockResolvedValue([]);
+      setIntegrationCredentials([{ name: 'weather-api', kind: 'query', target: 'appid' }]);
+      try {
+        const { system } = await builder.renderCreatePrompt('anything');
+        expect(system).toContain('INTEGRATION CREDENTIALS');
+        expect(system).toContain('weather-api (query parameter "appid")');
+      } finally {
+        setIntegrationCredentials([]);
       }
     });
   });

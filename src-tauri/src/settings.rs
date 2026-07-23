@@ -72,6 +72,119 @@ pub struct StoredCredentials {
     pub claude_oauth: Option<ClaudeOauthTokens>,
 }
 
+/// A named credential a remote operation can reference via
+/// implementation.auth. Secrets never leave the Rust side unredacted.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrationCredential {
+    /// "bearer" (Authorization header), "header" (custom header), or
+    /// "query" (query parameter).
+    pub kind: String,
+    /// Header or query-parameter name; unused for bearer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    pub secret: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredIntegrations {
+    #[serde(default)]
+    pub credentials: HashMap<String, IntegrationCredential>,
+}
+
+fn integrations_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(settings_dir(app)?.join("integrations.json"))
+}
+
+pub fn load_integrations(app: &AppHandle) -> StoredIntegrations {
+    integrations_path(app)
+        .ok()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|json| serde_json::from_str(&json).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_integrations(app: &AppHandle, integrations: &StoredIntegrations) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(integrations)
+        .map_err(|e| format!("Failed to serialize integrations: {}", e))?;
+    fs::write(integrations_path(app)?, json)
+        .map_err(|e| format!("Failed to save integrations: {}", e))
+}
+
+/// Redacted view: names and shapes only, never secrets.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrationCredentialView {
+    pub name: String,
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+}
+
+#[tauri::command]
+pub fn list_integration_credentials(app: AppHandle) -> Vec<IntegrationCredentialView> {
+    let mut views: Vec<IntegrationCredentialView> = load_integrations(&app)
+        .credentials
+        .into_iter()
+        .map(|(name, cred)| IntegrationCredentialView {
+            name,
+            kind: cred.kind,
+            target: cred.target,
+        })
+        .collect();
+    views.sort_by(|a, b| a.name.cmp(&b.name));
+    views
+}
+
+#[tauri::command]
+pub fn set_integration_credential(
+    app: AppHandle,
+    name: String,
+    kind: String,
+    target: Option<String>,
+    secret: String,
+) -> Result<Vec<IntegrationCredentialView>, String> {
+    let name = name.trim().to_string();
+    if name.is_empty()
+        || name.len() > 64
+        || !name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
+        return Err("Credential names are 1-64 chars of lowercase, digits, and dashes".to_string());
+    }
+    if !matches!(kind.as_str(), "bearer" | "header" | "query") {
+        return Err("Credential kind must be bearer, header, or query".to_string());
+    }
+    if kind != "bearer" && target.as_deref().map(str::trim).unwrap_or("").is_empty() {
+        return Err("Header and query credentials need a target name".to_string());
+    }
+    if secret.trim().is_empty() {
+        return Err("The secret cannot be empty".to_string());
+    }
+    let mut integrations = load_integrations(&app);
+    integrations.credentials.insert(
+        name,
+        IntegrationCredential {
+            kind,
+            target: target.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()),
+            secret,
+        },
+    );
+    save_integrations(&app, &integrations)?;
+    Ok(list_integration_credentials(app))
+}
+
+#[tauri::command]
+pub fn delete_integration_credential(
+    app: AppHandle,
+    name: String,
+) -> Result<Vec<IntegrationCredentialView>, String> {
+    let mut integrations = load_integrations(&app);
+    integrations.credentials.remove(&name);
+    save_integrations(&app, &integrations)?;
+    Ok(list_integration_credentials(app))
+}
+
 fn settings_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()

@@ -9,6 +9,7 @@ import { ExperienceEditBar } from "./components/runtime/ExperienceEditBar";
 import { integratedExperienceService } from "./services/IntegratedExperienceService";
 import { persistenceService } from "./services/persistence";
 import { fragmentsService } from "./services/fragments/FragmentsService";
+import { refreshIntegrationCredentials } from "./services/settings/integrations";
 import { repositoryService } from "./services/repository/repository-service";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { registerBuiltins } from "./services/repository/builtins";
@@ -21,6 +22,7 @@ function App() {
     registerBuiltins(repositoryService).catch((error) =>
       console.warn("Failed to register built-in components", error)
     );
+    refreshIntegrationCredentials().catch(() => undefined);
     fragmentsService.init().catch((error) =>
       console.warn("Failed to load installed parts", error)
     );

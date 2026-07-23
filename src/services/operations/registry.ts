@@ -680,6 +680,21 @@ export function getUiFragmentDef(type: string): UiFragmentDef | undefined {
   return FRAGMENT_ELEMENTS[type];
 }
 
+/** Redacted integration credentials (names and shapes, never secrets):
+ * remote operations reference one via implementation.auth. */
+export interface IntegrationCredentialView {
+  name: string;
+  kind: string;
+  target?: string;
+}
+
+export const INTEGRATION_CREDENTIALS: IntegrationCredentialView[] = [];
+
+export function setIntegrationCredentials(views: IntegrationCredentialView[]): void {
+  INTEGRATION_CREDENTIALS.length = 0;
+  INTEGRATION_CREDENTIALS.push(...views);
+}
+
 /** App-level looks a contract can pick via styling.theme / styling.accent. */
 export const STYLE_THEMES = ['default', 'dark', 'paper', 'terminal'] as const;
 export const STYLE_ACCENTS = ['blue', 'green', 'violet', 'rose', 'amber'] as const;

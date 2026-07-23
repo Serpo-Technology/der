@@ -5,6 +5,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import './SettingsView.css';
 import {
+  IntegrationCredentialView,
+  deleteIntegrationCredential,
+  refreshIntegrationCredentials,
+  setIntegrationCredential,
+} from '../../services/settings/integrations';
+import {
   LlmSettingsView,
   MODEL_SUGGESTIONS,
   PROVIDER_LABELS,
@@ -34,6 +40,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
   const [authorizeUrl, setAuthorizeUrl] = useState('');
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
+  const [integrations, setIntegrations] = useState<IntegrationCredentialView[]>([]);
+  const [integrationName, setIntegrationName] = useState('');
+  const [integrationKind, setIntegrationKind] = useState('bearer');
+  const [integrationTarget, setIntegrationTarget] = useState('');
+  const [integrationSecret, setIntegrationSecret] = useState('');
+
+  useEffect(() => {
+    refreshIntegrationCredentials().then(setIntegrations).catch(() => undefined);
+  }, []);
+
+  const handleAddIntegration = useCallback(async () => {
+    setBusy(true);
+    try {
+      const views = await setIntegrationCredential(
+        integrationName.trim(),
+        integrationKind,
+        integrationKind === 'bearer' ? undefined : integrationTarget.trim(),
+        integrationSecret
+      );
+      setIntegrations(views);
+      setIntegrationName('');
+      setIntegrationTarget('');
+      setIntegrationSecret('');
+      setStatus('Credential saved');
+    } catch (error) {
+      onError?.(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }, [integrationName, integrationKind, integrationTarget, integrationSecret, onError]);
+
+  const handleDeleteIntegration = useCallback(async (name: string) => {
+    setBusy(true);
+    try {
+      setIntegrations(await deleteIntegrationCredential(name));
+    } catch (error) {
+      onError?.(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }, [onError]);
 
   const applyView = useCallback((next: LlmSettingsView) => {
     setView(next);
@@ -296,6 +343,77 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
           </details>
         </section>
       )}
+
+      <section className="settings-section">
+        <h3>Integrations</h3>
+        <p className="settings-hint">
+          Named credentials for apps that call external services. Apps reference a
+          credential by name; the secret stays on this machine and never appears in
+          an app definition.
+        </p>
+        {integrations.length > 0 && (
+          <ul className="settings-integrations">
+            {integrations.map((cred) => (
+              <li key={cred.name}>
+                <code>{cred.name}</code>
+                <span>
+                  {cred.kind === 'bearer'
+                    ? 'bearer token'
+                    : `${cred.kind} "${cred.target ?? ''}"`}
+                </span>
+                <button
+                  className="link-button"
+                  onClick={() => handleDeleteIntegration(cred.name)}
+                  disabled={busy}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="settings-field">
+          <span>Add a credential</span>
+          <div className="settings-integration-form">
+            <input
+              value={integrationName}
+              onChange={(e) => setIntegrationName(e.target.value)}
+              placeholder="name (e.g. weather-api)"
+              disabled={busy}
+            />
+            <select
+              value={integrationKind}
+              onChange={(e) => setIntegrationKind(e.target.value)}
+              disabled={busy}
+            >
+              <option value="bearer">Bearer token</option>
+              <option value="header">Header</option>
+              <option value="query">Query parameter</option>
+            </select>
+            {integrationKind !== 'bearer' && (
+              <input
+                value={integrationTarget}
+                onChange={(e) => setIntegrationTarget(e.target.value)}
+                placeholder={integrationKind === 'header' ? 'header name' : 'parameter name'}
+                disabled={busy}
+              />
+            )}
+            <input
+              type="password"
+              value={integrationSecret}
+              onChange={(e) => setIntegrationSecret(e.target.value)}
+              placeholder="secret"
+              disabled={busy}
+            />
+            <button
+              onClick={handleAddIntegration}
+              disabled={busy || !integrationName.trim() || !integrationSecret.trim()}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </section>
 
       {status && <p className="settings-status">{status}</p>}
     </div>

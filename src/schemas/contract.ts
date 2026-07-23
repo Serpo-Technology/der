@@ -17,6 +17,7 @@ import type {
 } from '../types/contract';
 import {
   ELEMENT_MANIFESTS,
+  INTEGRATION_CREDENTIALS,
   STYLE_ACCENTS,
   STYLE_THEMES,
   getOperationDef,
@@ -115,6 +116,7 @@ export const OperationBindingSchema = z.object({
       headers: z.record(z.string(), z.string()).optional(),
       code: z.string().optional(),
       repositoryId: z.string().optional(),
+      auth: z.string().optional(),
     })
     .optional(),
 });
@@ -163,6 +165,7 @@ const LlmOperationBindingSchema = OperationBindingSchema.extend({
       endpoint: z.string(),
       method: z.string().optional(),
       headers: z.record(z.string(), z.string()).optional(),
+      auth: z.string().optional(),
     })
     .optional(),
 });
@@ -530,6 +533,21 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     const isBuiltinName = Boolean(def);
     const hasEndpoint = Boolean(op.implementation?.endpoint);
     const hasCode = Boolean(op.implementation?.code);
+
+    // An auth reference must name a configured integration credential.
+    const auth = (op.implementation as { auth?: string } | undefined)?.auth;
+    if (auth !== undefined) {
+      const known = INTEGRATION_CREDENTIALS.map((cred) => cred.name);
+      if (!known.includes(auth)) {
+        fail(
+          `${opPath}.implementation.auth`,
+          known.length > 0
+            ? `"${auth}" is not a configured integration credential; available: ${known.join(', ')}`
+            : `"${auth}" is not a configured integration credential; none are configured, so omit auth or ask the user to add one in Settings`,
+          'UNKNOWN_CREDENTIAL'
+        );
+      }
+    }
 
     if (!isBuiltinName && !hasEndpoint && !hasCode) {
       fail(
