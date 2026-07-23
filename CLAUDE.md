@@ -139,7 +139,9 @@ Architectural constraint: **the model never writes code**; it composes prewritte
 registry (`src/services/operations/registry.ts`) is the single source of truth: `ELEMENT_MANIFESTS`
 (typed knobs, bindable props, howto, validated examples) and `BUILTIN_OPERATIONS` (generic
 primitives `state.set`, `counter.add`, `list.append`/`updateWhere`/`removeWhere`/`toggleField`,
-`math.add`, `http.get`; todos.* survive as hidden compat parts). Structured inputs use dotted
+`math.add`, `time.now`, `http.get`; todos.* survive as hidden compat parts). A `timer` element
+ticks on an interval while rendered (visibleWhen gates double as pause buttons) and `textarea`
+is a first-class labeled part. Structured inputs use dotted
 prefixes (`item.<field>`, `set.<field>`) grouped by `assembleStructured`; `list.append` generates
 ids itself. The shared transform registry (`src/services/operations/transforms.ts`) provides the
 declarative derivations (`count`, `sum`, `filterBy`, `filterContains`, `sortBy`, `pick`,

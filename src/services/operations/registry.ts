@@ -340,6 +340,29 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
     howto: 'Pure calculation; write the result to state with an OutputBinding when it should display.',
     execute: (inputs) => ({ result: (Number(inputs.a) || 0) + (Number(inputs.b) || 0) }),
   },
+  'time.now': {
+    name: 'time.now',
+    description: 'The current date and time. Route the outputs you need into state.',
+    inputs: [],
+    outputs: [
+      { name: 'iso', type: 'string', description: 'Full ISO timestamp' },
+      { name: 'date', type: 'string', description: 'Local date as YYYY-MM-DD' },
+      { name: 'time', type: 'string', description: 'Local time as HH:MM' },
+      { name: 'epoch', type: 'number', description: 'Milliseconds since 1970' },
+    ],
+    howto:
+      'To stamp new list entries, run this FIRST on the same click (bindings run in order): first binding writes date to a state key, the second binding is the list.append whose "item.date" input reads that key {source: "state", sourceId: "<key>"}. Display stamps with the formatDate transform.',
+    execute: () => {
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return {
+        iso: now.toISOString(),
+        date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+        time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
+        epoch: now.getTime(),
+      };
+    },
+  },
   'http.get': {
     name: 'http.get',
     description:
@@ -492,7 +515,28 @@ export const ELEMENT_MANIFESTS: Record<string, ElementManifest> = {
     ],
     passthroughProps: ['placeholder', 'type', 'className'],
     howto:
-      'Give it an id and NEVER bind its value; operations read it with an InputBinding {source: "ui-element", sourceId: "<id>"}. Not allowed inside list children.',
+      'Give it an id and NEVER bind its value; operations read it with an InputBinding {source: "ui-element", sourceId: "<id>"}. For dates use properties {"type": "date"}: the value is YYYY-MM-DD and ISO dates sort and compare correctly as strings. Not allowed inside list children.',
+  },
+  textarea: {
+    type: 'textarea',
+    description: 'Multi-line text input, auto-controlled by the runtime.',
+    knobs: [
+      { name: 'label', type: 'string', description: 'Optional label rendered above the field' },
+      { name: 'rows', type: 'number', default: 4, description: 'Visible text rows' },
+    ],
+    passthroughProps: ['placeholder', 'className'],
+    howto:
+      'Notes, descriptions, anything multi-line; same rules as input: give it an id, never bind its value, read it with {source: "ui-element", sourceId: "<id>"}. Not allowed inside list children.',
+  },
+  timer: {
+    type: 'timer',
+    description: 'Invisible interval clock: fires its "tick" event while rendered.',
+    knobs: [
+      { name: 'seconds', type: 'number', default: 1, description: 'Seconds between ticks' },
+    ],
+    passthroughProps: [],
+    howto:
+      'Renders nothing. Wire eventBindings [{"event": "tick", "operationId": "<op id>"}] to run an operation on every tick, e.g. counter.add on an "elapsed" key. Gate it with visibleWhen on a state flag and flip the flag with Start/Stop buttons (state.set): a hidden timer does not tick.',
   },
   container: {
     type: 'container',

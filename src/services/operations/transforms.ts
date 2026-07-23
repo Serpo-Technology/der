@@ -223,6 +223,40 @@ export const TRANSFORMS: Record<string, TransformDef> = {
       return template.replace('{{value}}', value === null || value === undefined ? '' : String(value));
     },
   },
+  formatDate: {
+    name: 'formatDate',
+    output: 'scalar',
+    description:
+      "Formats a date (ISO string or epoch milliseconds) for display; style date|time|datetime|weekday.",
+    parameters: [
+      {
+        name: 'style',
+        type: 'enum',
+        values: ['date', 'time', 'datetime', 'weekday'],
+        default: 'date',
+        description: 'What to show',
+      },
+    ],
+    apply: (value, parameters) => {
+      if (value === null || value === undefined || value === '') return '';
+      const date = new Date(value as string | number);
+      if (Number.isNaN(date.getTime())) return value;
+      const style = String(parameters.style ?? 'date');
+      const options: Intl.DateTimeFormatOptions =
+        style === 'time'
+          ? { hour: '2-digit', minute: '2-digit' }
+          : style === 'datetime'
+            ? { dateStyle: 'medium', timeStyle: 'short' }
+            : style === 'weekday'
+              ? { weekday: 'long' }
+              : { dateStyle: 'medium' };
+      try {
+        return new Intl.DateTimeFormat(undefined, options).format(date);
+      } catch {
+        return String(value);
+      }
+    },
+  },
   map: {
     name: 'map',
     output: 'any',

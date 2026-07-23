@@ -389,3 +389,17 @@ describe('catalog invariants', () => {
     }
   });
 });
+
+describe('time.now', () => {
+  it('returns iso, sortable date, time, and epoch', async () => {
+    const def = BUILTIN_OPERATIONS['time.now'];
+    const out = (await def.execute({}, {
+      getState: () => undefined,
+      setState: () => undefined
+    } as never)) as Record<string, unknown>;
+    expect(String(out.iso)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(String(out.date)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(String(out.time)).toMatch(/^\d{2}:\d{2}$/);
+    expect(typeof out.epoch).toBe('number');
+  });
+});

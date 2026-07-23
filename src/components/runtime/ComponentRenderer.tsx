@@ -31,6 +31,8 @@ import type { EventContext } from './OperationExecutor';
 const UI_COMPONENTS = {
   'button': ButtonComponent,
   'input': InputComponent,
+  'textarea': TextareaComponent,
+  'timer': TimerComponent,
   'text': TextComponent,
   'container': ContainerComponent,
   'list': ListComponent,
@@ -452,6 +454,37 @@ function InputComponent({ label, ...props }: any) {
     );
   }
   return input;
+}
+
+function TextareaComponent({ label, children: _children, ...props }: any) {
+  const area = <textarea {...props} />;
+  if (label) {
+    return (
+      <label className="der-field">
+        <span>{label}</span>
+        {area}
+      </label>
+    );
+  }
+  return area;
+}
+
+/**
+ * Invisible interval clock. The tick callback lives in a ref so state-driven
+ * re-renders do not reset the pending interval; unmounting (visibleWhen going
+ * false) stops it.
+ */
+function TimerComponent({ seconds, onTick, 'data-element-id': dataElementId }: any) {
+  const tickRef = React.useRef(onTick);
+  tickRef.current = onTick;
+  const intervalSeconds = Number(seconds) > 0 ? Number(seconds) : 1;
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      void tickRef.current?.();
+    }, intervalSeconds * 1000);
+    return () => clearInterval(id);
+  }, [intervalSeconds]);
+  return <span data-element-id={dataElementId} style={{ display: 'none' }} />;
 }
 
 /** Bound values can resolve to anything; only scalars render as-is. */

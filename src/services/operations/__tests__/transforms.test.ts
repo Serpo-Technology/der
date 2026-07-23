@@ -316,3 +316,14 @@ describe('dynamic parameters and filterContains', () => {
     expect(out).toEqual([]);
   });
 });
+
+describe('formatDate', () => {
+  it('formats ISO strings and epochs, passes junk through, blanks null', () => {
+    const iso = '2026-07-23T15:30:00Z';
+    expect(String(TRANSFORMS.formatDate.apply(iso, { style: 'date' }))).toContain('2026');
+    expect(String(TRANSFORMS.formatDate.apply(1784800000000, { style: 'date' }))).toContain('202');
+    expect(TRANSFORMS.formatDate.apply('not a date', { style: 'date' })).toBe('not a date');
+    expect(TRANSFORMS.formatDate.apply(null, { style: 'date' })).toBe('');
+    expect(String(TRANSFORMS.formatDate.apply(iso, { style: 'weekday' })).length).toBeGreaterThan(3);
+  });
+});
