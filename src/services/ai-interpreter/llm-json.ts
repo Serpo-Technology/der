@@ -151,7 +151,8 @@ export async function generateValidatedJson<S extends z.ZodType>(
 
   // Local models are cheap and their misses are usually one field; give them
   // an extra repair round.
-  const maxRepairs = lastProvider === 'local' ? 2 : 1;
+  const CHEAP_FAST_PROVIDERS = new Set(['local', 'mercury']);
+  const maxRepairs = CHEAP_FAST_PROVIDERS.has(lastProvider ?? '') ? 2 : 1;
   for (let round = 0; round < maxRepairs; round++) {
     conversation = [
       ...conversation,

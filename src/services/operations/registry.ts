@@ -371,7 +371,8 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       'Fetches JSON from an http(s) URL. Returns {response}. Route the response with an OutputBinding into state.',
     inputs: [{ name: 'url', type: 'string', required: true, description: 'http(s) URL' }],
     outputs: [{ name: 'response', type: 'object' }],
-    howto: 'Route the response into a state key, then bind display elements to that key (pick/format transforms help).',
+    howto:
+      'Fetching real remote data ONLY; never for math on existing state (use expr.evaluate, stats, or transforms for that). A computed URL is a url input bound from an element or state with a format transform, e.g. transforms [{"type": "format", "parameters": {"template": "https://host/search?q={{value}}"}}]. Route the response into a state key and display it with pick/format.',
     execute: async (inputs) => {
       const url = String(inputs.url ?? '');
       if (!/^https?:\/\//.test(url)) {
