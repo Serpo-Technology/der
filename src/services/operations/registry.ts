@@ -316,7 +316,7 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       { name: 'field', type: 'string', required: false, description: "Boolean field (default 'completed')" },
     ],
     outputs: [{ name: 'list', type: 'array', description: 'The updated array' }],
-    howto: "Typical row toggle: id from {source: 'item', sourceId: 'id'}.",
+    howto: "Typical row toggle: id from {source: 'item', sourceId: 'id'}. Show the flag: bind the row text's className from it (map {'true': 'done'}) and count remaining rows with filterFalsy.",
     execute: (inputs, ctx) => {
       const key = String(inputs.key ?? '');
       const field = isBlank(inputs.field) ? 'completed' : String(inputs.field);

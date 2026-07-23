@@ -1,0 +1,212 @@
+{
+ "elements": [
+  {
+   "dataBindings": [],
+   "eventBindings": [],
+   "id": "title",
+   "properties": {
+    "content": "Todo List",
+    "role": "title"
+   },
+   "type": "text"
+  },
+  {
+   "children": [
+    {
+     "dataBindings": [],
+     "eventBindings": [],
+     "id": "task-in",
+     "properties": {
+      "label": "Task",
+      "placeholder": "What to do..."
+     },
+     "type": "input"
+    },
+    {
+     "dataBindings": [],
+     "eventBindings": [
+      {
+       "event": "click",
+       "operationId": "op-add-task"
+      }
+     ],
+     "id": "add-btn",
+     "properties": {
+      "text": "Add Task",
+      "variant": "primary"
+     },
+     "type": "button"
+    }
+   ],
+   "dataBindings": [],
+   "eventBindings": [],
+   "id": "entry",
+   "properties": {
+    "align": "end",
+    "direction": "row",
+    "gap": "8"
+   },
+   "type": "container"
+  },
+  {
+   "children": [
+    {
+     "dataBindings": [
+      {
+       "property": "content",
+       "source": "item",
+       "sourceId": "description"
+      },
+      {
+       "property": "className",
+       "source": "item",
+       "sourceId": "completed",
+       "transforms": [
+        {
+         "type": "map",
+         "parameters": {
+          "mapping": {
+           "true": "done",
+           "false": ""
+          }
+         }
+        }
+       ]
+      }
+     ],
+     "eventBindings": [],
+     "id": "r-task",
+     "properties": {},
+     "type": "text"
+    },
+    {
+     "dataBindings": [],
+     "eventBindings": [
+      {
+       "event": "click",
+       "operationId": "op-mark-done"
+      }
+     ],
+     "id": "r-complete-btn",
+     "properties": {
+      "size": "sm",
+      "text": "Complete",
+      "variant": "primary"
+     },
+     "type": "button"
+    }
+   ],
+   "dataBindings": [
+    {
+     "property": "items",
+     "source": "state",
+     "sourceId": "tasks"
+    }
+   ],
+   "eventBindings": [],
+   "id": "rows",
+   "properties": {
+    "emptyText": "No tasks yet"
+   },
+   "type": "list"
+  },
+  {
+   "dataBindings": [
+    {
+     "property": "content",
+     "source": "state",
+     "sourceId": "tasks",
+     "transforms": [
+      {
+       "type": "filterFalsy",
+       "parameters": {
+        "field": "completed"
+       }
+      },
+      {
+       "type": "count",
+       "parameters": {}
+      },
+      {
+       "type": "format",
+       "parameters": {
+        "template": "{{value}} tasks left"
+       }
+      }
+     ]
+    }
+   ],
+   "eventBindings": [],
+   "id": "task-count",
+   "properties": {
+    "role": "subtitle"
+   },
+   "type": "text"
+  }
+ ],
+ "layout": {
+  "properties": {
+   "flexDirection": "column",
+   "gap": "12px",
+   "padding": "16px"
+  },
+  "type": "flex"
+ },
+ "name": "todo-app",
+ "operations": [
+  {
+   "executionType": "builtin",
+   "id": "op-add-task",
+   "inputs": [
+    {
+     "name": "key",
+     "source": "constant",
+     "sourceId": "tasks"
+    },
+    {
+     "name": "item.description",
+     "source": "ui-element",
+     "sourceId": "task-in"
+    }
+   ],
+   "operationName": "list.append",
+   "outputs": [
+    {
+     "name": "reset",
+     "target": "ui-element",
+     "targetId": "task-in"
+    }
+   ],
+   "triggers": []
+  },
+  {
+   "executionType": "builtin",
+   "id": "op-mark-done",
+   "inputs": [
+    {
+     "name": "key",
+     "source": "constant",
+     "sourceId": "tasks"
+    },
+    {
+     "name": "value",
+     "source": "item",
+     "sourceId": "id"
+    },
+    {
+     "name": "set.completed",
+     "source": "constant",
+     "sourceId": "true",
+     "value": true
+    }
+   ],
+   "operationName": "list.updateWhere",
+   "outputs": [],
+   "triggers": []
+  }
+ ],
+ "styling": {
+  "theme": "default"
+ },
+ "version": "1.0.0"
+}

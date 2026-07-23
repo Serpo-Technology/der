@@ -17,7 +17,19 @@ afterEach(() => {
 
 describe('TRANSFORMS', () => {
   describe('count', () => {
-    it('counts array entries and returns 0 for anything else', () => {
+    it('filterTruthy and filterFalsy split rows by flag, counting missing as falsy', () => {
+    const rows = [
+      { id: 'a', completed: true },
+      { id: 'b', completed: false },
+      { id: 'c' }
+    ];
+    const truthy = TRANSFORMS.filterTruthy.apply(rows, { field: 'completed' });
+    const falsy = TRANSFORMS.filterFalsy.apply(rows, { field: 'completed' });
+    expect((truthy as Array<{ id: string }>).map((r) => r.id)).toEqual(['a']);
+    expect((falsy as Array<{ id: string }>).map((r) => r.id)).toEqual(['b', 'c']);
+  });
+
+  it('counts array entries and returns 0 for anything else', () => {
       expect(apply('count', [1, 2, 3])).toBe(3);
       expect(apply('count', [])).toBe(0);
       expect(apply('count', undefined)).toBe(0);

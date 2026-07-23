@@ -96,7 +96,8 @@ export class IntegratedExperienceService {
               opening = invoke('open_experience_window', {
                 experienceId,
                 contract: preview,
-                title: windowTitle
+                title: windowTitle,
+                assembling: true
               }).then(
                 () => undefined,
                 (error) => {
@@ -111,7 +112,19 @@ export class IntegratedExperienceService {
           }
         : undefined;
 
-      const composed = await this.aiInterpreter.compose(input, onPartial);
+      let composed;
+      try {
+        composed = await this.aiInterpreter.compose(input, onPartial);
+      } catch (error) {
+        // The assembly window may already be showing a partial draft; tell it
+        // generation ended without a result.
+        if (windowOpened) {
+          await emit('experience-assembly-status', { experienceId, status: 'failed' }).catch(
+            () => undefined
+          );
+        }
+        throw error;
+      }
       const blueprint = BlueprintModel.fromObject(composed.blueprint);
       const contract = ContractModel.fromObject(composed.contract);
       if (opening) await opening;
@@ -124,6 +137,9 @@ export class IntegratedExperienceService {
             experienceId,
             contract: contract.toObject()
           }).catch(() => undefined);
+          await emit('experience-assembly-status', { experienceId, status: 'done' }).catch(
+            () => undefined
+          );
         } else {
           await invoke('open_experience_window', {
             experienceId,

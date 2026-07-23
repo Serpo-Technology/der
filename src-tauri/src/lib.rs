@@ -1144,7 +1144,7 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
                             .and_then(|n| n.as_str())
                             .map(|s| s.to_string());
                         if let Err(e) =
-                            open_experience_window_impl(&app, &bookmark_id, contract, title)
+                            open_experience_window_impl(&app, &bookmark_id, contract, title, false)
                         {
                             eprintln!("Failed to open app window for {}: {}", bookmark_id, e);
                         }
@@ -1165,6 +1165,7 @@ fn open_experience_window_impl(
     experience_id: &str,
     contract: Value,
     title: Option<String>,
+    assembling: bool,
 ) -> Result<(), String> {
     let label = format!("exp-{}", experience_id);
     if let Some(existing) = app.get_webview_window(&label) {
@@ -1177,7 +1178,8 @@ fn open_experience_window_impl(
     let bootstrap = serde_json::json!({
         "experienceId": experience_id,
         "contract": contract,
-        "state": saved_state
+        "state": saved_state,
+        "assembling": assembling
     });
     let init_script = format!("window.__DER_BOOTSTRAP = {};", bootstrap);
 
@@ -1204,9 +1206,10 @@ async fn open_experience_window(
     app: AppHandle,
     experience_id: String,
     contract: Value,
-    title: Option<String>
+    title: Option<String>,
+    assembling: Option<bool>
 ) -> Result<(), String> {
-    open_experience_window_impl(&app, &experience_id, contract, title)
+    open_experience_window_impl(&app, &experience_id, contract, title, assembling.unwrap_or(false))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

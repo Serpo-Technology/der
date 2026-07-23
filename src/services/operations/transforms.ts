@@ -57,6 +57,21 @@ export const TRANSFORMS: Record<string, TransformDef> = {
     apply: (value, parameters) =>
       asArray(value).filter((item) => looseEquals(fieldOf(item, parameters.field), parameters.value)),
   },
+  filterTruthy: {
+    name: 'filterTruthy',
+    description: 'Keeps array entries whose field is truthy (set flags, checked rows).',
+    parameters: [{ name: 'field', type: 'string', description: 'Field to test' }],
+    apply: (value, parameters) =>
+      asArray(value).filter((item) => Boolean(fieldOf(item, parameters.field))),
+  },
+  filterFalsy: {
+    name: 'filterFalsy',
+    description:
+      'Keeps array entries whose field is falsy or missing (e.g. not-completed rows; a row that never got the flag counts).',
+    parameters: [{ name: 'field', type: 'string', description: 'Field to test' }],
+    apply: (value, parameters) =>
+      asArray(value).filter((item) => !fieldOf(item, parameters.field)),
+  },
   sortBy: {
     name: 'sortBy',
     description: 'Sorts an array by a field; numeric when both values are numbers.',

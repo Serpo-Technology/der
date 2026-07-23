@@ -27,7 +27,12 @@ function App() {
   }, []);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const injected = (globalThis as any).__DER_BOOTSTRAP as
-    | { experienceId?: string; contract?: ContractType | string; state?: Record<string, unknown> | null }
+    | {
+        experienceId?: string;
+        contract?: ContractType | string;
+        state?: Record<string, unknown> | null;
+        assembling?: boolean;
+      }
     | undefined;
 
   // Tolerate a double-encoded bootstrap contract from older windows.
@@ -53,6 +58,7 @@ function App() {
             initialExperienceId={injected.experienceId}
             initialContract={injectedContract}
             savedState={injectedState}
+            initialAssembling={Boolean(injected.assembling)}
           />
         </ErrorBoundary>
       </div>
@@ -70,10 +76,13 @@ const ExperienceWindow: React.FC<{
   initialExperienceId: string;
   initialContract: ContractType;
   savedState?: Record<string, unknown>;
-}> = ({ initialExperienceId, initialContract, savedState }) => {
+  initialAssembling?: boolean;
+}> = ({ initialExperienceId, initialContract, savedState, initialAssembling = false }) => {
   const [currentContract, setCurrentContract] = useState<ContractType>(initialContract);
   const [editBusy, setEditBusy] = useState(false);
   const [editWarnings, setEditWarnings] = useState<ValidationWarning[]>([]);
+  const [assembling, setAssembling] = useState(initialAssembling);
+  const [assemblyFailed, setAssemblyFailed] = useState(false);
   const title = useMemo(() => currentContract.name || initialExperienceId, [currentContract.name, initialExperienceId]);
 
   // Persist the app's state so it survives closing the window. Writes are
@@ -176,6 +185,23 @@ const ExperienceWindow: React.FC<{
     return () => { if (unlisten) unlisten(); };
   }, [initialExperienceId]);
 
+  // Assembly lifecycle: the window opens while the model is still writing the
+  // app; generation reports when it finishes or fails.
+  React.useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      unlisten = await listen<{ experienceId: string; status: string }>(
+        'experience-assembly-status',
+        (event) => {
+          if (event.payload?.experienceId !== initialExperienceId) return;
+          setAssembling(false);
+          setAssemblyFailed(event.payload.status === 'failed');
+        }
+      );
+    })();
+    return () => { if (unlisten) unlisten(); };
+  }, [initialExperienceId]);
+
   // A crashed render recovers when the next contract lands: the boundary is
   // keyed by a revision that advances with every contract change.
   const revisionRef = React.useRef(0);
@@ -206,8 +232,14 @@ const ExperienceWindow: React.FC<{
       <header className="der-window-header">
         <div style={{ fontWeight: 600 }}>{title}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {assembling && <span className="der-assembling">Assembling</span>}
+          {assemblyFailed && (
+            <span className="der-assembly-failed">
+              Generation did not finish; this is a partial draft
+            </span>
+          )}
           {bookmarkNote && <span style={{ fontSize: "0.82rem", opacity: 0.75 }}>{bookmarkNote}</span>}
-          <button onClick={handleBookmark}>Bookmark</button>
+          <button onClick={handleBookmark} disabled={assembling}>Bookmark</button>
         </div>
       </header>
       <ExperienceEditBar
