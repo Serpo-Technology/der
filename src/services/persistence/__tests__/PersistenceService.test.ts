@@ -406,5 +406,47 @@ describe('PersistenceService', () => {
       expect(result.errors).toBeDefined();
       expect(result.errors![0]).toContain('not valid JSON');
     });
+
+    it('sends the Rust command a camelCase envelope with no nulls', async () => {
+      // The accepted wire shape is pinned on the Rust side by the
+      // share_wire_tests module in src-tauri/src/lib.rs.
+      const jsonData = JSON.stringify({
+        contract: mockContract,
+        metadata: {
+          title: 'Imported',
+          description: null,
+          author: null,
+          created_at: '2026-07-20T10:00:00.000000+00:00',
+          shared_at: '2026-07-23T09:30:00.000000+00:00',
+          tags: null,
+          category: null
+        },
+        version: '1.0.0',
+        checksum: 'abc123'
+      });
+
+      mockInvoke
+        .mockResolvedValueOnce({ success: true, experienceId: 'imported-123' })
+        .mockResolvedValueOnce({
+          id: 'imported-123',
+          contract: mockContract,
+          last_accessed_at: '2024-01-01T00:00:00Z'
+        });
+
+      const result = await persistenceService.importExperience(jsonData);
+      expect(result.success).toBe(true);
+
+      const importCall = mockInvoke.mock.calls.find(
+        ([command]: [string]) => command === 'import_shared_experience'
+      );
+      expect(importCall).toBeDefined();
+      const sent = importCall![1].shareableContract;
+      expect(sent.metadata.title).toBe('Imported');
+      expect(sent.metadata.createdAt).toBeInstanceOf(Date);
+      expect(sent.metadata.sharedAt).toBeInstanceOf(Date);
+      expect(sent.metadata).not.toHaveProperty('created_at');
+      expect(Object.values(sent.metadata)).not.toContain(null);
+      expect(typeof sent.checksum).toBe('string');
+    });
   });
 });

@@ -436,22 +436,38 @@ struct BookmarkedExperience {
     thumbnail: Option<String>,
 }
 
+/// Share envelope wire format: camelCase keys with absent (never null)
+/// optional fields, matching the webview's types. Reading tolerates the
+/// legacy snake_case date keys so exports from older builds still import.
 #[derive(Debug, Serialize, Deserialize)]
 struct ShareableContract {
     contract: Value,
     metadata: ShareMetadata,
+    #[serde(default = "default_share_version")]
     version: String,
+    #[serde(default)]
     checksum: String,
 }
 
+fn default_share_version() -> String {
+    "1.0.0".to_string()
+}
+
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ShareMetadata {
     title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     author: Option<String>,
+    #[serde(alias = "created_at")]
     created_at: String,
+    #[serde(alias = "shared_at")]
     shared_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     tags: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     category: Option<String>,
 }
 
@@ -1331,5 +1347,80 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod share_wire_tests {
+    use super::ShareableContract;
+
+    // Exactly the envelope the webview sends on import (hydrated camelCase
+    // metadata, dates as ISO strings, empty checksum for bare pastes); the
+    // matching TypeScript assertion lives in the PersistenceService tests.
+    #[test]
+    fn accepts_the_webview_import_payload() {
+        let payload = serde_json::json!({
+            "contract": { "name": "counter", "elements": [], "operations": [] },
+            "metadata": {
+                "title": "Click Counter",
+                "createdAt": "2026-07-20T10:00:00.000Z",
+                "sharedAt": "2026-07-23T09:30:00.000Z"
+            },
+            "version": "1.0.0",
+            "checksum": ""
+        });
+        let parsed: ShareableContract = serde_json::from_value(payload).expect("parses");
+        assert_eq!(parsed.metadata.title, "Click Counter");
+        assert_eq!(parsed.metadata.created_at, "2026-07-20T10:00:00.000Z");
+        assert!(parsed.metadata.description.is_none());
+    }
+
+    // Exports from older builds carried snake_case date keys and nulls for
+    // absent options; they must keep importing.
+    #[test]
+    fn accepts_the_legacy_export_shape() {
+        let payload = serde_json::json!({
+            "contract": { "name": "counter", "elements": [], "operations": [] },
+            "metadata": {
+                "title": "My Counter",
+                "description": null,
+                "author": null,
+                "created_at": "2026-07-20T10:00:00.000000+00:00",
+                "shared_at": "2026-07-23T09:30:00.000000+00:00",
+                "tags": null,
+                "category": null
+            },
+            "version": "1.0.0",
+            "checksum": "1a2b3c"
+        });
+        let parsed: ShareableContract = serde_json::from_value(payload).expect("parses");
+        assert_eq!(parsed.metadata.shared_at, "2026-07-23T09:30:00.000000+00:00");
+        assert!(parsed.metadata.tags.is_none());
+    }
+
+    // New exports write the canonical shape: camelCase keys, no null fields.
+    #[test]
+    fn serializes_camel_case_without_nulls() {
+        let shareable = ShareableContract {
+            contract: serde_json::json!({ "name": "counter" }),
+            metadata: super::ShareMetadata {
+                title: "My Counter".to_string(),
+                description: None,
+                author: None,
+                created_at: "2026-07-20T10:00:00Z".to_string(),
+                shared_at: "2026-07-23T09:30:00Z".to_string(),
+                tags: None,
+                category: None,
+            },
+            version: "1.0.0".to_string(),
+            checksum: "1a2b3c".to_string(),
+        };
+        let value = serde_json::to_value(&shareable).expect("serializes");
+        let metadata = value.get("metadata").unwrap().as_object().unwrap();
+        assert!(metadata.contains_key("createdAt"));
+        assert!(metadata.contains_key("sharedAt"));
+        assert!(!metadata.contains_key("created_at"));
+        assert!(!metadata.contains_key("description"));
+        assert!(!metadata.values().any(|v| v.is_null()));
+    }
 }
 

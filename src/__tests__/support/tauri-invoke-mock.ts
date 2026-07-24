@@ -106,17 +106,19 @@ export function installInvokeMock(options: InvokeMockOptions = {}): InvokeMockHa
         return {};
 
       case 'share_experience': {
+        // Mirrors the Rust command's wire shape: camelCase keys, absent
+        // (never null) optional fields.
         const now = new Date().toISOString();
         return {
           contract: args?.contract ?? { name: 'shared', elements: [], operations: [] },
           metadata: {
             title: args?.title ?? 'Shared Experience',
-            description: args?.description,
-            author: args?.author,
-            created_at: now,
-            shared_at: now,
-            tags: args?.tags,
-            category: args?.category,
+            ...(args?.description !== undefined ? { description: args.description } : {}),
+            ...(args?.author !== undefined ? { author: args.author } : {}),
+            createdAt: now,
+            sharedAt: now,
+            ...(args?.tags !== undefined ? { tags: args.tags } : {}),
+            ...(args?.category !== undefined ? { category: args.category } : {}),
           },
           version: '1.0.0',
           checksum: 'mock-checksum',
