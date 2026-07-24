@@ -30,3 +30,4 @@ fragments/*/target/
 # Signed bundles under fragments/dist stay tracked (the bare dist rule above matches it)
 !fragments/dist/
 llama.cpp/
+native/macos/.build/

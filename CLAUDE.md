@@ -308,6 +308,14 @@ in production. `runtime/sessions.rs` is the live-session surface: `runtime_open_
 manifests on disk, saved data merged), `runtime_resolve_view`, `runtime_set_element`,
 `runtime_dispatch_event` (off the async core threads), `runtime_close_session`; its
 host-free cores are integration-tested by driving the committed stopwatch pack natively.
+`runtime/sidecar.rs` renders experiences in external panel
+processes: the bridge owns the sessions, speaks newline-delimited JSON over the panel's
+stdio (`open`/`update`/`close` out; `setElement`/`dispatch`/`windowClosed` in), and answers
+every user action with a fresh tree; the panel is a pure view and secrets never leave the
+host. `native/macos/` is the SwiftUI panel (SwiftPM, built with `swift build`, found via
+`DER_NATIVE_RENDERER` or the dev build path); the standalone experience window shows a
+"Native window" button on macOS. `swift test` decodes the committed view vectors, holding
+the panel's protocol types to the same trees as the other two resolvers.
 The committed vectors in `runtime-conformance/` are
 the semantic contract: both test suites run every vector (vitest
 `runtime-conformance.test.ts`, cargo `runtime_conformance.rs`), covering the

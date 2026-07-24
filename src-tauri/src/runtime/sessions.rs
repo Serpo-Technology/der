@@ -128,7 +128,9 @@ fn with_sessions<T>(state: &RuntimeSessionsState, run: impl FnOnce(&mut Sessions
 
 /// Installed fragment defs and part operation routes, from the manifests on
 /// disk; the same vocabulary the webview publishes at startup.
-fn installed_vocabulary(app: &tauri::AppHandle) -> (Map<String, Value>, HashMap<String, PartRoute>) {
+pub(crate) fn installed_vocabulary(
+    app: &tauri::AppHandle,
+) -> (Map<String, Value>, HashMap<String, PartRoute>) {
     let mut fragment_defs = Map::new();
     let mut parts = HashMap::new();
     let Ok(dir) = app.path().app_data_dir().map(|dir| dir.join("fragments")) else {

@@ -171,6 +171,20 @@ const ExperienceWindow: React.FC<{
 
   // The webview shows no native alert, so bookmark feedback lives inline.
   const [bookmarkNote, setBookmarkNote] = useState<string | null>(null);
+  const isMacDesktop =
+    typeof navigator !== "undefined" && /Mac/.test(navigator.platform ?? "");
+
+  const handleOpenNative = useCallback(async () => {
+    try {
+      await invoke("open_native_experience_window", {
+        contract: currentContract,
+        title: currentContract.name || initialExperienceId
+      });
+    } catch (error) {
+      setBookmarkNote(error instanceof Error ? error.message : String(error));
+    }
+  }, [currentContract, initialExperienceId]);
+
   const handleBookmark = useCallback(async () => {
     try {
       await persistenceService.bookmarkExperience({
@@ -258,6 +272,11 @@ const ExperienceWindow: React.FC<{
             </span>
           )}
           {bookmarkNote && <span style={{ fontSize: "0.82rem", opacity: 0.75 }}>{bookmarkNote}</span>}
+          {isMacDesktop && (
+            <button onClick={handleOpenNative} disabled={assembling} title="Open this app in a native macOS window">
+              Native window
+            </button>
+          )}
           <button onClick={handleBookmark} disabled={assembling}>Bookmark</button>
         </div>
       </header>

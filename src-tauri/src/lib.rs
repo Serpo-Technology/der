@@ -1283,6 +1283,7 @@ pub fn run() {
         .manage(oauth::PendingOauth::default())
         .manage(fragments::FragmentsState::new())
         .manage(runtime::sessions::RuntimeSessionsState::default())
+        .manage(runtime::sidecar::NativeRendererState::default())
         .setup(|app| {
             
             // Create tray menu
@@ -1367,7 +1368,8 @@ pub fn run() {
             runtime::sessions::runtime_resolve_view,
             runtime::sessions::runtime_set_element,
             runtime::sessions::runtime_dispatch_event,
-            runtime::sessions::runtime_close_session
+            runtime::sessions::runtime_close_session,
+            runtime::sidecar::open_native_experience_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
