@@ -124,17 +124,23 @@ struct OperationRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct OperationImplementation {
-    #[serde(rename = "type")]
-    impl_type: String,
-    endpoint: Option<String>,
-    method: Option<String>,
-    headers: Option<HashMap<String, String>>,
-    code: Option<String>,
-    repository_id: Option<String>,
+pub(crate) struct OperationImplementation {
+    #[serde(rename = "type", default)]
+    pub(crate) impl_type: String,
+    #[serde(default)]
+    pub(crate) endpoint: Option<String>,
+    #[serde(default)]
+    pub(crate) method: Option<String>,
+    #[serde(default)]
+    pub(crate) headers: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub(crate) code: Option<String>,
+    #[serde(default)]
+    pub(crate) repository_id: Option<String>,
     /// Named integration credential injected at request time; the secret
     /// never appears in the contract.
-    auth: Option<String>,
+    #[serde(default)]
+    pub(crate) auth: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -176,11 +182,23 @@ async fn execute_operation(app: tauri::AppHandle, request: OperationRequest) -> 
 }
 
 async fn execute_remote_operation(app: &tauri::AppHandle, request: &OperationRequest) -> Result<Value, String> {
-    let endpoint_template = request.implementation.endpoint
+    let integrations = settings::load_integrations(app);
+    execute_remote_core(&request.inputs, &request.implementation, &integrations).await
+}
+
+/// The confined remote HTTP path, shared by the execute_operation command
+/// and the runtime session dispatcher. Credential injection and base-URL
+/// confinement live here and nowhere else.
+pub(crate) async fn execute_remote_core(
+    inputs: &HashMap<String, Value>,
+    implementation: &OperationImplementation,
+    integrations: &settings::StoredIntegrations,
+) -> Result<Value, String> {
+    let endpoint_template = implementation.endpoint
         .as_ref()
         .ok_or("Remote operation missing endpoint")?;
 
-    let method = request.implementation.method
+    let method = implementation.method
         .clone()
         .unwrap_or_else(|| "GET".to_string())
         .to_uppercase();
@@ -189,7 +207,7 @@ async fn execute_remote_operation(app: &tauri::AppHandle, request: &OperationReq
     // parameters (GET/DELETE) or as a JSON body.
     let mut endpoint = endpoint_template.clone();
     let mut remaining: HashMap<String, Value> = HashMap::new();
-    for (name, value) in &request.inputs {
+    for (name, value) in inputs {
         let placeholder = format!("{{{}}}", name);
         if endpoint.contains(&placeholder) {
             let raw = match value {
@@ -218,13 +236,12 @@ async fn execute_remote_operation(app: &tauri::AppHandle, request: &OperationReq
         "DELETE" => client.delete(&endpoint),
         other => return Err(format!("Unsupported HTTP method: {}", other)),
     };
-    if let Some(headers) = &request.implementation.headers {
+    if let Some(headers) = &implementation.headers {
         for (key, value) in headers {
             req = req.header(key, value);
         }
     }
-    if let Some(auth_name) = &request.implementation.auth {
-        let integrations = settings::load_integrations(app);
+    if let Some(auth_name) = &implementation.auth {
         let credential = integrations.credentials.get(auth_name).ok_or_else(|| {
             format!(
                 "No integration credential named \"{}\"; add it in Settings under Integrations",
@@ -1265,6 +1282,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(oauth::PendingOauth::default())
         .manage(fragments::FragmentsState::new())
+        .manage(runtime::sessions::RuntimeSessionsState::default())
         .setup(|app| {
             
             // Create tray menu
@@ -1344,7 +1362,12 @@ pub fn run() {
             settings::set_llm_credential,
             settings::clear_llm_credential,
             oauth::claude_oauth_start,
-            oauth::claude_oauth_finish
+            oauth::claude_oauth_finish,
+            runtime::sessions::runtime_open_session,
+            runtime::sessions::runtime_resolve_view,
+            runtime::sessions::runtime_set_element,
+            runtime::sessions::runtime_dispatch_event,
+            runtime::sessions::runtime_close_session
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1582,6 +1582,26 @@ pub async fn execute_part_remote(
 ) -> Result<FragmentExecResult, FragmentError> {
     let started = std::time::Instant::now();
     let dir = fragments_dir(&app)?;
+    let integrations = crate::settings::load_integrations(&app);
+    let data = execute_part_remote_core(&dir, &integrations, &fragment_id, &operation, &inputs).await?;
+    Ok(FragmentExecResult {
+        success: true,
+        data: Some(data),
+        error: None,
+        execution_time_ms: started.elapsed().as_millis() as u64,
+    })
+}
+
+/// The integration-part HTTP path, shared by the command above and the
+/// runtime session dispatcher: signed service confinement, projection, and
+/// part-scoped credential injection all live here.
+pub async fn execute_part_remote_core(
+    dir: &Path,
+    integrations: &crate::settings::StoredIntegrations,
+    fragment_id: &str,
+    operation: &str,
+    inputs: &Value,
+) -> Result<Value, FragmentError> {
     let path = dir.join(format!("{}.derpart", fragment_id));
     let raw = std::fs::read(&path)
         .map_err(|_| fail(FragmentErrorKind::NotInstalled, format!("Part {} is not installed", fragment_id)))?;
@@ -1647,7 +1667,6 @@ pub async fn execute_part_remote(
     }
 
     // Part-scoped secrets, stored as part:<id>:<credential name>.
-    let integrations = crate::settings::load_integrations(&app);
     for requirement in &service.credentials {
         let store_key = format!("part:{}:{}", fragment_id, requirement.name);
         let secret = integrations
@@ -1693,18 +1712,11 @@ pub async fn execute_part_remote(
         ));
     }
 
-    let data = match &remote.project {
+    match &remote.project {
         Some(projection) => apply_projection(&body, projection, input_map)
-            .map_err(|message| fail(FragmentErrorKind::Io, message))?,
-        None => body,
-    };
-
-    Ok(FragmentExecResult {
-        success: true,
-        data: Some(data),
-        error: None,
-        execution_time_ms: started.elapsed().as_millis() as u64,
-    })
+            .map_err(|message| fail(FragmentErrorKind::Io, message)),
+        None => Ok(body),
+    }
 }
 
 #[tauri::command]

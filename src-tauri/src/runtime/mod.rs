@@ -4,9 +4,12 @@
 //! hold the two to identical behavior, JavaScript edge cases included, so
 //! every renderer backend computes exactly what the webview computes.
 
+pub mod env;
 pub mod expression;
+pub mod host;
 pub mod operations;
 pub mod session;
+pub mod sessions;
 pub mod templates;
 pub mod transforms;
 pub mod value;

@@ -9,9 +9,25 @@
 
 use serde_json::{Map, Value};
 
-use super::operations::{execute_builtin, is_builtin, OpEnv};
+use super::env::RuntimeEnv;
+use super::operations::{execute_builtin, is_builtin};
 use super::transforms::{apply_legacy_single_with, apply_pipeline_with, TransformStep};
 use super::value::get_value_at_path;
+
+/// One non-builtin execution request. The host dispatcher routes it: wasm
+/// compute parts, integration part remotes, contract remote endpoints, and
+/// http.get; secrets and confinement stay host-side.
+pub struct DispatchRequest<'a> {
+    pub operation_id: &'a str,
+    pub operation_name: &'a str,
+    /// Resolved flat inputs (structured prefixes still flat).
+    pub inputs: &'a Map<String, Value>,
+    pub implementation: Option<&'a Map<String, Value>>,
+}
+
+pub trait OperationDispatcher: Send {
+    fn dispatch(&self, request: &DispatchRequest) -> Result<Map<String, Value>, String>;
+}
 
 fn deserialize_present<'de, D>(deserializer: D) -> Result<Option<Value>, D::Error>
 where
@@ -70,7 +86,8 @@ pub struct OperationSpec {
 pub struct Session {
     operations: Vec<OperationSpec>,
     state: Map<String, Value>,
-    env: OpEnv,
+    env: Box<dyn RuntimeEnv + Send>,
+    dispatcher: Option<Box<dyn OperationDispatcher>>,
 }
 
 impl Session {
@@ -80,7 +97,7 @@ impl Session {
         operations: Vec<OperationSpec>,
         initial_state: Map<String, Value>,
         elements: &[Value],
-        env: OpEnv,
+        env: Box<dyn RuntimeEnv + Send>,
     ) -> Self {
         let mut state = initial_state;
         for operation in &operations {
@@ -92,7 +109,11 @@ impl Session {
             }
         }
         seed_element_defaults(elements, &mut state);
-        Self { operations, state, env }
+        Self { operations, state, env, dispatcher: None }
+    }
+
+    pub fn set_dispatcher(&mut self, dispatcher: Box<dyn OperationDispatcher>) {
+        self.dispatcher = Some(dispatcher);
     }
 
     pub fn state(&self) -> &Map<String, Value> {
@@ -124,44 +145,45 @@ impl Session {
             .cloned()
             .ok_or_else(|| format!("Operation {} not found in contract", operation_id))?;
 
-        self.check_runnable(&operation)?;
-        let inputs = self.resolve_inputs(&operation, item);
-        let result = execute_builtin(
-            &operation.operation_name,
-            &inputs,
-            &mut self.state,
-            &mut self.env,
-        )?;
-        self.route_outputs(&operation, &Value::Object(result));
-        Ok(())
-    }
-
-    /// resolveExecutionType's tolerance, minus what only the host can run.
-    fn check_runnable(&self, operation: &OperationSpec) -> Result<(), String> {
         let implementation = operation.implementation.as_ref();
         let has_code = implementation.is_some_and(|imp| imp.get("code").is_some());
-        let has_endpoint = implementation.is_some_and(|imp| imp.get("endpoint").is_some());
-        let builtin = is_builtin(&operation.operation_name);
-        match operation.execution_type.as_deref() {
-            Some("builtin") if builtin => Ok(()),
-            Some("local") => Err(format!(
+        if matches!(operation.execution_type.as_deref(), Some("local")) || has_code {
+            return Err(format!(
                 "Local operation {} runs only in the webview renderer",
                 operation.id
-            )),
-            Some("remote") => Err(format!(
-                "Remote operation {} needs the host dispatcher",
-                operation.id
-            )),
-            _ if builtin => Ok(()),
-            _ if has_code || has_endpoint => Err(format!(
-                "Operation {} needs the host dispatcher",
-                operation.id
-            )),
-            _ => Err(format!(
-                "Unknown operation \"{}\" ({}): not a builtin and no runnable implementation",
-                operation.operation_name, operation.id
-            )),
+            ));
         }
+
+        let inputs = self.resolve_inputs(&operation, item);
+        let result = if is_builtin(&operation.operation_name) {
+            execute_builtin(
+                &operation.operation_name,
+                &inputs,
+                &mut self.state,
+                self.env.as_mut(),
+            )?
+        } else if let Some(dispatcher) = &self.dispatcher {
+            dispatcher.dispatch(&DispatchRequest {
+                operation_id: &operation.id,
+                operation_name: &operation.operation_name,
+                inputs: &inputs,
+                implementation,
+            })?
+        } else {
+            let has_endpoint = implementation.is_some_and(|imp| imp.get("endpoint").is_some());
+            return Err(if has_endpoint
+                || matches!(operation.execution_type.as_deref(), Some("remote"))
+            {
+                format!("Remote operation {} needs the host dispatcher", operation.id)
+            } else {
+                format!(
+                    "Unknown operation \"{}\" ({}): not a builtin and no runnable implementation",
+                    operation.operation_name, operation.id
+                )
+            });
+        };
+        self.route_outputs(&operation, &Value::Object(result));
+        Ok(())
     }
 
     fn resolve_inputs(&self, operation: &OperationSpec, item: Option<&Value>) -> Map<String, Value> {

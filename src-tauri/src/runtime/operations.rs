@@ -5,33 +5,10 @@
 //! http.get is absent on purpose: it is network IO routed through the host's
 //! confined HTTP machinery, outside the pure kernel.
 
-use std::collections::VecDeque;
-
 use serde_json::{Map, Value};
 
+use super::env::RuntimeEnv;
 use super::value::{get_value_at_path, js_to_number, js_to_string, js_truthy, loose_equals};
-
-/// Deterministic environment: scripted ids and random rolls, and a fixed
-/// instant. The executor supplies real entropy and the real clock; the
-/// conformance vectors supply scripts.
-pub struct OpEnv {
-    pub ids: VecDeque<String>,
-    pub randoms: VecDeque<f64>,
-    pub epoch_ms: i64,
-    pub tz_offset_minutes: i32,
-}
-
-impl OpEnv {
-    fn next_id(&mut self) -> String {
-        self.ids
-            .pop_front()
-            .unwrap_or_else(|| format!("id-{}", self.epoch_ms))
-    }
-
-    fn next_random(&mut self) -> f64 {
-        self.randoms.pop_front().unwrap_or(0.0)
-    }
-}
 
 /// The builtins this kernel executes. http.get is deliberately absent: it is
 /// network IO owned by the host's confined HTTP path, reached through the
@@ -141,7 +118,7 @@ pub fn execute_builtin(
     operation: &str,
     raw_inputs: &Map<String, Value>,
     state: &mut Map<String, Value>,
-    env: &mut OpEnv,
+    env: &mut dyn RuntimeEnv,
 ) -> Result<Map<String, Value>, String> {
     let inputs = assemble_structured(raw_inputs, structured_prefixes(operation));
     match operation {
@@ -288,9 +265,9 @@ pub fn execute_builtin(
             )]))
         }
         "time.now" => {
-            let utc = chrono::DateTime::from_timestamp_millis(env.epoch_ms)
+            let utc = chrono::DateTime::from_timestamp_millis(env.epoch_ms())
                 .ok_or_else(|| "invalid clock instant".to_string())?;
-            let local = utc + chrono::Duration::minutes(env.tz_offset_minutes as i64);
+            let local = utc + chrono::Duration::minutes(env.tz_offset_minutes() as i64);
             Ok(outputs(vec![
                 (
                     "iso",
@@ -300,7 +277,7 @@ pub fn execute_builtin(
                 ),
                 ("date", Value::String(local.format("%Y-%m-%d").to_string())),
                 ("time", Value::String(local.format("%H:%M").to_string())),
-                ("epoch", Value::from(env.epoch_ms)),
+                ("epoch", Value::from(env.epoch_ms())),
             ]))
         }
         "random.int" => {

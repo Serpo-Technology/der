@@ -296,7 +296,19 @@ handler wiring); `runtime/view.rs` plus `runtime/templates.rs` are the Rust twin
 identical trees by the template and view vectors under the protocol's JSON-value semantics
 (object keys holding null and absent keys are equivalent; missing state reads stay distinct
 from null in numeric comparisons). A resolved tree plus the session is everything a renderer
-backend needs; the webview is the reference consumer. The committed vectors in `runtime-conformance/` are
+backend needs; the webview is the reference consumer. The dispatcher seam
+(`runtime/session.rs` trait, `runtime/host.rs` implementation) routes non-builtin operations
+to the machinery that already runs them: wasm parts in the wasmtime host, integration part
+remotes through the signed service path, contract remotes and `http.get` through the shared
+confined HTTP core extracted from `execute_operation` (credential injection and confinement
+live in one place; local code stays webview-only). Ids, randomness, and the clock reach
+operations only through the `RuntimeEnv` trait (`runtime/env.rs`): scripted in vectors, real
+in production. `runtime/sessions.rs` is the live-session surface: `runtime_open_session`
+(pack operations instantiated, installed fragment defs and part routes loaded from the
+manifests on disk, saved data merged), `runtime_resolve_view`, `runtime_set_element`,
+`runtime_dispatch_event` (off the async core threads), `runtime_close_session`; its
+host-free cores are integration-tested by driving the committed stopwatch pack natively.
+The committed vectors in `runtime-conformance/` are
 the semantic contract: both test suites run every vector (vitest
 `runtime-conformance.test.ts`, cargo `runtime_conformance.rs`), covering the
 JavaScript-flavored edges (Math.round at negative halves, toFixed strings, loose equality,

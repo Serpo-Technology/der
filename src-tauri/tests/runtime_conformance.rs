@@ -4,15 +4,16 @@
 //! they hold the two implementations to identical semantics.
 
 use dynamic_experience_runtime_lib::runtime::expression::parse_row_expression;
-use dynamic_experience_runtime_lib::runtime::operations::{execute_builtin, OpEnv};
+use dynamic_experience_runtime_lib::runtime::env::ScriptedEnv;
+use dynamic_experience_runtime_lib::runtime::operations::execute_builtin;
 use dynamic_experience_runtime_lib::runtime::session::{OperationSpec, Session};
 use dynamic_experience_runtime_lib::runtime::transforms::{
     apply_legacy_single, apply_pipeline, apply_transform, TransformStep,
 };
 use serde_json::{Map, Value};
 
-fn env_from(vector: &Value) -> OpEnv {
-    OpEnv {
+fn env_from(vector: &Value) -> ScriptedEnv {
+    ScriptedEnv {
         ids: vector["env"]["ids"]
             .as_array()
             .map(|ids| {
@@ -207,7 +208,7 @@ fn session_vectors_match() {
             operations,
             params_of(vector, "initialState"),
             &elements,
-            env_from(vector),
+            Box::new(env_from(vector)),
         );
         let mut failed: Vec<String> = Vec::new();
 
