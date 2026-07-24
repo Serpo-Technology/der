@@ -63,6 +63,28 @@ function openAndValidate(data: string, onError = vi.fn()) {
 }
 
 describe('ImportDialog', () => {
+  it('accepts the app\'s own export format (null options, snake_case dates)', () => {
+    const rustWire = JSON.stringify({
+      contract: COUNTER_CONTRACT,
+      metadata: {
+        title: 'My Counter',
+        description: null,
+        author: null,
+        created_at: '2026-07-20T10:00:00.000000+00:00',
+        shared_at: '2026-07-23T09:30:00.000000+00:00',
+        tags: null,
+        category: null,
+      },
+      version: '1.0.0',
+      checksum: '1a2b3c',
+    });
+    openAndValidate(rustWire);
+
+    expect(screen.getByText('Ready to import')).toBeInTheDocument();
+    expect(screen.getByText('My Counter')).toBeInTheDocument();
+    expect(screen.getByText('Import Experience')).toBeEnabled();
+  });
+
   it('previews a pasted share with string dates without crashing', () => {
     openAndValidate(shareJson());
 

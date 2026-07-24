@@ -52,6 +52,35 @@ function envelope(overrides: Record<string, unknown> = {}): string {
 }
 
 describe('parseShareableText', () => {
+  it('round-trips the app\'s own export format exactly as Rust emits it', () => {
+    // Mirrors share_experience in src-tauri/src/lib.rs byte for byte: absent
+    // options serialize as null and the date keys are snake_case.
+    const rustWire = JSON.stringify({
+      contract: COUNTER_CONTRACT,
+      metadata: {
+        title: 'My Counter',
+        description: null,
+        author: null,
+        created_at: '2026-07-20T10:00:00.000000+00:00',
+        shared_at: '2026-07-23T09:30:00.000000+00:00',
+        tags: null,
+        category: null,
+      },
+      version: '1.0.0',
+      checksum: '1a2b3c',
+    });
+
+    const parsed = parseShareableText(rustWire);
+
+    expect(parsed.problems).toEqual([]);
+    expect(parsed.shape?.name).toBe('counter');
+    expect(parsed.shareable?.metadata.title).toBe('My Counter');
+    expect(parsed.shareable?.metadata.description).toBeUndefined();
+    expect(parsed.shareable?.metadata.tags).toBeUndefined();
+    expect(parsed.shareable?.metadata.createdAt.getUTCDate()).toBe(20);
+    expect(parsed.shareable?.metadata.sharedAt.getUTCDate()).toBe(23);
+  });
+
   it('hydrates string dates into Date instances and validates the contract', () => {
     const parsed = parseShareableText(envelope());
 

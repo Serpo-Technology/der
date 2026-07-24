@@ -29,17 +29,38 @@ const ShareMetadataSchema = z.object({
   category: z.string().optional(),
 });
 
+/** The app's own exports come from the Rust share command, where absent
+ * options serialize as null and the date keys are created_at/shared_at.
+ * Hydration treats null as absent and reads both date spellings, so a DER
+ * export always round-trips through import. */
+function normalizeMetadataWire(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const record = { ...(value as Record<string, unknown>) };
+  if (record.createdAt === undefined && record.created_at !== undefined) {
+    record.createdAt = record.created_at;
+  }
+  if (record.sharedAt === undefined && record.shared_at !== undefined) {
+    record.sharedAt = record.shared_at;
+  }
+  delete record.created_at;
+  delete record.shared_at;
+  for (const key of Object.keys(record)) {
+    if (record[key] === null) delete record[key];
+  }
+  return record;
+}
+
 const ShareableEnvelopeSchema = z.object({
   contract: z.record(z.string(), z.unknown()),
   // The default carries every field: an absent metadata block is not parsed
   // through the inner schema, so inner defaults would not fill it.
-  metadata: ShareMetadataSchema.default(() => ({
+  metadata: z.preprocess(normalizeMetadataWire, ShareMetadataSchema).default(() => ({
     title: 'Shared experience',
     createdAt: new Date(),
     sharedAt: new Date(),
   })),
   version: z.string().default('1.0.0'),
-  checksum: z.string().default(''),
+  checksum: z.string().nullish().transform((value) => value ?? ''),
 });
 
 export interface ParsedShare {
