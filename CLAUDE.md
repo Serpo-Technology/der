@@ -315,7 +315,16 @@ every user action with a fresh tree; the panel is a pure view and secrets never 
 host. `native/macos/` is the SwiftUI panel (SwiftPM, built with `swift build`, found via
 `DER_NATIVE_RENDERER` or the dev build path); the standalone experience window shows a
 "Native window" button on macOS. `swift test` decodes the committed view vectors, holding
-the panel's protocol types to the same trees as the other two resolvers.
+the panel's protocol types to the same trees as the other two resolvers. Native mode
+(`--native` or `DER_NATIVE_MODE=1`; the standalone panel binary launches the app this way)
+makes native the default: `open_experience_window_impl` routes every non-assembling open to
+the panel with saved state restored (restored data beats placeholders and element defaults,
+the webview's merge order), the bridge persists per-app state after every action, the panel
+shows DER's home (create relays the prompt to the hidden main window's pipeline via the
+`native-create` event; bookmarks open fully natively; the tray hook keeps the home list
+current), and `native_update_experience_contract` lands edits in open native windows with
+state preserved. The webview pipeline consults `runtime_native_mode` to skip streaming
+assembly previews in native mode.
 The committed vectors in `runtime-conformance/` are
 the semantic contract: both test suites run every vector (vitest
 `runtime-conformance.test.ts`, cargo `runtime_conformance.rs`), covering the

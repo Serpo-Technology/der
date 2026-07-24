@@ -68,7 +68,7 @@ fn open_bridge() -> (SidecarBridge, Recorder) {
     .expect("session opens");
     let elements = contract["elements"].as_array().cloned().unwrap();
     bridge
-        .open_window("w1", "Counter", None, entry, elements)
+        .open_window("w1", "exp-counter", "Counter", None, entry, elements)
         .expect("window opens");
     (bridge, recorder)
 }
@@ -137,6 +137,84 @@ fn element_writes_update_and_failures_surface() {
     assert_eq!(failure["operationId"], "op-boom");
     // The chain stopped: the counter never advanced.
     assert_eq!(content_of(&sent.last().unwrap()["tree"]), "Clicks: ");
+}
+
+#[test]
+fn session_mutations_fire_the_persistence_callback() {
+    let (mut bridge, _recorder) = open_bridge();
+    let saved: Arc<Mutex<Vec<(String, Value)>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = saved.clone();
+    bridge.set_on_change(Box::new(move |experience_id, state| {
+        sink.lock()
+            .unwrap()
+            .push((experience_id.to_string(), Value::Object(state.clone())));
+    }));
+
+    bridge
+        .handle_event(&json!({
+            "event": "dispatch", "windowId": "w1", "operationIds": ["op-add"]
+        }))
+        .expect("dispatch handled");
+
+    let saved = saved.lock().unwrap();
+    assert_eq!(saved.len(), 1);
+    assert_eq!(saved[0].0, "exp-counter");
+    assert_eq!(saved[0].1["clicks"], json!(1.0));
+}
+
+#[test]
+fn replacing_a_session_preserves_state_and_updates_the_view() {
+    let (mut bridge, recorder) = open_bridge();
+    bridge
+        .handle_event(&json!({
+            "event": "dispatch", "windowId": "w1", "operationIds": ["op-add"]
+        }))
+        .expect("dispatch handled");
+
+    // A contract edit rebuilds the session with the preserved state, the
+    // way the native update command does it.
+    let preserved = bridge.state_of_experience("exp-counter").expect("state");
+    let contract = counter_contract();
+    let entry = open_session_core(
+        &contract,
+        preserved,
+        Map::new(),
+        Box::new(ScriptedEnv {
+            ids: VecDeque::new(),
+            randoms: VecDeque::new(),
+            epoch_ms: 0,
+            tz_offset_minutes: 0,
+        }),
+        None,
+    )
+    .expect("rebuilt session");
+    let elements = contract["elements"].as_array().cloned().unwrap();
+    bridge
+        .replace_session("exp-counter", entry, elements)
+        .expect("session replaced");
+
+    let sent = recorder.0.lock().unwrap();
+    let last = sent.last().unwrap();
+    assert_eq!(last["cmd"], "update");
+    // Restored data beats the rebuilt session's placeholders.
+    assert_eq!(content_of(&last["tree"]), "Clicks: 1");
+}
+
+#[test]
+fn home_actions_return_to_the_caller() {
+    let (mut bridge, _recorder) = open_bridge();
+    let relayed = bridge
+        .handle_event(&json!({ "event": "create", "prompt": "a todo app" }))
+        .expect("handled")
+        .expect("relayed");
+    assert_eq!(relayed["prompt"], "a todo app");
+
+    let handled = bridge
+        .handle_event(&json!({
+            "event": "dispatch", "windowId": "w1", "operationIds": ["op-add"]
+        }))
+        .expect("handled");
+    assert!(handled.is_none());
 }
 
 #[test]

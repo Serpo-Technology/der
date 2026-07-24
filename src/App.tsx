@@ -177,6 +177,7 @@ const ExperienceWindow: React.FC<{
   const handleOpenNative = useCallback(async () => {
     try {
       await invoke("open_native_experience_window", {
+        experienceId: initialExperienceId,
         contract: currentContract,
         title: currentContract.name || initialExperienceId
       });

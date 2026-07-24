@@ -110,11 +110,32 @@ export const MainInterface: React.FC = () => {
         loadBookmarkedExperiences();
         setState(prev => ({ ...prev, currentMode: 'bookmarks' }));
       });
+
+      // The native home relays creation prompts here; generation runs in
+      // this window's pipeline and the finished app opens natively.
+      await listen<string>('native-create', (event) => {
+        const prompt = typeof event.payload === 'string' ? event.payload : '';
+        if (!prompt.trim()) return;
+        setState(prev => ({ ...prev, naturalLanguageInput: prompt, currentMode: 'create' }));
+        setPendingNativeCreate(true);
+      });
     };
 
     setupEventListeners();
     loadBookmarkedExperiences(); // Load on startup
   }, [loadBookmarkedExperiences]);
+
+  // A relayed prompt generates as soon as the input state carries it.
+  const [pendingNativeCreate, setPendingNativeCreate] = useState(false);
+  useEffect(() => {
+    if (pendingNativeCreate && state.naturalLanguageInput.trim()) {
+      setPendingNativeCreate(false);
+      void handleGenerateBlueprint();
+    }
+    // handleGenerateBlueprint is declared below; the effect only fires once
+    // the relayed prompt is present.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingNativeCreate, state.naturalLanguageInput]);
 
   // Open an experience as its own app window.
   const openExperienceWindow = useCallback(async (

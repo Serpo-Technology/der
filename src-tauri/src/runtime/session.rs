@@ -116,6 +116,14 @@ impl Session {
         self.dispatcher = Some(dispatcher);
     }
 
+    /// Saved per-app data lands over the seeds, placeholders, and element
+    /// defaults, the webview's initialData merge order.
+    pub fn overlay_data(&mut self, data: Map<String, Value>) {
+        for (key, value) in data {
+            self.state.insert(key, value);
+        }
+    }
+
     pub fn state(&self) -> &Map<String, Value> {
         &self.state
     }

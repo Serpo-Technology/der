@@ -61,6 +61,15 @@ export class IntegratedExperienceService {
   /** Latest contract and status per assembling experience, replayed to
    * windows whose webview boots after generation already moved on. */
   private assemblySnapshots = new Map<string, AssemblySnapshot>();
+  private nativeModePromise: Promise<boolean> | null = null;
+
+  /** Native mode: experiences open in native panel windows, so streaming
+   * previews stay unrendered and edits push into the open native window. */
+  private isNativeMode(): Promise<boolean> {
+    if (!isTauriRuntime()) return Promise.resolve(false);
+    this.nativeModePromise ??= invoke<boolean>('runtime_native_mode').catch(() => false);
+    return this.nativeModePromise;
+  }
 
   constructor() {
     // Shared singleton so generation sees the seeded component catalog.
@@ -119,10 +128,12 @@ export class IntegratedExperienceService {
       const windowTitle = input.length > 48 ? `${input.slice(0, 45)}...` : input;
 
       // Step 1: Compose contract + spec in a single call; project the
-      // blueprint. Streaming partials drive the live assembly preview.
+      // blueprint. Streaming partials drive the live assembly preview,
+      // except in native mode, where the finished contract opens the window.
+      const nativeMode = await this.isNativeMode();
       let windowOpened = false;
       let opening: Promise<void> | null = null;
-      const onPartial = isTauriRuntime()
+      const onPartial = isTauriRuntime() && !nativeMode
         ? (accumulated: string) => {
             const preview = extractStreamingContract(accumulated);
             if (!preview) return;
@@ -415,6 +426,14 @@ export class IntegratedExperienceService {
       } catch {
         // Outside Tauri there is no event bus; the caller applies the result.
       }
+    }
+
+    // An open native window shows the edited contract with its state kept.
+    if (await this.isNativeMode()) {
+      invoke('native_update_experience_contract', {
+        experienceId,
+        contract: contract.toObject()
+      }).catch(() => undefined);
     }
 
     await this.persistence

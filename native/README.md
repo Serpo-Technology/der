@@ -26,3 +26,17 @@ same runtime core, parts, and credentials as the webview.
 `swift test` decodes the committed view vectors in `runtime-conformance/`,
 so the panel's protocol types are held to the same trees as the Rust and
 TypeScript resolvers.
+
+## Native mode
+
+With `--native` (or `DER_NATIVE_MODE=1`), DER runs native-first: the panel
+shows DER's home (describe an app to create it, open a bookmarked one), and
+every experience opens as a native window by default, tray launches and
+generated apps included, with per-app state saved and restored like webview
+windows. Generation still runs in the hidden main window's pipeline; the
+finished contract opens natively, and later edits land in the open native
+window with its state kept.
+
+Running `DerNativePanel` directly (from a terminal or Finder) starts DER in
+native mode: it finds the app binary via `DER_APP_BINARY` or the dev build
+path and hands over.

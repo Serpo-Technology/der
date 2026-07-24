@@ -357,19 +357,42 @@ async fn save_experience_state(
     experience_id: String,
     state: Value
 ) -> Result<(), String> {
+    write_experience_state_file(&app, &experience_id, &state)
+}
+
+/// Per-app state file write, shared by the webview save command and the
+/// native panel bridge.
+pub(crate) fn write_experience_state_file(
+    app: &AppHandle,
+    experience_id: &str,
+    state: &Value,
+) -> Result<(), String> {
     let app_data_dir = app.path().app_data_dir()
         .map_err(|e| format!("Failed to get app data directory: {}", e))?;
-    
+
     let state_dir = app_data_dir.join("experience_states");
     fs::create_dir_all(&state_dir)
         .map_err(|e| format!("Failed to create state directory: {}", e))?;
-    
+
     let state_file = state_dir.join(format!("{}.json", experience_id));
-    let state_json = serde_json::to_string_pretty(&state)
+    let state_json = serde_json::to_string_pretty(state)
         .map_err(|e| format!("Failed to serialize state: {}", e))?;
-    
+
     fs::write(state_file, state_json)
         .map_err(|e| format!("Failed to save experience state: {}", e))
+}
+
+/// Native mode: experiences open in native panel windows by default and the
+/// panel shows DER's home. Set by the --native argument or DER_NATIVE_MODE=1
+/// (the standalone panel binary launches the app this way).
+pub(crate) fn native_mode() -> bool {
+    std::env::var("DER_NATIVE_MODE").is_ok_and(|value| value == "1")
+        || std::env::args().any(|argument| argument == "--native")
+}
+
+#[tauri::command]
+fn runtime_native_mode() -> bool {
+    native_mode()
 }
 
 fn read_experience_state(app: &AppHandle, experience_id: &str) -> Option<Value> {
@@ -1159,6 +1182,8 @@ fn rebuild_tray_menu(app: &AppHandle) {
             Err(e) => eprintln!("Failed to rebuild tray menu: {}", e),
         }
     }
+    // The native home lists the same bookmarks; keep it current too.
+    runtime::sidecar::refresh_native_home(app);
 }
 
 #[tauri::command]
@@ -1231,6 +1256,21 @@ fn open_experience_window_impl(
     title: Option<String>,
     assembling: bool,
 ) -> Result<(), String> {
+    if native_mode() {
+        // Streaming previews stay unrendered in native mode; the final
+        // contract opens the window.
+        if assembling {
+            return Ok(());
+        }
+        let saved_state = read_experience_state(app, experience_id);
+        return runtime::sidecar::open_native_for_experience(
+            app,
+            experience_id,
+            contract,
+            title,
+            saved_state,
+        );
+    }
     let label = format!("exp-{}", experience_id);
     if let Some(existing) = app.get_webview_window(&label) {
         existing.show().map_err(|e| e.to_string())?;
@@ -1285,7 +1325,10 @@ pub fn run() {
         .manage(runtime::sessions::RuntimeSessionsState::default())
         .manage(runtime::sidecar::NativeRendererState::default())
         .setup(|app| {
-            
+            if native_mode() {
+                runtime::sidecar::show_native_home(app.handle());
+            }
+
             // Create tray menu
             let menu = create_tray_menu(app.handle())?;
 
@@ -1369,7 +1412,9 @@ pub fn run() {
             runtime::sessions::runtime_set_element,
             runtime::sessions::runtime_dispatch_event,
             runtime::sessions::runtime_close_session,
-            runtime::sidecar::open_native_experience_window
+            runtime::sidecar::open_native_experience_window,
+            runtime::sidecar::native_update_experience_contract,
+            runtime_native_mode
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

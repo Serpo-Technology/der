@@ -126,6 +126,11 @@ public struct ResolvedNode: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+public struct HomeBookmark: Decodable, Sendable, Identifiable {
+    public let id: String
+    public let name: String
+}
+
 /// One inbound line from the runtime core.
 public struct InboundMessage: Decodable, Sendable {
     public let cmd: String
@@ -134,4 +139,5 @@ public struct InboundMessage: Decodable, Sendable {
     public let theme: String?
     public let tree: [ResolvedNode]?
     public let operationId: String?
+    public let bookmarks: [HomeBookmark]?
 }

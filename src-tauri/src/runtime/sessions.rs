@@ -50,16 +50,16 @@ pub fn open_session_core(
         operations.push(spec);
     }
 
-    let mut initial_state = contract
+    let initial_state = contract
         .get("initialState")
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
-    for (key, value) in initial_data {
-        initial_state.insert(key, value);
-    }
 
     let mut session = Session::new(operations, initial_state, &elements, env);
+    // Saved data wins over operation placeholders and element defaults,
+    // matching the webview's initialData merge.
+    session.overlay_data(initial_data);
     if let Some(dispatcher) = dispatcher {
         session.set_dispatcher(dispatcher);
     }
