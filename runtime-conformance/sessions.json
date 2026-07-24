@@ -1,0 +1,696 @@
+{
+  "formatVersion": 1,
+  "sessions": [
+    {
+      "name": "entry flow: element reads, input transform, reset outputs, mirrors",
+      "operations": [
+        {
+          "id": "op-add",
+          "operationName": "list.append",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "expenses"
+            },
+            {
+              "name": "item.description",
+              "source": "ui-element",
+              "sourceId": "desc-in"
+            },
+            {
+              "name": "item.amount",
+              "source": "ui-element",
+              "sourceId": "amt-in",
+              "transforms": [
+                {
+                  "type": "parseNumber",
+                  "parameters": {}
+                }
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "name": "reset",
+              "target": "ui-element",
+              "targetId": "desc-in"
+            },
+            {
+              "name": "reset",
+              "target": "ui-element",
+              "targetId": "amt-in"
+            }
+          ]
+        }
+      ],
+      "initialState": {},
+      "elements": [],
+      "env": {
+        "ids": [
+          "gen-1"
+        ],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "events": [
+        {
+          "do": "setElement",
+          "elementId": "desc-in",
+          "value": "lunch"
+        },
+        {
+          "do": "setElement",
+          "elementId": "amt-in",
+          "value": "12.5"
+        },
+        {
+          "do": "chain",
+          "operationIds": [
+            "op-add"
+          ]
+        }
+      ],
+      "expected": {
+        "data": {
+          "operation_op-add_reset": "",
+          "element_desc-in": "",
+          "element_amt-in": "",
+          "expenses": [
+            {
+              "description": "lunch",
+              "amount": 12.5,
+              "id": "gen-1"
+            }
+          ],
+          "operation_op-add": {
+            "list": [
+              {
+                "description": "lunch",
+                "amount": 12.5,
+                "id": "gen-1"
+              }
+            ],
+            "item": {
+              "description": "lunch",
+              "amount": 12.5,
+              "id": "gen-1"
+            },
+            "reset": ""
+          }
+        },
+        "failed": []
+      }
+    },
+    {
+      "name": "typed constants: present null value wins over sourceId",
+      "operations": [
+        {
+          "id": "op-flag",
+          "operationName": "state.set",
+          "executionType": "builtin",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "running"
+            },
+            {
+              "name": "value",
+              "source": "constant",
+              "sourceId": "true",
+              "value": true
+            }
+          ],
+          "outputs": []
+        },
+        {
+          "id": "op-null",
+          "operationName": "state.set",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "cleared"
+            },
+            {
+              "name": "value",
+              "source": "constant",
+              "sourceId": "ignored",
+              "value": null
+            }
+          ],
+          "outputs": []
+        },
+        {
+          "id": "op-step",
+          "operationName": "counter.add",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "clicks"
+            },
+            {
+              "name": "amount",
+              "source": "state",
+              "sourceId": "step"
+            }
+          ],
+          "outputs": []
+        }
+      ],
+      "initialState": {
+        "step": 5
+      },
+      "elements": [],
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "events": [
+        {
+          "do": "chain",
+          "operationIds": [
+            "op-flag",
+            "op-null",
+            "op-step"
+          ]
+        }
+      ],
+      "expected": {
+        "data": {
+          "step": 5,
+          "running": true,
+          "operation_op-flag": {
+            "value": true
+          },
+          "cleared": null,
+          "operation_op-null": {
+            "value": null
+          },
+          "clicks": 5,
+          "operation_op-step": {
+            "value": 5
+          }
+        },
+        "failed": []
+      }
+    },
+    {
+      "name": "item scope delete",
+      "operations": [
+        {
+          "id": "op-del",
+          "operationName": "list.removeWhere",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "rows"
+            },
+            {
+              "name": "value",
+              "source": "item",
+              "sourceId": "id"
+            }
+          ],
+          "outputs": []
+        }
+      ],
+      "initialState": {
+        "rows": [
+          {
+            "id": "a",
+            "title": "x"
+          },
+          {
+            "id": "b",
+            "title": "y"
+          }
+        ]
+      },
+      "elements": [],
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "events": [
+        {
+          "do": "chain",
+          "operationIds": [
+            "op-del"
+          ],
+          "item": {
+            "id": "a",
+            "title": "x"
+          }
+        }
+      ],
+      "expected": {
+        "data": {
+          "rows": [
+            {
+              "id": "b",
+              "title": "y"
+            }
+          ],
+          "operation_op-del": {
+            "list": [
+              {
+                "id": "b",
+                "title": "y"
+              }
+            ]
+          }
+        },
+        "failed": []
+      }
+    },
+    {
+      "name": "live parameter reference in an input pipeline",
+      "operations": [
+        {
+          "id": "op-count",
+          "operationName": "state.set",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "matches"
+            },
+            {
+              "name": "value",
+              "source": "state",
+              "sourceId": "rows",
+              "transforms": [
+                {
+                  "type": "filterBy",
+                  "parameters": {
+                    "field": "category",
+                    "value": {
+                      "source": "element",
+                      "sourceId": "cat-in"
+                    }
+                  }
+                },
+                {
+                  "type": "count",
+                  "parameters": {}
+                }
+              ]
+            }
+          ],
+          "outputs": []
+        }
+      ],
+      "initialState": {
+        "rows": [
+          {
+            "id": "a",
+            "category": "food"
+          },
+          {
+            "id": "b",
+            "category": "travel"
+          },
+          {
+            "id": "c",
+            "category": "food"
+          }
+        ]
+      },
+      "elements": [],
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "events": [
+        {
+          "do": "setElement",
+          "elementId": "cat-in",
+          "value": "food"
+        },
+        {
+          "do": "chain",
+          "operationIds": [
+            "op-count"
+          ]
+        }
+      ],
+      "expected": {
+        "data": {
+          "rows": [
+            {
+              "id": "a",
+              "category": "food"
+            },
+            {
+              "id": "b",
+              "category": "travel"
+            },
+            {
+              "id": "c",
+              "category": "food"
+            }
+          ],
+          "element_cat-in": "food",
+          "matches": 2,
+          "operation_op-count": {
+            "value": 2
+          }
+        },
+        "failed": []
+      }
+    },
+    {
+      "name": "a failed operation stops its chain",
+      "operations": [
+        {
+          "id": "op-pick",
+          "operationName": "random.pick",
+          "inputs": [
+            {
+              "name": "list",
+              "source": "state",
+              "sourceId": "options"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "value",
+              "target": "state",
+              "targetId": "chosen"
+            }
+          ]
+        },
+        {
+          "id": "op-mark",
+          "operationName": "state.set",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "picked"
+            },
+            {
+              "name": "value",
+              "source": "constant",
+              "sourceId": "yes"
+            }
+          ],
+          "outputs": []
+        }
+      ],
+      "initialState": {},
+      "elements": [],
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "events": [
+        {
+          "do": "chain",
+          "operationIds": [
+            "op-pick",
+            "op-mark"
+          ]
+        }
+      ],
+      "expected": {
+        "data": {
+          "operation_op-pick_value": null
+        },
+        "failed": [
+          "op-pick"
+        ]
+      }
+    },
+    {
+      "name": "output transforms run without live context",
+      "operations": [
+        {
+          "id": "op-sum",
+          "operationName": "math.add",
+          "inputs": [
+            {
+              "name": "a",
+              "source": "constant",
+              "sourceId": "2",
+              "value": 2
+            },
+            {
+              "name": "b",
+              "source": "constant",
+              "sourceId": "3",
+              "value": 3
+            }
+          ],
+          "outputs": [
+            {
+              "name": "result",
+              "target": "state",
+              "targetId": "total",
+              "transforms": [
+                {
+                  "type": "format",
+                  "parameters": {
+                    "template": "Sum: {{value}}"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "result",
+              "target": "state",
+              "targetId": "same",
+              "transforms": [
+                {
+                  "type": "equals",
+                  "parameters": {
+                    "value": {
+                      "source": "state",
+                      "sourceId": "total"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "initialState": {},
+      "elements": [],
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "events": [
+        {
+          "do": "chain",
+          "operationIds": [
+            "op-sum"
+          ]
+        }
+      ],
+      "expected": {
+        "data": {
+          "operation_op-sum_result": false,
+          "operation_op-sum": {
+            "result": 5
+          },
+          "total": "Sum: 5",
+          "same": false
+        },
+        "failed": []
+      }
+    },
+    {
+      "name": "a missing output name routes the whole result",
+      "operations": [
+        {
+          "id": "op-set",
+          "operationName": "state.set",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "mode"
+            },
+            {
+              "name": "value",
+              "source": "constant",
+              "sourceId": "dark"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "ghost",
+              "target": "state",
+              "targetId": "copy"
+            }
+          ]
+        }
+      ],
+      "initialState": {},
+      "elements": [],
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "events": [
+        {
+          "do": "chain",
+          "operationIds": [
+            "op-set"
+          ]
+        }
+      ],
+      "expected": {
+        "data": {
+          "operation_op-set_ghost": {
+            "value": "dark"
+          },
+          "mode": "dark",
+          "operation_op-set": {
+            "value": "dark"
+          },
+          "copy": {
+            "value": "dark"
+          }
+        },
+        "failed": []
+      }
+    },
+    {
+      "name": "ui-element property output merges a sub-object",
+      "operations": [
+        {
+          "id": "op-note",
+          "operationName": "state.set",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "saved"
+            },
+            {
+              "name": "value",
+              "source": "constant",
+              "sourceId": "ok"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "value",
+              "target": "ui-element",
+              "targetId": "status",
+              "property": "text"
+            }
+          ]
+        }
+      ],
+      "initialState": {},
+      "elements": [],
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "events": [
+        {
+          "do": "setElement",
+          "elementId": "status",
+          "value": "plain"
+        },
+        {
+          "do": "chain",
+          "operationIds": [
+            "op-note"
+          ]
+        }
+      ],
+      "expected": {
+        "data": {
+          "operation_op-note_value": "ok",
+          "element_status": {
+            "value": "plain",
+            "text": "ok"
+          },
+          "saved": "ok",
+          "operation_op-note": {
+            "value": "ok"
+          }
+        },
+        "failed": []
+      }
+    },
+    {
+      "name": "element defaults seed and feed inputs",
+      "operations": [
+        {
+          "id": "op-copy",
+          "operationName": "state.set",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "greeting"
+            },
+            {
+              "name": "value",
+              "source": "ui-element",
+              "sourceId": "name-in"
+            }
+          ],
+          "outputs": []
+        }
+      ],
+      "initialState": {},
+      "elements": [
+        {
+          "id": "wrap",
+          "type": "container",
+          "children": [
+            {
+              "id": "name-in",
+              "type": "input",
+              "properties": {
+                "defaultValue": "hello"
+              }
+            }
+          ]
+        }
+      ],
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "events": [
+        {
+          "do": "chain",
+          "operationIds": [
+            "op-copy"
+          ]
+        }
+      ],
+      "expected": {
+        "data": {
+          "element_name-in": "hello",
+          "greeting": "hello",
+          "operation_op-copy": {
+            "value": "hello"
+          }
+        },
+        "failed": []
+      }
+    }
+  ]
+}

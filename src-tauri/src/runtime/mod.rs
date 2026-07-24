@@ -6,5 +6,6 @@
 
 pub mod expression;
 pub mod operations;
+pub mod session;
 pub mod transforms;
 pub mod value;

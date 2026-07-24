@@ -33,6 +33,28 @@ impl OpEnv {
     }
 }
 
+/// The builtins this kernel executes. http.get is deliberately absent: it is
+/// network IO owned by the host's confined HTTP path, reached through the
+/// session's dispatcher rather than the pure kernel.
+pub fn is_builtin(operation: &str) -> bool {
+    matches!(
+        operation,
+        "state.set"
+            | "counter.add"
+            | "list.append"
+            | "list.updateWhere"
+            | "list.removeWhere"
+            | "list.toggleField"
+            | "math.add"
+            | "time.now"
+            | "random.int"
+            | "random.pick"
+            | "todos.add"
+            | "todos.toggle"
+            | "todos.remove"
+    )
+}
+
 fn structured_prefixes(operation: &str) -> &'static [&'static str] {
     match operation {
         "list.append" => &["item"],

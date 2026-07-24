@@ -17,6 +17,9 @@ import {
 } from '../transforms';
 import { parseRowExpression } from '../row-expression';
 import { BUILTIN_OPERATIONS, assembleStructured } from '../registry';
+import { ExperienceStateManager } from '../../../components/runtime/ExperienceStateManager';
+import { OperationExecutor } from '../../../components/runtime/OperationExecutor';
+import type { Contract, OperationBinding } from '../../../types/contract';
 
 const fixtureDir = resolve(__dirname, '../../../../runtime-conformance');
 
@@ -164,6 +167,79 @@ describe('runtime conformance: operations', () => {
         if (originalUuid) cryptoObject.randomUUID = originalUuid;
         Math.random = originalRandom;
         (globalThis as { Date: unknown }).Date = OriginalDate;
+      }
+    });
+  }
+});
+
+const sessionFixtures = JSON.parse(
+  readFileSync(resolve(fixtureDir, 'sessions.json'), 'utf8')
+) as {
+  sessions: Array<{
+    name: string;
+    operations: Array<Record<string, unknown>>;
+    initialState: Record<string, unknown>;
+    elements: Array<Record<string, unknown>>;
+    env: { ids: string[]; randoms: number[]; epochMs: number };
+    events: Array<
+      | { do: 'setElement'; elementId: string; value: unknown }
+      | { do: 'chain'; operationIds: string[]; item?: Record<string, unknown> }
+    >;
+    expected: { data: Record<string, unknown>; failed: string[] };
+  }>;
+};
+
+describe('runtime conformance: sessions', () => {
+  for (const vector of sessionFixtures.sessions) {
+    it(vector.name, async () => {
+      const idQueue = [...vector.env.ids];
+      const randomQueue = [...vector.env.randoms];
+      const cryptoObject = globalThis.crypto as { randomUUID?: () => string };
+      const originalUuid = cryptoObject.randomUUID?.bind(cryptoObject);
+      const originalRandom = Math.random;
+      cryptoObject.randomUUID = () => idQueue.shift() ?? 'unscripted-id';
+      Math.random = () => randomQueue.shift() ?? 0;
+
+      try {
+        const manager = new ExperienceStateManager('conformance');
+        await manager.initializeState({
+          initialState: vector.initialState,
+          operations: vector.operations as unknown as OperationBinding[],
+          elements: vector.elements,
+        } as unknown as Contract);
+        const executor = new OperationExecutor();
+        const failed: string[] = [];
+
+        for (const event of vector.events) {
+          if (event.do === 'setElement') {
+            manager.setData(`element_${event.elementId}`, event.value);
+            continue;
+          }
+          for (const operationId of event.operationIds) {
+            const operation = vector.operations.find((op) => op.id === operationId)!;
+            try {
+              const result = await executor.executeOperation(
+                operation as unknown as OperationBinding,
+                { item: event.item },
+                manager
+              );
+              manager.updateStateFromOperationResult(
+                operationId,
+                result,
+                (operation.outputs ?? []) as never
+              );
+            } catch {
+              failed.push(operationId);
+              break;
+            }
+          }
+        }
+
+        expect(jsonNormalize(manager.getState().data)).toEqual(vector.expected.data);
+        expect(failed).toEqual(vector.expected.failed);
+      } finally {
+        if (originalUuid) cryptoObject.randomUUID = originalUuid;
+        Math.random = originalRandom;
       }
     });
   }

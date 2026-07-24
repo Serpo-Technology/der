@@ -278,7 +278,16 @@ core's implementation, the basis for renderer backends beyond the webview. Opera
 over an injected environment (scripted ids, randoms, and clock in vectors; real entropy in
 production), `time.now`'s local date and time are asserted by shape so the corpus stays
 timezone-independent, and `http.get` stays outside the kernel (network IO owned by the
-host's confined HTTP path). The committed vectors in `runtime-conformance/` are
+host's confined HTTP path). `runtime/session.rs` runs whole experiences headlessly: state
+initialization (initialState seeds, per-output `operation_<id>_<name>` placeholders, element
+defaultValue seeds), declarative input resolution (ui-element/state/constant with the typed
+value field/item scope, input pipelines with live parameter lookup), builtin execution, and
+output routing with the webview's exact quirks (output transforms run without live context,
+a result missing an output's name routes the whole result, ui-element property outputs merge
+a sub-object, `operation_` mirrors). Chains stop at the first failure with earlier writes
+standing. Local code, remote endpoints, installed part operations, and http.get fail with a
+resolution error in the session; the host dispatcher owns those. Session vectors in the
+corpus drive the same scenarios through the headless webview classes and the Rust session. The committed vectors in `runtime-conformance/` are
 the semantic contract: both test suites run every vector (vitest
 `runtime-conformance.test.ts`, cargo `runtime_conformance.rs`), covering the
 JavaScript-flavored edges (Math.round at negative halves, toFixed strings, loose equality,

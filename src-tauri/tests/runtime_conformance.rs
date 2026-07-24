@@ -5,10 +5,31 @@
 
 use dynamic_experience_runtime_lib::runtime::expression::parse_row_expression;
 use dynamic_experience_runtime_lib::runtime::operations::{execute_builtin, OpEnv};
+use dynamic_experience_runtime_lib::runtime::session::{OperationSpec, Session};
 use dynamic_experience_runtime_lib::runtime::transforms::{
     apply_legacy_single, apply_pipeline, apply_transform, TransformStep,
 };
 use serde_json::{Map, Value};
+
+fn env_from(vector: &Value) -> OpEnv {
+    OpEnv {
+        ids: vector["env"]["ids"]
+            .as_array()
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        randoms: vector["env"]["randoms"]
+            .as_array()
+            .map(|rolls| rolls.iter().filter_map(Value::as_f64).collect())
+            .unwrap_or_default(),
+        epoch_ms: vector["env"]["epochMs"].as_i64().unwrap_or(0),
+        tz_offset_minutes: 0,
+    }
+}
 
 fn fixture(name: &str) -> Value {
     let raw = std::fs::read_to_string(format!("../runtime-conformance/{}", name))
@@ -99,23 +120,7 @@ fn operation_vectors_match() {
         let operation = vector["operation"].as_str().expect("operation name");
         let inputs = params_of(vector, "inputs");
         let mut state = params_of(vector, "state");
-        let mut env = OpEnv {
-            ids: vector["env"]["ids"]
-                .as_array()
-                .map(|ids| {
-                    ids.iter()
-                        .filter_map(Value::as_str)
-                        .map(str::to_string)
-                        .collect()
-                })
-                .unwrap_or_default(),
-            randoms: vector["env"]["randoms"]
-                .as_array()
-                .map(|rolls| rolls.iter().filter_map(Value::as_f64).collect())
-                .unwrap_or_default(),
-            epoch_ms: vector["env"]["epochMs"].as_i64().unwrap_or(0),
-            tz_offset_minutes: 0,
-        };
+        let mut env = env_from(vector);
         let expected_error = vector["error"].as_bool() == Some(true);
         let shape_only: Vec<&str> = vector["shapeOnlyOutputs"]
             .as_array()
@@ -183,6 +188,78 @@ fn operation_vectors_match() {
                     failures.push(format!("{}: state changed on error", name));
                 }
             }
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
+#[test]
+fn session_vectors_match() {
+    let fixtures = fixture("sessions.json");
+    let vectors = fixtures["sessions"].as_array().expect("session vectors");
+    let mut failures = Vec::new();
+    for vector in vectors {
+        let name = vector["name"].as_str().unwrap_or("?");
+        let operations: Vec<OperationSpec> =
+            serde_json::from_value(vector["operations"].clone()).expect("operations parse");
+        let elements = vector["elements"].as_array().cloned().unwrap_or_default();
+        let mut session = Session::new(
+            operations,
+            params_of(vector, "initialState"),
+            &elements,
+            env_from(vector),
+        );
+        let mut failed: Vec<String> = Vec::new();
+
+        for event in vector["events"].as_array().unwrap_or(&Vec::new()) {
+            match event["do"].as_str() {
+                Some("setElement") => {
+                    session.set_element(
+                        event["elementId"].as_str().unwrap_or(""),
+                        event["value"].clone(),
+                    );
+                }
+                Some("chain") => {
+                    let ids: Vec<String> = event["operationIds"]
+                        .as_array()
+                        .map(|ids| {
+                            ids.iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_string)
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let item = event.get("item").filter(|value| !value.is_null());
+                    if let Some(failed_id) = session.run_chain(&ids, item) {
+                        failed.push(failed_id);
+                    }
+                }
+                other => failures.push(format!("{}: unknown event {:?}", name, other)),
+            }
+        }
+
+        let expected_failed: Vec<String> = vector["expected"]["failed"]
+            .as_array()
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if failed != expected_failed {
+            failures.push(format!("{}: failed {:?} expected {:?}", name, failed, expected_failed));
+        }
+        if !semantically_equal(
+            &Value::Object(session.state().clone()),
+            &vector["expected"]["data"],
+        ) {
+            failures.push(format!(
+                "{}: state mismatch\n  actual: {}\n  expected: {}",
+                name,
+                Value::Object(session.state().clone()),
+                vector["expected"]["data"]
+            ));
         }
     }
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));

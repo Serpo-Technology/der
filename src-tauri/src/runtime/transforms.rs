@@ -236,18 +236,75 @@ pub struct TransformStep {
     pub parameters: Map<String, Value>,
 }
 
+/// Live parameter resolution: (source, sourceId) against current state, the
+/// webview's TransformContext.lookup.
+pub type ParamLookup<'a> = &'a dyn Fn(&str, &str) -> Value;
+
+/// A parameter of exactly the shape {"source": "state"|"element", "sourceId"}
+/// is a live reference; matches the webview's isParamRef byte for byte.
+fn param_ref_of(value: &Value) -> Option<(&str, &str)> {
+    let map = value.as_object()?;
+    if map.len() != 2 {
+        return None;
+    }
+    let source = map.get("source")?.as_str()?;
+    let source_id = map.get("sourceId")?.as_str()?;
+    if source == "state" || source == "element" {
+        Some((source, source_id))
+    } else {
+        None
+    }
+}
+
+/// Replaces live references with looked-up values. Without a lookup a
+/// reference still resolves, to null, exactly as the webview resolves it to
+/// undefined when no context is supplied.
+fn resolve_parameters(
+    parameters: &Map<String, Value>,
+    lookup: Option<ParamLookup>,
+) -> Map<String, Value> {
+    let mut resolved = parameters.clone();
+    for (_, value) in resolved.iter_mut() {
+        if let Some((source, source_id)) = param_ref_of(value) {
+            *value = match lookup {
+                Some(lookup) => lookup(source, source_id),
+                None => Value::Null,
+            };
+        }
+    }
+    resolved
+}
+
 /// A transforms pipeline runs every step null-safely, like the webview's
 /// applyTransformPipeline.
 pub fn apply_pipeline(value: &Value, steps: &[TransformStep]) -> Value {
+    apply_pipeline_with(value, steps, None)
+}
+
+pub fn apply_pipeline_with(
+    value: &Value,
+    steps: &[TransformStep],
+    lookup: Option<ParamLookup>,
+) -> Value {
     steps.iter().fold(value.clone(), |current, step| {
-        apply_transform(&step.step_type, &current, &step.parameters)
+        let parameters = resolve_parameters(&step.parameters, lookup);
+        apply_transform(&step.step_type, &current, &parameters)
     })
 }
 
 /// The legacy singular transform skips null input entirely.
 pub fn apply_legacy_single(value: &Value, step: &TransformStep) -> Value {
+    apply_legacy_single_with(value, step, None)
+}
+
+pub fn apply_legacy_single_with(
+    value: &Value,
+    step: &TransformStep,
+    lookup: Option<ParamLookup>,
+) -> Value {
     if value.is_null() {
         return value.clone();
     }
-    apply_transform(&step.step_type, value, &step.parameters)
+    let parameters = resolve_parameters(&step.parameters, lookup);
+    apply_transform(&step.step_type, value, &parameters)
 }

@@ -28,6 +28,9 @@ import {
 } from '../../src/services/operations/transforms';
 import { parseRowExpression } from '../../src/services/operations/row-expression';
 import { BUILTIN_OPERATIONS, assembleStructured } from '../../src/services/operations/registry';
+import { ExperienceStateManager } from '../../src/components/runtime/ExperienceStateManager';
+import { OperationExecutor } from '../../src/components/runtime/OperationExecutor';
+import type { Contract, OperationBinding } from '../../src/types/contract';
 
 interface TransformCase {
   name: string;
@@ -399,6 +402,246 @@ const OPERATION_CASES: OperationCase[] = [
   { name: 'todos.remove drops by id', operation: 'todos.remove', inputs: { id: 't1' }, state: TODO_STATE },
 ];
 
+type SessionEvent =
+  | { do: 'setElement'; elementId: string; value: unknown }
+  | { do: 'chain'; operationIds: string[]; item?: Record<string, unknown> };
+
+interface SessionCase {
+  name: string;
+  operations: Array<Record<string, unknown>>;
+  initialState?: Record<string, unknown>;
+  elements?: Array<Record<string, unknown>>;
+  env?: { ids?: string[]; randoms?: number[] };
+  events: SessionEvent[];
+}
+
+const SESSION_CASES: SessionCase[] = [
+  {
+    name: 'entry flow: element reads, input transform, reset outputs, mirrors',
+    operations: [
+      {
+        id: 'op-add',
+        operationName: 'list.append',
+        inputs: [
+          { name: 'key', source: 'constant', sourceId: 'expenses' },
+          { name: 'item.description', source: 'ui-element', sourceId: 'desc-in' },
+          {
+            name: 'item.amount',
+            source: 'ui-element',
+            sourceId: 'amt-in',
+            transforms: [{ type: 'parseNumber', parameters: {} }],
+          },
+        ],
+        outputs: [
+          { name: 'reset', target: 'ui-element', targetId: 'desc-in' },
+          { name: 'reset', target: 'ui-element', targetId: 'amt-in' },
+        ],
+      },
+    ],
+    env: { ids: ['gen-1'] },
+    events: [
+      { do: 'setElement', elementId: 'desc-in', value: 'lunch' },
+      { do: 'setElement', elementId: 'amt-in', value: '12.5' },
+      { do: 'chain', operationIds: ['op-add'] },
+    ],
+  },
+  {
+    name: 'typed constants: present null value wins over sourceId',
+    operations: [
+      {
+        id: 'op-flag',
+        operationName: 'state.set',
+        executionType: 'builtin',
+        inputs: [
+          { name: 'key', source: 'constant', sourceId: 'running' },
+          { name: 'value', source: 'constant', sourceId: 'true', value: true },
+        ],
+        outputs: [],
+      },
+      {
+        id: 'op-null',
+        operationName: 'state.set',
+        inputs: [
+          { name: 'key', source: 'constant', sourceId: 'cleared' },
+          { name: 'value', source: 'constant', sourceId: 'ignored', value: null },
+        ],
+        outputs: [],
+      },
+      {
+        id: 'op-step',
+        operationName: 'counter.add',
+        inputs: [
+          { name: 'key', source: 'constant', sourceId: 'clicks' },
+          { name: 'amount', source: 'state', sourceId: 'step' },
+        ],
+        outputs: [],
+      },
+    ],
+    initialState: { step: 5 },
+    events: [{ do: 'chain', operationIds: ['op-flag', 'op-null', 'op-step'] }],
+  },
+  {
+    name: 'item scope delete',
+    operations: [
+      {
+        id: 'op-del',
+        operationName: 'list.removeWhere',
+        inputs: [
+          { name: 'key', source: 'constant', sourceId: 'rows' },
+          { name: 'value', source: 'item', sourceId: 'id' },
+        ],
+        outputs: [],
+      },
+    ],
+    initialState: { rows: [{ id: 'a', title: 'x' }, { id: 'b', title: 'y' }] },
+    events: [{ do: 'chain', operationIds: ['op-del'], item: { id: 'a', title: 'x' } }],
+  },
+  {
+    name: 'live parameter reference in an input pipeline',
+    operations: [
+      {
+        id: 'op-count',
+        operationName: 'state.set',
+        inputs: [
+          { name: 'key', source: 'constant', sourceId: 'matches' },
+          {
+            name: 'value',
+            source: 'state',
+            sourceId: 'rows',
+            transforms: [
+              {
+                type: 'filterBy',
+                parameters: { field: 'category', value: { source: 'element', sourceId: 'cat-in' } },
+              },
+              { type: 'count', parameters: {} },
+            ],
+          },
+        ],
+        outputs: [],
+      },
+    ],
+    initialState: {
+      rows: [
+        { id: 'a', category: 'food' },
+        { id: 'b', category: 'travel' },
+        { id: 'c', category: 'food' },
+      ],
+    },
+    events: [
+      { do: 'setElement', elementId: 'cat-in', value: 'food' },
+      { do: 'chain', operationIds: ['op-count'] },
+    ],
+  },
+  {
+    name: 'a failed operation stops its chain',
+    operations: [
+      {
+        id: 'op-pick',
+        operationName: 'random.pick',
+        inputs: [{ name: 'list', source: 'state', sourceId: 'options' }],
+        outputs: [{ name: 'value', target: 'state', targetId: 'chosen' }],
+      },
+      {
+        id: 'op-mark',
+        operationName: 'state.set',
+        inputs: [
+          { name: 'key', source: 'constant', sourceId: 'picked' },
+          { name: 'value', source: 'constant', sourceId: 'yes' },
+        ],
+        outputs: [],
+      },
+    ],
+    events: [{ do: 'chain', operationIds: ['op-pick', 'op-mark'] }],
+  },
+  {
+    name: 'output transforms run without live context',
+    operations: [
+      {
+        id: 'op-sum',
+        operationName: 'math.add',
+        inputs: [
+          { name: 'a', source: 'constant', sourceId: '2', value: 2 },
+          { name: 'b', source: 'constant', sourceId: '3', value: 3 },
+        ],
+        outputs: [
+          {
+            name: 'result',
+            target: 'state',
+            targetId: 'total',
+            transforms: [{ type: 'format', parameters: { template: 'Sum: {{value}}' } }],
+          },
+          {
+            name: 'result',
+            target: 'state',
+            targetId: 'same',
+            transforms: [
+              { type: 'equals', parameters: { value: { source: 'state', sourceId: 'total' } } },
+            ],
+          },
+        ],
+      },
+    ],
+    events: [{ do: 'chain', operationIds: ['op-sum'] }],
+  },
+  {
+    name: 'a missing output name routes the whole result',
+    operations: [
+      {
+        id: 'op-set',
+        operationName: 'state.set',
+        inputs: [
+          { name: 'key', source: 'constant', sourceId: 'mode' },
+          { name: 'value', source: 'constant', sourceId: 'dark' },
+        ],
+        outputs: [{ name: 'ghost', target: 'state', targetId: 'copy' }],
+      },
+    ],
+    events: [{ do: 'chain', operationIds: ['op-set'] }],
+  },
+  {
+    name: 'ui-element property output merges a sub-object',
+    operations: [
+      {
+        id: 'op-note',
+        operationName: 'state.set',
+        inputs: [
+          { name: 'key', source: 'constant', sourceId: 'saved' },
+          { name: 'value', source: 'constant', sourceId: 'ok' },
+        ],
+        outputs: [
+          { name: 'value', target: 'ui-element', targetId: 'status', property: 'text' },
+        ],
+      },
+    ],
+    events: [
+      { do: 'setElement', elementId: 'status', value: 'plain' },
+      { do: 'chain', operationIds: ['op-note'] },
+    ],
+  },
+  {
+    name: 'element defaults seed and feed inputs',
+    operations: [
+      {
+        id: 'op-copy',
+        operationName: 'state.set',
+        inputs: [
+          { name: 'key', source: 'constant', sourceId: 'greeting' },
+          { name: 'value', source: 'ui-element', sourceId: 'name-in' },
+        ],
+        outputs: [],
+      },
+    ],
+    elements: [
+      {
+        id: 'wrap',
+        type: 'container',
+        children: [{ id: 'name-in', type: 'input', properties: { defaultValue: 'hello' } }],
+      },
+    ],
+    events: [{ do: 'chain', operationIds: ['op-copy'] }],
+  },
+];
+
 /** JSON-value semantics: undefined normalizes to null, matching what any
  * renderer boundary serialization would produce. */
 function jsonNormalize(value: unknown): unknown {
@@ -493,7 +736,101 @@ function runOperationCase(entry: OperationCase) {
 }
 
 
-function main(): void {
+/** Scripts ids, randomness, and the clock for the duration of one case. */
+async function withScriptedGlobals<T>(
+  env: { ids?: string[]; randoms?: number[] } | undefined,
+  run: () => Promise<T>
+): Promise<T> {
+  const idQueue = [...(env?.ids ?? [])];
+  const randomQueue = [...(env?.randoms ?? [])];
+  const cryptoObject = globalThis.crypto as { randomUUID?: () => string };
+  const originalUuid = cryptoObject.randomUUID?.bind(cryptoObject);
+  const originalRandom = Math.random;
+  const OriginalDate = globalThis.Date;
+  cryptoObject.randomUUID = () => {
+    const next = idQueue.shift();
+    if (next === undefined) throw new Error('ran out of scripted ids');
+    return next;
+  };
+  Math.random = () => {
+    const next = randomQueue.shift();
+    if (next === undefined) throw new Error('ran out of scripted randoms');
+    return next;
+  };
+  class FixedDate extends OriginalDate {
+    constructor(...args: unknown[]) {
+      if (args.length === 0) {
+        super(FIXED_EPOCH_MS);
+      } else {
+        super(...(args as [number]));
+      }
+    }
+    static now() {
+      return FIXED_EPOCH_MS;
+    }
+  }
+  (globalThis as { Date: unknown }).Date = FixedDate;
+  try {
+    return await run();
+  } finally {
+    if (originalUuid) cryptoObject.randomUUID = originalUuid;
+    Math.random = originalRandom;
+    (globalThis as { Date: unknown }).Date = OriginalDate;
+  }
+}
+
+/** Drives one session scenario through the headless webview runtime classes,
+ * mirroring the renderer's chain rule: a failed operation stops the rest. */
+async function runSessionCase(entry: SessionCase) {
+  return await withScriptedGlobals(entry.env, async () => {
+    const manager = new ExperienceStateManager('vector');
+    await manager.initializeState({
+      initialState: entry.initialState,
+      operations: entry.operations as unknown as OperationBinding[],
+      elements: entry.elements ?? [],
+    } as unknown as Contract);
+    const executor = new OperationExecutor();
+    const failed: string[] = [];
+
+    for (const event of entry.events) {
+      if (event.do === 'setElement') {
+        manager.setData(`element_${event.elementId}`, event.value);
+        continue;
+      }
+      for (const operationId of event.operationIds) {
+        const operation = entry.operations.find((op) => op.id === operationId);
+        if (!operation) throw new Error(`${entry.name}: no operation ${operationId}`);
+        try {
+          const result = await executor.executeOperation(
+            operation as unknown as OperationBinding,
+            { item: event.item },
+            manager
+          );
+          manager.updateStateFromOperationResult(
+            operationId,
+            result,
+            (operation.outputs ?? []) as never
+          );
+        } catch {
+          failed.push(operationId);
+          break;
+        }
+      }
+    }
+
+    return {
+      name: entry.name,
+      operations: entry.operations,
+      initialState: jsonNormalize(entry.initialState ?? {}),
+      elements: entry.elements ?? [],
+      env: { ids: entry.env?.ids ?? [], randoms: entry.env?.randoms ?? [], epochMs: FIXED_EPOCH_MS },
+      events: entry.events,
+      expected: { data: jsonNormalize(manager.getState().data), failed },
+    };
+  });
+}
+
+async function main(): Promise<void> {
   const outDir = resolve(scriptDir, '../../runtime-conformance');
   mkdirSync(outDir, { recursive: true });
 
@@ -570,9 +907,21 @@ function main(): void {
     resolve(outDir, 'operations.json'),
     JSON.stringify({ formatVersion: 1, operations }, null, 2) + '\n'
   );
+
+  const sessions = [];
+  for (const entry of SESSION_CASES) {
+    sessions.push(await runSessionCase(entry));
+  }
+  writeFileSync(
+    resolve(outDir, 'sessions.json'),
+    JSON.stringify({ formatVersion: 1, sessions }, null, 2) + '\n'
+  );
   process.stdout.write(
-    `wrote ${transforms.length} transform, ${pipelines.length} pipeline, ${expressions.length} expression, ${operations.length} operation vectors\n`
+    `wrote ${transforms.length} transform, ${pipelines.length} pipeline, ${expressions.length} expression, ${operations.length} operation, ${sessions.length} session vectors\n`
   );
 }
 
-main();
+main().catch((error) => {
+  process.stderr.write(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+  process.exit(1);
+});
