@@ -270,10 +270,15 @@ starter-apps (the apps.expense_tracker recipe, taken verbatim from the proven ev
 
 ### Runtime kernel conformance
 
-The pure runtime kernel (transform semantics and the row-expression grammar) is implemented
-twice: TypeScript (`src/services/operations/transforms.ts`, `row-expression.ts`) runs in the
-webview renderer, and Rust (`src-tauri/src/runtime/`) is the core's implementation, the basis
-for renderer backends beyond the webview. The committed vectors in `runtime-conformance/` are
+The pure runtime kernel (transform semantics, the row-expression grammar, and the builtin
+operations with structured input assembly) is implemented twice: TypeScript
+(`src/services/operations/transforms.ts`, `row-expression.ts`, the executable parts of
+`registry.ts`) runs in the webview renderer, and Rust (`src-tauri/src/runtime/`) is the
+core's implementation, the basis for renderer backends beyond the webview. Operations run
+over an injected environment (scripted ids, randoms, and clock in vectors; real entropy in
+production), `time.now`'s local date and time are asserted by shape so the corpus stays
+timezone-independent, and `http.get` stays outside the kernel (network IO owned by the
+host's confined HTTP path). The committed vectors in `runtime-conformance/` are
 the semantic contract: both test suites run every vector (vitest
 `runtime-conformance.test.ts`, cargo `runtime_conformance.rs`), covering the
 JavaScript-flavored edges (Math.round at negative halves, toFixed strings, loose equality,

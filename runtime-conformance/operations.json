@@ -1,0 +1,1143 @@
+{
+  "formatVersion": 1,
+  "operations": [
+    {
+      "name": "state.set writes and echoes",
+      "operation": "state.set",
+      "inputs": {
+        "key": "view",
+        "value": "done"
+      },
+      "state": {},
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "view": "done"
+        },
+        "outputs": {
+          "value": "done"
+        }
+      }
+    },
+    {
+      "name": "state.set typed value",
+      "operation": "state.set",
+      "inputs": {
+        "key": "running",
+        "value": true
+      },
+      "state": {
+        "running": false
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "running": true
+        },
+        "outputs": {
+          "value": true
+        }
+      }
+    },
+    {
+      "name": "state.set missing value stores null",
+      "operation": "state.set",
+      "inputs": {
+        "key": "x"
+      },
+      "state": {},
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {},
+        "outputs": {
+          "value": null
+        }
+      }
+    },
+    {
+      "name": "counter.add default amount",
+      "operation": "counter.add",
+      "inputs": {
+        "key": "clicks"
+      },
+      "state": {
+        "clicks": 2
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "clicks": 3
+        },
+        "outputs": {
+          "value": 3
+        }
+      }
+    },
+    {
+      "name": "counter.add unseeded key",
+      "operation": "counter.add",
+      "inputs": {
+        "key": "clicks"
+      },
+      "state": {},
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "clicks": 1
+        },
+        "outputs": {
+          "value": 1
+        }
+      }
+    },
+    {
+      "name": "counter.add negative amount",
+      "operation": "counter.add",
+      "inputs": {
+        "key": "n",
+        "amount": -2
+      },
+      "state": {
+        "n": 5
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "n": 3
+        },
+        "outputs": {
+          "value": 3
+        }
+      }
+    },
+    {
+      "name": "counter.add junk amount is zero",
+      "operation": "counter.add",
+      "inputs": {
+        "key": "n",
+        "amount": "x"
+      },
+      "state": {
+        "n": 5
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "n": 5
+        },
+        "outputs": {
+          "value": 5
+        }
+      }
+    },
+    {
+      "name": "counter.add string state coerces",
+      "operation": "counter.add",
+      "inputs": {
+        "key": "n"
+      },
+      "state": {
+        "n": "41"
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "n": 42
+        },
+        "outputs": {
+          "value": 42
+        }
+      }
+    },
+    {
+      "name": "list.append assembles fields and generates the id",
+      "operation": "list.append",
+      "inputs": {
+        "key": "expenses",
+        "item.description": "lunch",
+        "item.amount": 12.5
+      },
+      "state": {
+        "expenses": []
+      },
+      "env": {
+        "ids": [
+          "gen-1"
+        ],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "expenses": [
+            {
+              "description": "lunch",
+              "amount": 12.5,
+              "id": "gen-1"
+            }
+          ]
+        },
+        "outputs": {
+          "list": [
+            {
+              "description": "lunch",
+              "amount": 12.5,
+              "id": "gen-1"
+            }
+          ],
+          "item": {
+            "description": "lunch",
+            "amount": 12.5,
+            "id": "gen-1"
+          },
+          "reset": ""
+        }
+      }
+    },
+    {
+      "name": "list.append keeps null fields once one is meaningful",
+      "operation": "list.append",
+      "inputs": {
+        "key": "rows",
+        "item.title": "x",
+        "item.note": null
+      },
+      "state": {},
+      "env": {
+        "ids": [
+          "gen-2"
+        ],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "rows": [
+            {
+              "title": "x",
+              "note": null,
+              "id": "gen-2"
+            }
+          ]
+        },
+        "outputs": {
+          "list": [
+            {
+              "title": "x",
+              "note": null,
+              "id": "gen-2"
+            }
+          ],
+          "item": {
+            "title": "x",
+            "note": null,
+            "id": "gen-2"
+          },
+          "reset": ""
+        }
+      }
+    },
+    {
+      "name": "list.append skips when every field is blank",
+      "operation": "list.append",
+      "inputs": {
+        "key": "rows",
+        "item.title": "  ",
+        "item.note": null
+      },
+      "state": {
+        "rows": [
+          {
+            "id": "a",
+            "title": "kept"
+          }
+        ]
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "rows": [
+            {
+              "id": "a",
+              "title": "kept"
+            }
+          ]
+        },
+        "outputs": {
+          "list": [
+            {
+              "id": "a",
+              "title": "kept"
+            }
+          ],
+          "item": null,
+          "reset": ""
+        }
+      }
+    },
+    {
+      "name": "list.append overwrites a supplied id",
+      "operation": "list.append",
+      "inputs": {
+        "key": "rows",
+        "item.id": "forged",
+        "item.title": "x"
+      },
+      "state": {},
+      "env": {
+        "ids": [
+          "gen-3"
+        ],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "rows": [
+            {
+              "id": "gen-3",
+              "title": "x"
+            }
+          ]
+        },
+        "outputs": {
+          "list": [
+            {
+              "id": "gen-3",
+              "title": "x"
+            }
+          ],
+          "item": {
+            "id": "gen-3",
+            "title": "x"
+          },
+          "reset": ""
+        }
+      }
+    },
+    {
+      "name": "list.updateWhere merges set fields on matches",
+      "operation": "list.updateWhere",
+      "inputs": {
+        "key": "cards",
+        "value": "c1",
+        "set.column": "doing",
+        "set.owner": "Ana"
+      },
+      "state": {
+        "cards": [
+          {
+            "id": "c1",
+            "column": "todo"
+          },
+          {
+            "id": "c2",
+            "column": "todo"
+          }
+        ]
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "cards": [
+            {
+              "id": "c1",
+              "column": "doing",
+              "owner": "Ana"
+            },
+            {
+              "id": "c2",
+              "column": "todo"
+            }
+          ]
+        },
+        "outputs": {
+          "list": [
+            {
+              "id": "c1",
+              "column": "doing",
+              "owner": "Ana"
+            },
+            {
+              "id": "c2",
+              "column": "todo"
+            }
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "name": "list.updateWhere matches loosely on a custom field",
+      "operation": "list.updateWhere",
+      "inputs": {
+        "key": "rows",
+        "field": "qty",
+        "value": "4",
+        "set.flag": true
+      },
+      "state": {
+        "rows": [
+          {
+            "id": "a",
+            "qty": 4
+          },
+          {
+            "id": "b",
+            "qty": 10
+          }
+        ]
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "rows": [
+            {
+              "id": "a",
+              "qty": 4,
+              "flag": true
+            },
+            {
+              "id": "b",
+              "qty": 10
+            }
+          ]
+        },
+        "outputs": {
+          "list": [
+            {
+              "id": "a",
+              "qty": 4,
+              "flag": true
+            },
+            {
+              "id": "b",
+              "qty": 10
+            }
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "name": "list.updateWhere counts zero on no match",
+      "operation": "list.updateWhere",
+      "inputs": {
+        "key": "rows",
+        "value": "ghost",
+        "set.flag": true
+      },
+      "state": {
+        "rows": [
+          {
+            "id": "a"
+          }
+        ]
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "rows": [
+            {
+              "id": "a"
+            }
+          ]
+        },
+        "outputs": {
+          "list": [
+            {
+              "id": "a"
+            }
+          ],
+          "count": 0
+        }
+      }
+    },
+    {
+      "name": "list.removeWhere drops matches",
+      "operation": "list.removeWhere",
+      "inputs": {
+        "key": "rows",
+        "value": "a"
+      },
+      "state": {
+        "rows": [
+          {
+            "id": "a"
+          },
+          {
+            "id": "b"
+          }
+        ]
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "rows": [
+            {
+              "id": "b"
+            }
+          ]
+        },
+        "outputs": {
+          "list": [
+            {
+              "id": "b"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "list.removeWhere loose id match",
+      "operation": "list.removeWhere",
+      "inputs": {
+        "key": "rows",
+        "value": 1
+      },
+      "state": {
+        "rows": [
+          {
+            "id": "1"
+          },
+          {
+            "id": "2"
+          }
+        ]
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "rows": [
+            {
+              "id": "2"
+            }
+          ]
+        },
+        "outputs": {
+          "list": [
+            {
+              "id": "2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "list.toggleField flips the default field",
+      "operation": "list.toggleField",
+      "inputs": {
+        "key": "todos",
+        "id": "t1"
+      },
+      "state": {
+        "todos": [
+          {
+            "id": "t1",
+            "title": "wash car",
+            "completed": false
+          },
+          {
+            "id": "t2",
+            "title": "write report",
+            "completed": true
+          }
+        ]
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "todos": [
+            {
+              "id": "t1",
+              "title": "wash car",
+              "completed": true
+            },
+            {
+              "id": "t2",
+              "title": "write report",
+              "completed": true
+            }
+          ]
+        },
+        "outputs": {
+          "list": [
+            {
+              "id": "t1",
+              "title": "wash car",
+              "completed": true
+            },
+            {
+              "id": "t2",
+              "title": "write report",
+              "completed": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "list.toggleField sets true when the field is missing",
+      "operation": "list.toggleField",
+      "inputs": {
+        "key": "rows",
+        "id": "a",
+        "field": "starred"
+      },
+      "state": {
+        "rows": [
+          {
+            "id": "a"
+          }
+        ]
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "rows": [
+            {
+              "id": "a",
+              "starred": true
+            }
+          ]
+        },
+        "outputs": {
+          "list": [
+            {
+              "id": "a",
+              "starred": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "math.add coerces junk to zero",
+      "operation": "math.add",
+      "inputs": {
+        "a": "2.5",
+        "b": "x"
+      },
+      "state": {},
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {},
+        "outputs": {
+          "result": 2.5
+        }
+      }
+    },
+    {
+      "name": "time.now emits the injected instant",
+      "operation": "time.now",
+      "inputs": {},
+      "state": {},
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [
+        "date",
+        "time"
+      ],
+      "error": false,
+      "expected": {
+        "state": {},
+        "outputs": {
+          "iso": "2025-07-24T00:00:00.000Z",
+          "epoch": 1753315200000
+        }
+      }
+    },
+    {
+      "name": "random.int rolls within the closed range",
+      "operation": "random.int",
+      "inputs": {
+        "min": 1,
+        "max": 6
+      },
+      "state": {},
+      "env": {
+        "ids": [],
+        "randoms": [
+          0.999
+        ],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {},
+        "outputs": {
+          "value": 6
+        }
+      }
+    },
+    {
+      "name": "random.int swapped bounds",
+      "operation": "random.int",
+      "inputs": {
+        "min": 6,
+        "max": 1
+      },
+      "state": {},
+      "env": {
+        "ids": [],
+        "randoms": [
+          0
+        ],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {},
+        "outputs": {
+          "value": 1
+        }
+      }
+    },
+    {
+      "name": "random.int numeric strings coerce",
+      "operation": "random.int",
+      "inputs": {
+        "min": "2",
+        "max": "2"
+      },
+      "state": {},
+      "env": {
+        "ids": [],
+        "randoms": [
+          0.5
+        ],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {},
+        "outputs": {
+          "value": 2
+        }
+      }
+    },
+    {
+      "name": "random.int junk bounds error",
+      "operation": "random.int",
+      "inputs": {
+        "min": "x",
+        "max": 6
+      },
+      "state": {},
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": true,
+      "expected": {
+        "state": {},
+        "outputs": {}
+      }
+    },
+    {
+      "name": "random.pick chooses by roll",
+      "operation": "random.pick",
+      "inputs": {
+        "list": [
+          "a",
+          "b",
+          "c"
+        ]
+      },
+      "state": {},
+      "env": {
+        "ids": [],
+        "randoms": [
+          0.7
+        ],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {},
+        "outputs": {
+          "value": "c",
+          "index": 2
+        }
+      }
+    },
+    {
+      "name": "random.pick empty list errors",
+      "operation": "random.pick",
+      "inputs": {
+        "list": []
+      },
+      "state": {},
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": true,
+      "expected": {
+        "state": {},
+        "outputs": {}
+      }
+    },
+    {
+      "name": "todos.add trims and stamps",
+      "operation": "todos.add",
+      "inputs": {
+        "title": "  buy milk  "
+      },
+      "state": {
+        "todos": [
+          {
+            "id": "t1",
+            "title": "wash car",
+            "completed": false
+          },
+          {
+            "id": "t2",
+            "title": "write report",
+            "completed": true
+          }
+        ]
+      },
+      "env": {
+        "ids": [
+          "t3"
+        ],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "todos": [
+            {
+              "id": "t1",
+              "title": "wash car",
+              "completed": false
+            },
+            {
+              "id": "t2",
+              "title": "write report",
+              "completed": true
+            },
+            {
+              "id": "t3",
+              "title": "buy milk",
+              "completed": false
+            }
+          ]
+        },
+        "outputs": {
+          "todos": [
+            {
+              "id": "t1",
+              "title": "wash car",
+              "completed": false
+            },
+            {
+              "id": "t2",
+              "title": "write report",
+              "completed": true
+            },
+            {
+              "id": "t3",
+              "title": "buy milk",
+              "completed": false
+            }
+          ],
+          "todo": {
+            "id": "t3",
+            "title": "buy milk",
+            "completed": false
+          },
+          "reset": ""
+        }
+      }
+    },
+    {
+      "name": "todos.add blank skips",
+      "operation": "todos.add",
+      "inputs": {
+        "title": "   "
+      },
+      "state": {
+        "todos": [
+          {
+            "id": "t1",
+            "title": "wash car",
+            "completed": false
+          },
+          {
+            "id": "t2",
+            "title": "write report",
+            "completed": true
+          }
+        ]
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "todos": [
+            {
+              "id": "t1",
+              "title": "wash car",
+              "completed": false
+            },
+            {
+              "id": "t2",
+              "title": "write report",
+              "completed": true
+            }
+          ]
+        },
+        "outputs": {
+          "todos": [
+            {
+              "id": "t1",
+              "title": "wash car",
+              "completed": false
+            },
+            {
+              "id": "t2",
+              "title": "write report",
+              "completed": true
+            }
+          ],
+          "todo": null,
+          "reset": ""
+        }
+      }
+    },
+    {
+      "name": "todos.toggle flips by id",
+      "operation": "todos.toggle",
+      "inputs": {
+        "id": "t2"
+      },
+      "state": {
+        "todos": [
+          {
+            "id": "t1",
+            "title": "wash car",
+            "completed": false
+          },
+          {
+            "id": "t2",
+            "title": "write report",
+            "completed": true
+          }
+        ]
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "todos": [
+            {
+              "id": "t1",
+              "title": "wash car",
+              "completed": false
+            },
+            {
+              "id": "t2",
+              "title": "write report",
+              "completed": false
+            }
+          ]
+        },
+        "outputs": {
+          "todos": [
+            {
+              "id": "t1",
+              "title": "wash car",
+              "completed": false
+            },
+            {
+              "id": "t2",
+              "title": "write report",
+              "completed": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "todos.remove drops by id",
+      "operation": "todos.remove",
+      "inputs": {
+        "id": "t1"
+      },
+      "state": {
+        "todos": [
+          {
+            "id": "t1",
+            "title": "wash car",
+            "completed": false
+          },
+          {
+            "id": "t2",
+            "title": "write report",
+            "completed": true
+          }
+        ]
+      },
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "shapeOnlyOutputs": [],
+      "error": false,
+      "expected": {
+        "state": {
+          "todos": [
+            {
+              "id": "t2",
+              "title": "write report",
+              "completed": true
+            }
+          ]
+        },
+        "outputs": {
+          "todos": [
+            {
+              "id": "t2",
+              "title": "write report",
+              "completed": true
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -5,5 +5,6 @@
 //! every renderer backend computes exactly what the webview computes.
 
 pub mod expression;
+pub mod operations;
 pub mod transforms;
 pub mod value;

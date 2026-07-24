@@ -27,6 +27,7 @@ import {
   applyTransformPipeline,
 } from '../../src/services/operations/transforms';
 import { parseRowExpression } from '../../src/services/operations/row-expression';
+import { BUILTIN_OPERATIONS, assembleStructured } from '../../src/services/operations/registry';
 
 interface TransformCase {
   name: string;
@@ -239,12 +240,258 @@ const EXPRESSION_CASES: ExpressionCase[] = [
   { name: 'too deep', expression: `${'('.repeat(70)}1${')'.repeat(70)}` },
 ];
 
+interface OperationCase {
+  name: string;
+  operation: string;
+  /** Executor-resolved flat inputs, dotted prefixes still flat. */
+  inputs: Record<string, unknown>;
+  state: Record<string, unknown>;
+  env?: { ids?: string[]; randoms?: number[] };
+  /** time.now vectors: local date and time are asserted by shape, never
+   * byte-exact, so the corpus stays timezone-independent. */
+  shapeOnlyOutputs?: string[];
+}
+
+const FIXED_EPOCH_MS = 1753315200000;
+
+const TODO_STATE = {
+  todos: [
+    { id: 't1', title: 'wash car', completed: false },
+    { id: 't2', title: 'write report', completed: true },
+  ],
+};
+
+const OPERATION_CASES: OperationCase[] = [
+  { name: 'state.set writes and echoes', operation: 'state.set', inputs: { key: 'view', value: 'done' }, state: {} },
+  { name: 'state.set typed value', operation: 'state.set', inputs: { key: 'running', value: true }, state: { running: false } },
+  { name: 'state.set missing value stores null', operation: 'state.set', inputs: { key: 'x' }, state: {} },
+
+  { name: 'counter.add default amount', operation: 'counter.add', inputs: { key: 'clicks' }, state: { clicks: 2 } },
+  { name: 'counter.add unseeded key', operation: 'counter.add', inputs: { key: 'clicks' }, state: {} },
+  { name: 'counter.add negative amount', operation: 'counter.add', inputs: { key: 'n', amount: -2 }, state: { n: 5 } },
+  { name: 'counter.add junk amount is zero', operation: 'counter.add', inputs: { key: 'n', amount: 'x' }, state: { n: 5 } },
+  { name: 'counter.add string state coerces', operation: 'counter.add', inputs: { key: 'n' }, state: { n: '41' } },
+
+  {
+    name: 'list.append assembles fields and generates the id',
+    operation: 'list.append',
+    inputs: { key: 'expenses', 'item.description': 'lunch', 'item.amount': 12.5 },
+    state: { expenses: [] },
+    env: { ids: ['gen-1'] },
+  },
+  {
+    name: 'list.append keeps null fields once one is meaningful',
+    operation: 'list.append',
+    inputs: { key: 'rows', 'item.title': 'x', 'item.note': null },
+    state: {},
+    env: { ids: ['gen-2'] },
+  },
+  {
+    name: 'list.append skips when every field is blank',
+    operation: 'list.append',
+    inputs: { key: 'rows', 'item.title': '  ', 'item.note': null },
+    state: { rows: [{ id: 'a', title: 'kept' }] },
+  },
+  {
+    name: 'list.append overwrites a supplied id',
+    operation: 'list.append',
+    inputs: { key: 'rows', 'item.id': 'forged', 'item.title': 'x' },
+    state: {},
+    env: { ids: ['gen-3'] },
+  },
+
+  {
+    name: 'list.updateWhere merges set fields on matches',
+    operation: 'list.updateWhere',
+    inputs: { key: 'cards', value: 'c1', 'set.column': 'doing', 'set.owner': 'Ana' },
+    state: { cards: [{ id: 'c1', column: 'todo' }, { id: 'c2', column: 'todo' }] },
+  },
+  {
+    name: 'list.updateWhere matches loosely on a custom field',
+    operation: 'list.updateWhere',
+    inputs: { key: 'rows', field: 'qty', value: '4', 'set.flag': true },
+    state: { rows: [{ id: 'a', qty: 4 }, { id: 'b', qty: 10 }] },
+  },
+  {
+    name: 'list.updateWhere counts zero on no match',
+    operation: 'list.updateWhere',
+    inputs: { key: 'rows', value: 'ghost', 'set.flag': true },
+    state: { rows: [{ id: 'a' }] },
+  },
+
+  {
+    name: 'list.removeWhere drops matches',
+    operation: 'list.removeWhere',
+    inputs: { key: 'rows', value: 'a' },
+    state: { rows: [{ id: 'a' }, { id: 'b' }] },
+  },
+  {
+    name: 'list.removeWhere loose id match',
+    operation: 'list.removeWhere',
+    inputs: { key: 'rows', value: 1 },
+    state: { rows: [{ id: '1' }, { id: '2' }] },
+  },
+
+  {
+    name: 'list.toggleField flips the default field',
+    operation: 'list.toggleField',
+    inputs: { key: 'todos', id: 't1' },
+    state: TODO_STATE,
+  },
+  {
+    name: 'list.toggleField sets true when the field is missing',
+    operation: 'list.toggleField',
+    inputs: { key: 'rows', id: 'a', field: 'starred' },
+    state: { rows: [{ id: 'a' }] },
+  },
+
+  { name: 'math.add coerces junk to zero', operation: 'math.add', inputs: { a: '2.5', b: 'x' }, state: {} },
+
+  {
+    name: 'time.now emits the injected instant',
+    operation: 'time.now',
+    inputs: {},
+    state: {},
+    shapeOnlyOutputs: ['date', 'time'],
+  },
+
+  {
+    name: 'random.int rolls within the closed range',
+    operation: 'random.int',
+    inputs: { min: 1, max: 6 },
+    state: {},
+    env: { randoms: [0.999] },
+  },
+  {
+    name: 'random.int swapped bounds',
+    operation: 'random.int',
+    inputs: { min: 6, max: 1 },
+    state: {},
+    env: { randoms: [0] },
+  },
+  {
+    name: 'random.int numeric strings coerce',
+    operation: 'random.int',
+    inputs: { min: '2', max: '2' },
+    state: {},
+    env: { randoms: [0.5] },
+  },
+  { name: 'random.int junk bounds error', operation: 'random.int', inputs: { min: 'x', max: 6 }, state: {} },
+
+  {
+    name: 'random.pick chooses by roll',
+    operation: 'random.pick',
+    inputs: { list: ['a', 'b', 'c'] },
+    state: {},
+    env: { randoms: [0.7] },
+  },
+  { name: 'random.pick empty list errors', operation: 'random.pick', inputs: { list: [] }, state: {} },
+
+  {
+    name: 'todos.add trims and stamps',
+    operation: 'todos.add',
+    inputs: { title: '  buy milk  ' },
+    state: TODO_STATE,
+    env: { ids: ['t3'] },
+  },
+  { name: 'todos.add blank skips', operation: 'todos.add', inputs: { title: '   ' }, state: TODO_STATE },
+  { name: 'todos.toggle flips by id', operation: 'todos.toggle', inputs: { id: 't2' }, state: TODO_STATE },
+  { name: 'todos.remove drops by id', operation: 'todos.remove', inputs: { id: 't1' }, state: TODO_STATE },
+];
+
 /** JSON-value semantics: undefined normalizes to null, matching what any
  * renderer boundary serialization would produce. */
 function jsonNormalize(value: unknown): unknown {
   if (value === undefined) return null;
   return JSON.parse(JSON.stringify(value ?? null));
 }
+
+/** Runs one operation case against the shipped builtins with scripted ids,
+ * randomness, and clock, returning the frozen expectation. */
+function runOperationCase(entry: OperationCase) {
+  const def = BUILTIN_OPERATIONS[entry.operation];
+  if (!def) throw new Error(`No builtin ${entry.operation}`);
+
+  const state: Record<string, unknown> = JSON.parse(JSON.stringify(entry.state));
+  const ctx = {
+    getState: (key: string) => state[key],
+    setState: (key: string, value: unknown) => {
+      state[key] = value;
+    },
+  };
+
+  const idQueue = [...(entry.env?.ids ?? [])];
+  const randomQueue = [...(entry.env?.randoms ?? [])];
+  const cryptoObject = globalThis.crypto as { randomUUID?: () => string };
+  const originalUuid = cryptoObject.randomUUID?.bind(cryptoObject);
+  const originalRandom = Math.random;
+  const OriginalDate = globalThis.Date;
+  cryptoObject.randomUUID = () => {
+    const next = idQueue.shift();
+    if (next === undefined) throw new Error(`${entry.name}: ran out of scripted ids`);
+    return next;
+  };
+  Math.random = () => {
+    const next = randomQueue.shift();
+    if (next === undefined) throw new Error(`${entry.name}: ran out of scripted randoms`);
+    return next;
+  };
+  class FixedDate extends OriginalDate {
+    constructor(...args: unknown[]) {
+      if (args.length === 0) {
+        super(FIXED_EPOCH_MS);
+      } else {
+        super(...(args as [number]));
+      }
+    }
+    static now() {
+      return FIXED_EPOCH_MS;
+    }
+  }
+  (globalThis as { Date: unknown }).Date = FixedDate;
+
+  try {
+    // The executor assembles dotted prefixes before execute runs; the Rust
+    // kernel assembles inside execute_builtin, so the vectors carry the flat
+    // inputs and the assembly is covered on both sides.
+    const assembled = assembleStructured(entry.inputs, def.structuredPrefixes);
+    const outputs = def.execute(assembled as never, ctx) as Record<string, unknown>;
+    if (outputs instanceof Promise) throw new Error(`${entry.name}: async builtins stay outside the kernel`);
+    const frozenOutputs: Record<string, unknown> = {};
+    for (const [name, value] of Object.entries(outputs)) {
+      if (!entry.shapeOnlyOutputs?.includes(name)) {
+        frozenOutputs[name] = jsonNormalize(value);
+      }
+    }
+    return {
+      name: entry.name,
+      operation: entry.operation,
+      inputs: jsonNormalize(entry.inputs),
+      state: jsonNormalize(entry.state),
+      env: { ids: entry.env?.ids ?? [], randoms: entry.env?.randoms ?? [], epochMs: FIXED_EPOCH_MS },
+      shapeOnlyOutputs: entry.shapeOnlyOutputs ?? [],
+      error: false,
+      expected: { state: jsonNormalize(state), outputs: frozenOutputs },
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith(entry.name)) throw error;
+    return {
+      name: entry.name,
+      operation: entry.operation,
+      inputs: jsonNormalize(entry.inputs),
+      state: jsonNormalize(entry.state),
+      env: { ids: entry.env?.ids ?? [], randoms: entry.env?.randoms ?? [], epochMs: FIXED_EPOCH_MS },
+      shapeOnlyOutputs: [],
+      error: true,
+      expected: { state: jsonNormalize(entry.state), outputs: {} },
+    };
+  } finally {
+    if (originalUuid) cryptoObject.randomUUID = originalUuid;
+    Math.random = originalRandom;
+    (globalThis as { Date: unknown }).Date = OriginalDate;
+  }
+}
+
 
 function main(): void {
   const outDir = resolve(scriptDir, '../../runtime-conformance');
@@ -317,8 +564,14 @@ function main(): void {
     resolve(outDir, 'expressions.json'),
     JSON.stringify({ formatVersion: 1, expressions }, null, 2) + '\n'
   );
+
+  const operations = OPERATION_CASES.map(runOperationCase);
+  writeFileSync(
+    resolve(outDir, 'operations.json'),
+    JSON.stringify({ formatVersion: 1, operations }, null, 2) + '\n'
+  );
   process.stdout.write(
-    `wrote ${transforms.length} transform, ${pipelines.length} pipeline, ${expressions.length} expression vectors\n`
+    `wrote ${transforms.length} transform, ${pipelines.length} pipeline, ${expressions.length} expression, ${operations.length} operation vectors\n`
   );
 }
 

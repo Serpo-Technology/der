@@ -4,6 +4,7 @@
 //! they hold the two implementations to identical semantics.
 
 use dynamic_experience_runtime_lib::runtime::expression::parse_row_expression;
+use dynamic_experience_runtime_lib::runtime::operations::{execute_builtin, OpEnv};
 use dynamic_experience_runtime_lib::runtime::transforms::{
     apply_legacy_single, apply_pipeline, apply_transform, TransformStep,
 };
@@ -83,6 +84,105 @@ fn pipeline_vectors_match() {
                 "{}: expected {} got {}",
                 name, vector["expected"], actual
             ));
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
+#[test]
+fn operation_vectors_match() {
+    let fixtures = fixture("operations.json");
+    let vectors = fixtures["operations"].as_array().expect("operation vectors");
+    let mut failures = Vec::new();
+    for vector in vectors {
+        let name = vector["name"].as_str().unwrap_or("?");
+        let operation = vector["operation"].as_str().expect("operation name");
+        let inputs = params_of(vector, "inputs");
+        let mut state = params_of(vector, "state");
+        let mut env = OpEnv {
+            ids: vector["env"]["ids"]
+                .as_array()
+                .map(|ids| {
+                    ids.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            randoms: vector["env"]["randoms"]
+                .as_array()
+                .map(|rolls| rolls.iter().filter_map(Value::as_f64).collect())
+                .unwrap_or_default(),
+            epoch_ms: vector["env"]["epochMs"].as_i64().unwrap_or(0),
+            tz_offset_minutes: 0,
+        };
+        let expected_error = vector["error"].as_bool() == Some(true);
+        let shape_only: Vec<&str> = vector["shapeOnlyOutputs"]
+            .as_array()
+            .map(|names| names.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+
+        match execute_builtin(operation, &inputs, &mut state, &mut env) {
+            Ok(outputs) => {
+                if expected_error {
+                    failures.push(format!("{}: expected an error", name));
+                    continue;
+                }
+                if !semantically_equal(&Value::Object(state), &vector["expected"]["state"]) {
+                    failures.push(format!("{}: state mismatch", name));
+                    continue;
+                }
+                let expected_outputs = vector["expected"]["outputs"]
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_default();
+                for (out_name, value) in &outputs {
+                    if shape_only.contains(&out_name.as_str()) {
+                        let text = value.as_str().unwrap_or("");
+                        let ok = match out_name.as_str() {
+                            "date" => {
+                                text.len() == 10
+                                    && text.chars().enumerate().all(|(i, c)| {
+                                        if i == 4 || i == 7 { c == '-' } else { c.is_ascii_digit() }
+                                    })
+                            }
+                            "time" => {
+                                text.len() == 5
+                                    && text.chars().enumerate().all(|(i, c)| {
+                                        if i == 2 { c == ':' } else { c.is_ascii_digit() }
+                                    })
+                            }
+                            _ => false,
+                        };
+                        if !ok {
+                            failures.push(format!("{}: {} shape mismatch: {}", name, out_name, text));
+                        }
+                    } else if !expected_outputs
+                        .get(out_name)
+                        .is_some_and(|expected| semantically_equal(value, expected))
+                    {
+                        failures.push(format!("{}: output {} mismatch: {}", name, out_name, value));
+                    }
+                }
+                let mut actual_names: Vec<&str> = outputs.keys().map(String::as_str).collect();
+                actual_names.sort_unstable();
+                let mut expected_names: Vec<&str> = expected_outputs
+                    .keys()
+                    .map(String::as_str)
+                    .chain(shape_only.iter().copied())
+                    .collect();
+                expected_names.sort_unstable();
+                if actual_names != expected_names {
+                    failures.push(format!("{}: output names {:?} expected {:?}", name, actual_names, expected_names));
+                }
+            }
+            Err(error) => {
+                if !expected_error {
+                    failures.push(format!("{}: unexpected error {}", name, error));
+                } else if !semantically_equal(&Value::Object(state), &vector["expected"]["state"]) {
+                    failures.push(format!("{}: state changed on error", name));
+                }
+            }
         }
     }
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));
