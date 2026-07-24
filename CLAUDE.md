@@ -268,6 +268,22 @@ stats-summary (compute), frankfurter and openweather and coingecko and wikipedia
 (integrations), ui-basics (entry_row, stat_tile, and the self-wired stopwatch pack),
 starter-apps (the apps.expense_tracker recipe, taken verbatim from the proven eval corpus).
 
+### Runtime kernel conformance
+
+The pure runtime kernel (transform semantics and the row-expression grammar) is implemented
+twice: TypeScript (`src/services/operations/transforms.ts`, `row-expression.ts`) runs in the
+webview renderer, and Rust (`src-tauri/src/runtime/`) is the core's implementation, the basis
+for renderer backends beyond the webview. The committed vectors in `runtime-conformance/` are
+the semantic contract: both test suites run every vector (vitest
+`runtime-conformance.test.ts`, cargo `runtime_conformance.rs`), covering the
+JavaScript-flavored edges (Math.round at negative halves, toFixed strings, loose equality,
+string coercions, stable sort fallbacks), with undefined normalizing to null because JSON is
+what crosses the renderer boundary. To change kernel semantics: regenerate the vectors
+(`npx tsx scripts/runtime-conformance/generate.ts`), review the diff, and make both suites
+pass; an implementation edit that fails a vector is a drift bug, never a test to update.
+`formatNumber` and `formatDate` stay outside the kernel: their output is locale presentation
+owned by whichever renderer displays the value.
+
 ### Component repository
 
 The shared `repositoryService` singleton is seeded once at startup in `App.tsx` via

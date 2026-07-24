@@ -1,0 +1,248 @@
+{
+  "formatVersion": 1,
+  "expressions": [
+    {
+      "name": "product",
+      "expression": "qty * price",
+      "row": {
+        "qty": 4,
+        "price": 2.5
+      },
+      "identifiers": [
+        "price",
+        "qty"
+      ],
+      "parseError": false,
+      "value": 10
+    },
+    {
+      "name": "precedence",
+      "expression": "1 + 2 * 3",
+      "row": {},
+      "identifiers": [],
+      "parseError": false,
+      "value": 7
+    },
+    {
+      "name": "parentheses",
+      "expression": "(1 + 2) * 3",
+      "row": {},
+      "identifiers": [],
+      "parseError": false,
+      "value": 9
+    },
+    {
+      "name": "power right associative",
+      "expression": "2 ^ 3 ^ 2",
+      "row": {},
+      "identifiers": [],
+      "parseError": false,
+      "value": 512
+    },
+    {
+      "name": "unary binds before power",
+      "expression": "-2 ^ 2",
+      "row": {},
+      "identifiers": [],
+      "parseError": false,
+      "value": 4
+    },
+    {
+      "name": "negative exponent",
+      "expression": "2 ^ -1",
+      "row": {},
+      "identifiers": [],
+      "parseError": false,
+      "value": 0.5
+    },
+    {
+      "name": "modulo",
+      "expression": "9 % 4",
+      "row": {},
+      "identifiers": [],
+      "parseError": false,
+      "value": 1
+    },
+    {
+      "name": "float artifacts",
+      "expression": "0.1 + 0.2",
+      "row": {},
+      "identifiers": [],
+      "parseError": false,
+      "value": 0.30000000000000004
+    },
+    {
+      "name": "case insensitive fields",
+      "expression": "qty * price",
+      "row": {
+        "Qty": "4",
+        "PRICE": "1.5"
+      },
+      "identifiers": [
+        "price",
+        "qty"
+      ],
+      "parseError": false,
+      "value": 6
+    },
+    {
+      "name": "whitespace number field",
+      "expression": "qty + 1",
+      "row": {
+        "qty": " 4 "
+      },
+      "identifiers": [
+        "qty"
+      ],
+      "parseError": false,
+      "value": 5
+    },
+    {
+      "name": "functions",
+      "expression": "round(sqrt(x) + min(a, b) + max(a, b) + pow(2, 3))",
+      "row": {
+        "x": 9,
+        "a": 1,
+        "b": 2
+      },
+      "identifiers": [
+        "a",
+        "b",
+        "x"
+      ],
+      "parseError": false,
+      "value": 14
+    },
+    {
+      "name": "abs floor ceil",
+      "expression": "abs(-2) + floor(2.7) + ceil(2.1)",
+      "row": {},
+      "identifiers": [],
+      "parseError": false,
+      "value": 7
+    },
+    {
+      "name": "constants",
+      "expression": "floor(pi) + floor(e)",
+      "row": {},
+      "identifiers": [],
+      "parseError": false,
+      "value": 5
+    },
+    {
+      "name": "division",
+      "expression": "a / b",
+      "row": {
+        "a": 1,
+        "b": 8
+      },
+      "identifiers": [
+        "a",
+        "b"
+      ],
+      "parseError": false,
+      "value": 0.125
+    },
+    {
+      "name": "missing field errors",
+      "expression": "qty * ghost",
+      "row": {
+        "qty": 2
+      },
+      "identifiers": [
+        "ghost",
+        "qty"
+      ],
+      "parseError": false,
+      "evalError": true
+    },
+    {
+      "name": "non numeric field errors",
+      "expression": "qty + 1",
+      "row": {
+        "qty": "many"
+      },
+      "identifiers": [
+        "qty"
+      ],
+      "parseError": false,
+      "evalError": true
+    },
+    {
+      "name": "division by zero errors",
+      "expression": "1 / n",
+      "row": {
+        "n": 0
+      },
+      "identifiers": [
+        "n"
+      ],
+      "parseError": false,
+      "evalError": true
+    },
+    {
+      "name": "modulo by zero errors",
+      "expression": "1 % n",
+      "row": {
+        "n": 0
+      },
+      "identifiers": [
+        "n"
+      ],
+      "parseError": false,
+      "evalError": true
+    },
+    {
+      "name": "negative sqrt errors",
+      "expression": "sqrt(n)",
+      "row": {
+        "n": -1
+      },
+      "identifiers": [
+        "n"
+      ],
+      "parseError": false,
+      "evalError": true
+    },
+    {
+      "name": "dangling operator",
+      "expression": "qty *",
+      "parseError": true
+    },
+    {
+      "name": "unclosed parenthesis",
+      "expression": "(qty",
+      "parseError": true
+    },
+    {
+      "name": "unknown function",
+      "expression": "hack(1)",
+      "parseError": true
+    },
+    {
+      "name": "min arity",
+      "expression": "min(1)",
+      "parseError": true
+    },
+    {
+      "name": "sqrt arity",
+      "expression": "sqrt(1, 2)",
+      "parseError": true
+    },
+    {
+      "name": "empty expression",
+      "expression": "",
+      "parseError": true
+    },
+    {
+      "name": "statement injection",
+      "expression": "qty; alert(1)",
+      "parseError": true
+    },
+    {
+      "name": "too deep",
+      "expression": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+      "parseError": true
+    }
+  ]
+}

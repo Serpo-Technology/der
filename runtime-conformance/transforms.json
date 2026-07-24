@@ -1,0 +1,1586 @@
+{
+  "formatVersion": 1,
+  "transforms": [
+    {
+      "name": "count array",
+      "transform": "count",
+      "parameters": {},
+      "input": [
+        1,
+        2,
+        3
+      ],
+      "expected": 3
+    },
+    {
+      "name": "count empty",
+      "transform": "count",
+      "parameters": {},
+      "input": [],
+      "expected": 0
+    },
+    {
+      "name": "count null",
+      "transform": "count",
+      "parameters": {},
+      "input": null,
+      "expected": 0
+    },
+    {
+      "name": "count scalar",
+      "transform": "count",
+      "parameters": {},
+      "input": "nope",
+      "expected": 0
+    },
+    {
+      "name": "sum field",
+      "transform": "sum",
+      "parameters": {
+        "field": "qty"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": 17
+    },
+    {
+      "name": "sum string numbers",
+      "transform": "sum",
+      "parameters": {
+        "field": "price"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": 4.25
+    },
+    {
+      "name": "sum missing field",
+      "transform": "sum",
+      "parameters": {
+        "field": "ghost"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": 0
+    },
+    {
+      "name": "sum whole entries",
+      "transform": "sum",
+      "parameters": {
+        "field": ""
+      },
+      "input": [
+        1,
+        2,
+        "3",
+        null
+      ],
+      "expected": 6
+    },
+    {
+      "name": "sum booleans coerce",
+      "transform": "sum",
+      "parameters": {
+        "field": "done"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": 1
+    },
+    {
+      "name": "sum non-array",
+      "transform": "sum",
+      "parameters": {
+        "field": "qty"
+      },
+      "input": 7,
+      "expected": 0
+    },
+    {
+      "name": "filterBy match",
+      "transform": "filterBy",
+      "parameters": {
+        "field": "category",
+        "value": "hardware"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        }
+      ]
+    },
+    {
+      "name": "filterBy loose number",
+      "transform": "filterBy",
+      "parameters": {
+        "field": "qty",
+        "value": "4"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        }
+      ]
+    },
+    {
+      "name": "filterBy empty keeps all",
+      "transform": "filterBy",
+      "parameters": {
+        "field": "category",
+        "value": ""
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ]
+    },
+    {
+      "name": "filterBy null keeps all",
+      "transform": "filterBy",
+      "parameters": {
+        "field": "category",
+        "value": null
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ]
+    },
+    {
+      "name": "filterContains hit",
+      "transform": "filterContains",
+      "parameters": {
+        "field": "name",
+        "value": "oL"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        }
+      ]
+    },
+    {
+      "name": "filterContains empty keeps all",
+      "transform": "filterContains",
+      "parameters": {
+        "field": "name",
+        "value": ""
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ]
+    },
+    {
+      "name": "filterContains missing field",
+      "transform": "filterContains",
+      "parameters": {
+        "field": "ghost",
+        "value": "x"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": []
+    },
+    {
+      "name": "filterTruthy",
+      "transform": "filterTruthy",
+      "parameters": {
+        "field": "done"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        }
+      ]
+    },
+    {
+      "name": "filterFalsy counts missing",
+      "transform": "filterFalsy",
+      "parameters": {
+        "field": "done"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ]
+    },
+    {
+      "name": "sortBy numeric",
+      "transform": "sortBy",
+      "parameters": {
+        "field": "price"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        },
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        }
+      ]
+    },
+    {
+      "name": "sortBy desc",
+      "transform": "sortBy",
+      "parameters": {
+        "field": "qty",
+        "direction": "desc"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ]
+    },
+    {
+      "name": "sortBy strings",
+      "transform": "sortBy",
+      "parameters": {
+        "field": "name"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        }
+      ]
+    },
+    {
+      "name": "sortBy stable on ties",
+      "transform": "sortBy",
+      "parameters": {
+        "field": "category"
+      },
+      "input": [
+        {
+          "id": 1,
+          "category": "b"
+        },
+        {
+          "id": 2,
+          "category": "a"
+        },
+        {
+          "id": 3,
+          "category": "a"
+        }
+      ],
+      "expected": [
+        {
+          "id": 2,
+          "category": "a"
+        },
+        {
+          "id": 3,
+          "category": "a"
+        },
+        {
+          "id": 1,
+          "category": "b"
+        }
+      ]
+    },
+    {
+      "name": "sortBy mixed falls back to strings",
+      "transform": "sortBy",
+      "parameters": {
+        "field": "v"
+      },
+      "input": [
+        {
+          "v": "x"
+        },
+        {
+          "v": 2
+        },
+        {
+          "v": 10
+        }
+      ],
+      "expected": [
+        {
+          "v": 2
+        },
+        {
+          "v": 10
+        },
+        {
+          "v": "x"
+        }
+      ]
+    },
+    {
+      "name": "pick field",
+      "transform": "pick",
+      "parameters": {
+        "field": "name"
+      },
+      "input": {
+        "id": "a",
+        "name": "Bolt",
+        "qty": 4,
+        "price": 2.5,
+        "category": "hardware",
+        "done": true
+      },
+      "expected": "Bolt"
+    },
+    {
+      "name": "pick from array head",
+      "transform": "pick",
+      "parameters": {
+        "field": "name"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": "Bolt"
+    },
+    {
+      "name": "pick dot path",
+      "transform": "pick",
+      "parameters": {
+        "field": "a.b"
+      },
+      "input": {
+        "a": {
+          "b": 5
+        }
+      },
+      "expected": 5
+    },
+    {
+      "name": "pick missing",
+      "transform": "pick",
+      "parameters": {
+        "field": "ghost"
+      },
+      "input": {
+        "id": "a",
+        "name": "Bolt",
+        "qty": 4,
+        "price": 2.5,
+        "category": "hardware",
+        "done": true
+      },
+      "expected": null
+    },
+    {
+      "name": "pick whole value",
+      "transform": "pick",
+      "parameters": {
+        "field": ""
+      },
+      "input": 42,
+      "expected": 42
+    },
+    {
+      "name": "pluck",
+      "transform": "pluck",
+      "parameters": {
+        "field": "qty"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        4,
+        10,
+        "3"
+      ]
+    },
+    {
+      "name": "pluck missing",
+      "transform": "pluck",
+      "parameters": {
+        "field": "ghost"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "name": "equals loose",
+      "transform": "equals",
+      "parameters": {
+        "value": "4"
+      },
+      "input": 4,
+      "expected": true
+    },
+    {
+      "name": "equals miss",
+      "transform": "equals",
+      "parameters": {
+        "value": "x"
+      },
+      "input": 4,
+      "expected": false
+    },
+    {
+      "name": "not truthy",
+      "transform": "not",
+      "parameters": {},
+      "input": 1,
+      "expected": false
+    },
+    {
+      "name": "not empty string",
+      "transform": "not",
+      "parameters": {},
+      "input": "",
+      "expected": true
+    },
+    {
+      "name": "parseNumber plain",
+      "transform": "parseNumber",
+      "parameters": {},
+      "input": " 12.5 ",
+      "expected": 12.5
+    },
+    {
+      "name": "parseNumber junk",
+      "transform": "parseNumber",
+      "parameters": {},
+      "input": "abc",
+      "expected": 0
+    },
+    {
+      "name": "parseNumber empty string",
+      "transform": "parseNumber",
+      "parameters": {},
+      "input": "",
+      "expected": 0
+    },
+    {
+      "name": "parseNumber null",
+      "transform": "parseNumber",
+      "parameters": {},
+      "input": null,
+      "expected": 0
+    },
+    {
+      "name": "parseNumber bool",
+      "transform": "parseNumber",
+      "parameters": {},
+      "input": true,
+      "expected": 1
+    },
+    {
+      "name": "round to integer",
+      "transform": "round",
+      "parameters": {},
+      "input": 2.5,
+      "expected": 3
+    },
+    {
+      "name": "round negative half",
+      "transform": "round",
+      "parameters": {},
+      "input": -2.5,
+      "expected": -2
+    },
+    {
+      "name": "round two decimals is a string",
+      "transform": "round",
+      "parameters": {
+        "decimals": 2
+      },
+      "input": 1.005,
+      "expected": "1.00"
+    },
+    {
+      "name": "round float artifact",
+      "transform": "round",
+      "parameters": {
+        "decimals": 2
+      },
+      "input": 0.30000000000000004,
+      "expected": "0.30"
+    },
+    {
+      "name": "round non-numeric passes through",
+      "transform": "round",
+      "parameters": {
+        "decimals": 2
+      },
+      "input": "abc",
+      "expected": "abc"
+    },
+    {
+      "name": "round string number",
+      "transform": "round",
+      "parameters": {
+        "decimals": 1
+      },
+      "input": "2.55",
+      "expected": "2.6"
+    },
+    {
+      "name": "format inserts value",
+      "transform": "format",
+      "parameters": {
+        "template": "Total: {{value}} items"
+      },
+      "input": 3,
+      "expected": "Total: 3 items"
+    },
+    {
+      "name": "format first placeholder only",
+      "transform": "format",
+      "parameters": {
+        "template": "{{value}} and {{value}}"
+      },
+      "input": "x",
+      "expected": "x and {{value}}"
+    },
+    {
+      "name": "format null becomes empty",
+      "transform": "format",
+      "parameters": {
+        "template": "[{{value}}]"
+      },
+      "input": null,
+      "expected": "[]"
+    },
+    {
+      "name": "format float repr",
+      "transform": "format",
+      "parameters": {
+        "template": "{{value}}"
+      },
+      "input": 0.30000000000000004,
+      "expected": "0.30000000000000004"
+    },
+    {
+      "name": "format integer valued float",
+      "transform": "format",
+      "parameters": {
+        "template": "{{value}}"
+      },
+      "input": 3,
+      "expected": "3"
+    },
+    {
+      "name": "format missing template passes through",
+      "transform": "format",
+      "parameters": {},
+      "input": 7,
+      "expected": 7
+    },
+    {
+      "name": "map hit",
+      "transform": "map",
+      "parameters": {
+        "mapping": {
+          "true": "done",
+          "false": ""
+        }
+      },
+      "input": true,
+      "expected": "done"
+    },
+    {
+      "name": "map miss passes through",
+      "transform": "map",
+      "parameters": {
+        "mapping": {
+          "a": "b"
+        }
+      },
+      "input": "z",
+      "expected": "z"
+    },
+    {
+      "name": "map non-object passes through",
+      "transform": "map",
+      "parameters": {
+        "mapping": "nope"
+      },
+      "input": "z",
+      "expected": "z"
+    },
+    {
+      "name": "deriveField products",
+      "transform": "deriveField",
+      "parameters": {
+        "field": "value",
+        "expression": "qty * price"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true,
+          "value": 10
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false,
+          "value": 5
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable",
+          "value": 3.75
+        }
+      ]
+    },
+    {
+      "name": "deriveField null on missing field",
+      "transform": "deriveField",
+      "parameters": {
+        "field": "value",
+        "expression": "qty * ghost"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true,
+          "value": null
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false,
+          "value": null
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable",
+          "value": null
+        }
+      ]
+    },
+    {
+      "name": "deriveField bad expression degrades",
+      "transform": "deriveField",
+      "parameters": {
+        "field": "value",
+        "expression": "qty *"
+      },
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "expected": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ]
+    },
+    {
+      "name": "deriveField skips non-objects",
+      "transform": "deriveField",
+      "parameters": {
+        "field": "v",
+        "expression": "1 + 1"
+      },
+      "input": [
+        {
+          "a": 1
+        },
+        5,
+        null
+      ],
+      "expected": [
+        {
+          "a": 1,
+          "v": 2
+        },
+        5,
+        null
+      ]
+    }
+  ],
+  "pipelines": [
+    {
+      "name": "derive then sum then round then format",
+      "steps": [
+        {
+          "type": "deriveField",
+          "parameters": {
+            "field": "value",
+            "expression": "qty * price"
+          }
+        },
+        {
+          "type": "sum",
+          "parameters": {
+            "field": "value"
+          }
+        },
+        {
+          "type": "round",
+          "parameters": {
+            "decimals": 2
+          }
+        },
+        {
+          "type": "format",
+          "parameters": {
+            "template": "Total: $ {{value}}"
+          }
+        }
+      ],
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "legacySingle": false,
+      "expected": "Total: $ 18.75"
+    },
+    {
+      "name": "filter then count",
+      "steps": [
+        {
+          "type": "filterBy",
+          "parameters": {
+            "field": "category",
+            "value": "hardware"
+          }
+        },
+        {
+          "type": "count",
+          "parameters": {}
+        }
+      ],
+      "input": [
+        {
+          "id": "a",
+          "name": "Bolt",
+          "qty": 4,
+          "price": 2.5,
+          "category": "hardware",
+          "done": true
+        },
+        {
+          "id": "b",
+          "name": "Washer",
+          "qty": 10,
+          "price": 0.5,
+          "category": "hardware",
+          "done": false
+        },
+        {
+          "id": "c",
+          "name": "Tape",
+          "qty": "3",
+          "price": "1.25",
+          "category": "consumable"
+        }
+      ],
+      "legacySingle": false,
+      "expected": 2
+    },
+    {
+      "name": "pipeline runs on undefined input",
+      "steps": [
+        {
+          "type": "count",
+          "parameters": {}
+        }
+      ],
+      "input": null,
+      "legacySingle": false,
+      "expected": 0
+    },
+    {
+      "name": "unknown step passes value through",
+      "steps": [
+        {
+          "type": "nonexistent",
+          "parameters": {}
+        },
+        {
+          "type": "count",
+          "parameters": {}
+        }
+      ],
+      "input": [
+        1,
+        2
+      ],
+      "legacySingle": false,
+      "expected": 2
+    },
+    {
+      "name": "legacy single transform skips null input",
+      "steps": [
+        {
+          "type": "count",
+          "parameters": {}
+        }
+      ],
+      "input": null,
+      "legacySingle": true,
+      "expected": null
+    },
+    {
+      "name": "legacy single transform applies to values",
+      "steps": [
+        {
+          "type": "parseNumber",
+          "parameters": {}
+        }
+      ],
+      "input": "41",
+      "legacySingle": true,
+      "expected": 41
+    }
+  ]
+}
