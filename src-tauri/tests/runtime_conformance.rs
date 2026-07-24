@@ -265,6 +265,79 @@ fn session_vectors_match() {
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));
 }
 
+/// Object keys holding null and absent keys are equivalent in the view
+/// protocol; arrays keep nulls as real entries.
+fn strip_null_keys(value: &Value) -> Value {
+    match value {
+        Value::Array(items) => Value::Array(items.iter().map(strip_null_keys).collect()),
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .filter(|(_, entry)| !entry.is_null())
+                .map(|(key, entry)| (key.clone(), strip_null_keys(entry)))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+#[test]
+fn template_vectors_match() {
+    use dynamic_experience_runtime_lib::runtime::templates::{
+        expand_ui_fragment, instantiate_pack_operations,
+    };
+    let fixtures = fixture("templates.json");
+    let vectors = fixtures["templates"].as_array().expect("template vectors");
+    let mut failures = Vec::new();
+    for vector in vectors {
+        let name = vector["name"].as_str().unwrap_or("?");
+        let def = vector["def"].as_object().expect("def");
+        let instance = vector["instance"].as_object().expect("instance");
+        let actual = match vector["kind"].as_str() {
+            Some("fragment") => match expand_ui_fragment(instance, def) {
+                Ok(expanded) => expanded,
+                Err(error) => {
+                    failures.push(format!("{}: expansion failed: {}", name, error));
+                    continue;
+                }
+            },
+            _ => Value::Array(instantiate_pack_operations(instance, def)),
+        };
+        if !semantically_equal(&actual, &vector["expected"]) {
+            failures.push(format!(
+                "{}: expected {} got {}",
+                name, vector["expected"], actual
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
+#[test]
+fn view_vectors_match() {
+    use dynamic_experience_runtime_lib::runtime::view::{resolve_view_tree, ViewContext};
+    let fixtures = fixture("views.json");
+    let vectors = fixtures["views"].as_array().expect("view vectors");
+    let mut failures = Vec::new();
+    for vector in vectors {
+        let name = vector["name"].as_str().unwrap_or("?");
+        let elements = vector["elements"].as_array().cloned().unwrap_or_default();
+        let state = params_of(vector, "state");
+        let fragment_defs = params_of(vector, "fragmentDefs");
+        let ctx = ViewContext {
+            state: &state,
+            fragment_defs: &fragment_defs,
+        };
+        let tree = strip_null_keys(&Value::Array(resolve_view_tree(&elements, &ctx)));
+        if !semantically_equal(&tree, &vector["expected"]) {
+            failures.push(format!(
+                "{}: tree mismatch\n  actual: {}\n  expected: {}",
+                name, tree, vector["expected"]
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
 #[test]
 fn expression_vectors_match() {
     let fixtures = fixture("expressions.json");

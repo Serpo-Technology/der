@@ -14,20 +14,17 @@
  */
 
 import React from 'react';
-import { UIElement, DataBinding, EventBinding, VisibilityCondition } from '../../types/contract';
+import { UIElement } from '../../types/contract';
 import { ExperienceState } from '../../types/experience';
+import { ELEMENT_MANIFESTS } from '../../services/operations/registry';
 import {
-  ELEMENT_MANIFESTS,
-  getUiFragmentDef,
-  getValueAtPath,
-  looseEquals,
-} from '../../services/operations/registry';
-import { expandUiFragment } from '../../services/fragments/ui-fragments';
-import {
-  applyBindingTransforms,
-  applyTransformPipeline,
-} from '../../services/operations/transforms';
+  ResolvedNode,
+  resolveViewTree,
+} from '../../services/runtime-view/resolve-view';
+import type { ItemScope } from '../../services/runtime-view/resolve-view';
 import type { EventContext } from './OperationExecutor';
+
+export type { ItemScope } from '../../services/runtime-view/resolve-view';
 
 // Standard UI component registry
 const UI_COMPONENTS = {
@@ -51,13 +48,6 @@ const UI_COMPONENTS = {
 const INTRINSIC_TAGS = new Set([
   'div','span','p','button','input','form','ul','ol','li','img','a','label','section','header','footer','main','nav','article','aside','h1','h2','h3','h4','h5','h6','textarea','select','option'
 ]);
-
-const INPUT_LIKE_TYPES = new Set(['input', 'textarea', 'select', 'checkbox']);
-
-export interface ItemScope {
-  item: unknown;
-  index: number;
-}
 
 export interface RenderOptions {
   /** Writes an element's current value into state (`element_${id}`). */
@@ -86,135 +76,82 @@ export class ComponentRenderer {
     return () => this.renderElement(element, experienceState, onOperationExecute, options);
   }
 
-  /** Renders a contract element directly as JSX (stable element identity). */
+  /**
+   * Renders a contract element directly as JSX (stable element identity).
+   * Resolution (visibility, bindings, rows, control values, fragments) runs
+   * through the shared view resolver; this class adds the presentation:
+   * React components, knob classes, and handler wiring.
+   */
   renderElement(
     element: UIElement,
     experienceState: ExperienceState,
     onOperationExecute: OperationExecuteHandler,
     options: RenderOptions = {}
   ): React.ReactElement {
-    if (!this.isVisible(element, experienceState, options.scope)) {
+    const nodes = resolveViewTree([element], { data: experienceState.data }, options.scope);
+    if (nodes.length === 0) {
       return <React.Fragment key={element.id} />;
     }
+    return this.renderResolved(nodes[0], onOperationExecute, options);
+  }
 
-    const resolvedProps = this.resolveDataBindings(element, experienceState, options.scope);
-    const eventHandlers = this.createEventHandlers(element, onOperationExecute, options.scope);
-
+  private renderResolved(
+    node: ResolvedNode,
+    onOperationExecute: OperationExecuteHandler,
+    options: RenderOptions
+  ): React.ReactElement {
     const finalProps: Record<string, any> = {
-      ...element.properties,
-      ...resolvedProps,
-      ...eventHandlers,
-      'data-element-id': element.id
+      ...node.props,
+      ...this.createEventHandlers(node, onOperationExecute),
+      'data-element-id': node.id
     };
 
-    this.applyKnobs(element, finalProps);
-    this.applyControlledInput(element, experienceState, finalProps, options);
+    this.applyKnobs(node, finalProps);
+    this.applyControl(node, finalProps, options);
 
-    // A list with children repeats them per item of the bound array.
-    if (element.type === 'list' && element.children && element.children.length > 0) {
-      return this.renderListTemplate(element, experienceState, onOperationExecute, options, finalProps);
+    // A list with a template carries its resolved rows.
+    if (node.rows) {
+      return this.renderListRows(node, finalProps, onOperationExecute, options);
     }
 
+    // No children must stay undefined: void elements reject a children prop
+    // and the button label falls back only when children are absent.
     const renderChildren = (): React.ReactNode =>
-      element.children?.map(child => (
-        <React.Fragment key={child.id}>
-          {this.renderElement(child, experienceState, onOperationExecute, options)}
-        </React.Fragment>
-      ));
+      node.children.length > 0
+        ? node.children.map(child => (
+            <React.Fragment key={child.id}>
+              {this.renderResolved(child, onOperationExecute, options)}
+            </React.Fragment>
+          ))
+        : undefined;
 
-    const ComponentType = UI_COMPONENTS[element.type as keyof typeof UI_COMPONENTS];
+    const ComponentType = UI_COMPONENTS[node.type as keyof typeof UI_COMPONENTS];
 
     // If known component type
     if (ComponentType) {
       return (
-        <ComponentType key={element.id} {...finalProps}>
+        <ComponentType key={node.id} {...finalProps}>
           {renderChildren()}
         </ComponentType>
       );
     }
 
     // If intrinsic HTML element (supported lowercase tag), render directly
-    if (typeof element.type === 'string' && INTRINSIC_TAGS.has(element.type)) {
+    if (typeof node.type === 'string' && INTRINSIC_TAGS.has(node.type)) {
       const { content, text, children: _ignored, ...rest } = finalProps as any;
       const children = [] as any[];
       if (content ?? text) children.push(displayable(content ?? text));
       children.push(renderChildren());
-      return React.createElement(element.type, { key: element.id, ...rest }, children.length > 0 ? children : undefined);
-    }
-
-    // Installed composed UI fragments expand into their template subtree.
-    const fragmentDef = getUiFragmentDef(element.type);
-    if (fragmentDef) {
-      try {
-        const expanded = expandUiFragment(element, fragmentDef);
-        return (
-          <React.Fragment key={element.id}>
-            {this.renderElement(expanded, experienceState, onOperationExecute, options)}
-          </React.Fragment>
-        );
-      } catch (error) {
-        console.warn(`UI fragment ${element.type} failed to expand`, error);
-      }
+      return React.createElement(node.type, { key: node.id, ...rest }, children.length > 0 ? children : undefined);
     }
 
     // Unknown custom component type fallback
-    return <UnknownComponent key={element.id} element={element} />;
-  }
-
-  /** Evaluates the element's visibility conditions (an array means AND). */
-  private isVisible(
-    element: UIElement,
-    experienceState: ExperienceState,
-    scope?: ItemScope
-  ): boolean {
-    const raw = element.visibleWhen;
-    if (!raw) return true;
-    const conditions = Array.isArray(raw) ? raw : [raw];
-    return conditions.every(condition => this.evaluateCondition(condition, experienceState, scope));
-  }
-
-  private evaluateCondition(
-    condition: VisibilityCondition,
-    experienceState: ExperienceState,
-    scope?: ItemScope
-  ): boolean {
-    const read =
-      condition.source === 'state'
-        ? experienceState.data[condition.sourceId]
-        : getValueAtPath(scope?.item, condition.sourceId);
-    const value = applyTransformPipeline(read, condition.transforms, {
-      lookup: (source, sourceId) =>
-        experienceState.data[source === 'element' ? `element_${sourceId}` : sourceId]
-    });
-
-    switch (condition.operator) {
-      case 'truthy':
-        return Boolean(value);
-      case 'falsy':
-        return !value;
-      case 'empty':
-        return Array.isArray(value)
-          ? value.length === 0
-          : value === null || value === undefined || String(value) === '';
-      case 'notEmpty':
-        return Array.isArray(value)
-          ? value.length > 0
-          : !(value === null || value === undefined || String(value) === '');
-      case 'equals':
-        return looseEquals(value, condition.value);
-      case 'notEquals':
-        return !looseEquals(value, condition.value);
-      case 'gt':
-        return Number(value) > Number(condition.value);
-      case 'gte':
-        return Number(value) >= Number(condition.value);
-      case 'lt':
-        return Number(value) < Number(condition.value);
-      case 'lte':
-        return Number(value) <= Number(condition.value);
-      default:
-        return true;
-    }
+    return (
+      <UnknownComponent
+        key={node.id}
+        element={{ id: node.id, type: node.type, properties: node.props } as unknown as UIElement}
+      />
+    );
   }
 
   /**
@@ -223,11 +160,11 @@ export class ComponentRenderer {
    * the manifest default. String/number knobs stay as props; the part
    * components destructure them away from the DOM.
    */
-  private applyKnobs(element: UIElement, finalProps: Record<string, any>): void {
+  private applyKnobs(node: ResolvedNode, finalProps: Record<string, any>): void {
     // A plain form groups children exactly like a container, so it takes the
     // container knobs (and their CSS classes) instead of leaking raw
     // direction/gap/align props into the DOM.
-    const manifestType = element.type === 'form' ? 'container' : element.type;
+    const manifestType = node.type === 'form' ? 'container' : node.type;
     const manifest = ELEMENT_MANIFESTS[manifestType];
     if (!manifest) return;
 
@@ -237,7 +174,7 @@ export class ComponentRenderer {
       let value = finalProps[knob.name] ?? knob.default;
       if (value !== undefined && !(knob.values ?? []).includes(String(value))) {
         console.warn(
-          `Element ${element.id}: "${value}" is not a valid ${knob.name}; using "${knob.default}"`
+          `Element ${node.id}: "${value}" is not a valid ${knob.name}; using "${knob.default}"`
         );
         value = knob.default;
       }
@@ -252,43 +189,34 @@ export class ComponentRenderer {
     }
   }
 
-  private renderListTemplate(
-    element: UIElement,
-    experienceState: ExperienceState,
+  private renderListRows(
+    node: ResolvedNode,
+    finalProps: Record<string, any>,
     onOperationExecute: OperationExecuteHandler,
-    options: RenderOptions,
-    finalProps: Record<string, any>
+    options: RenderOptions
   ): React.ReactElement {
-    const { items, emptyText, children: _children, content: _content, text: _text, ...rest } = finalProps;
-    const array: unknown[] = Array.isArray(items) ? items : [];
+    const { items: _items, emptyText, children: _children, content: _content, text: _text, ...rest } = finalProps;
+    const rows = node.rows ?? [];
 
-    if (array.length === 0 && emptyText) {
+    if (rows.length === 0 && emptyText) {
       return (
-        <div key={element.id} className="der-empty" data-element-id={element.id}>
+        <div key={node.id} className="der-empty" data-element-id={node.id}>
           {String(emptyText)}
         </div>
       );
     }
 
     return (
-      <ul key={element.id} {...rest}>
-        {array.map((item, index) => {
-          const scope: ItemScope = { item, index };
-          const record = item as Record<string, unknown> | null;
-          const key =
-            record && typeof record === 'object' && record.id !== undefined
-              ? String(record.id)
-              : String(index);
-          return (
-            <li key={key}>
-              {element.children!.map(child => (
-                <React.Fragment key={child.id}>
-                  {this.renderElement(child, experienceState, onOperationExecute, { ...options, scope })}
-                </React.Fragment>
-              ))}
-            </li>
-          );
-        })}
+      <ul key={node.id} {...rest}>
+        {rows.map(row => (
+          <li key={row.key}>
+            {row.children.map(child => (
+              <React.Fragment key={child.id}>
+                {this.renderResolved(child, onOperationExecute, options)}
+              </React.Fragment>
+            ))}
+          </li>
+        ))}
       </ul>
     );
   }
@@ -299,113 +227,67 @@ export class ComponentRenderer {
    * list templates: one state key would be shared by every row (in-row
    * checkboxes are binding-driven instead).
    */
-  private applyControlledInput(
-    element: UIElement,
-    experienceState: ExperienceState,
+  private applyControl(
+    node: ResolvedNode,
     finalProps: Record<string, any>,
     options: RenderOptions
   ): void {
-    if (!INPUT_LIKE_TYPES.has(element.type) || !options.setElementValue || options.scope) {
+    if (!node.control || !options.setElementValue) {
       return;
     }
 
     const setElementValue = options.setElementValue;
-    const stateValue = experienceState.data[`element_${element.id}`];
-    const isCheckbox = element.type === 'checkbox' || finalProps.type === 'checkbox';
+    const isCheckbox = node.control.kind === 'checkbox';
     const boundOnChange = finalProps.onChange as ((event: any) => void) | undefined;
 
     if (isCheckbox) {
-      finalProps.checked = Boolean(stateValue);
+      finalProps.checked = Boolean(node.control.value);
       delete finalProps.value;
     } else {
-      finalProps.value = stateValue ?? element.properties?.defaultValue ?? '';
+      finalProps.value = node.control.value;
       delete finalProps.defaultValue;
     }
 
     finalProps.onChange = (event: any) => {
       const next = isCheckbox ? event?.target?.checked : event?.target?.value;
-      setElementValue(element.id, next);
+      setElementValue(node.id, next);
       boundOnChange?.(event);
     };
   }
 
-  private resolveDataBindings(
-    element: UIElement,
-    experienceState: ExperienceState,
-    scope?: ItemScope
-  ): Record<string, any> {
-    const resolvedProps: Record<string, any> = {};
-
-    element.dataBindings.forEach(binding => {
-      const value = this.resolveDataBinding(binding, experienceState, scope);
-      resolvedProps[binding.property] = value;
-    });
-
-    return resolvedProps;
-  }
-
-  private resolveDataBinding(
-    binding: DataBinding,
-    experienceState: ExperienceState,
-    scope?: ItemScope
-  ): any {
-    let value: any;
-
-    switch (binding.source) {
-      case 'state':
-        value = experienceState.data[binding.sourceId];
-        break;
-      case 'operation':
-        value = experienceState.data[`operation_${binding.sourceId}`];
-        break;
-      case 'constant':
-        value = binding.value !== undefined ? binding.value : binding.sourceId;
-        break;
-      case 'item':
-        value = getValueAtPath(scope?.item, binding.sourceId);
-        break;
-      default:
-        value = null;
-    }
-
-    return applyBindingTransforms(value, binding, {
-      lookup: (source, sourceId) =>
-        experienceState.data[source === 'element' ? `element_${sourceId}` : sourceId]
-    });
-  }
-
   private createEventHandlers(
-    element: UIElement,
-    onOperationExecute: OperationExecuteHandler,
-    scope?: ItemScope
+    node: ResolvedNode,
+    onOperationExecute: OperationExecuteHandler
   ): Record<string, any> {
     const handlers: Record<string, any> = {};
 
     // Several bindings may share one event (e.g. click -> add, then click ->
     // recompute); they run sequentially in contract order.
-    const byHandler = new Map<string, EventBinding[]>();
-    for (const binding of element.eventBindings) {
-      const handlerName = this.getEventHandlerName(binding.event);
-      const list = byHandler.get(handlerName) ?? [];
-      list.push(binding);
-      byHandler.set(handlerName, list);
-    }
-
-    byHandler.forEach((bindings, handlerName) => {
-      handlers[handlerName] = async (event: any) => {
-        for (const binding of bindings) {
-          const ok = await this.handleEvent(binding, event, onOperationExecute, scope);
-          // Later bindings usually consume the failed operation's outputs;
-          // running them would bury the root error under follow-on noise.
-          if (!ok) break;
+    for (const [eventName, operationIds] of Object.entries(node.events)) {
+      handlers[this.getEventHandlerName(eventName)] = async (event: any) => {
+        if (eventName === 'submit' && typeof event?.preventDefault === 'function') {
+          event.preventDefault();
+        }
+        for (const operationId of operationIds) {
+          try {
+            await onOperationExecute(operationId, { item: node.eventItem });
+          } catch (error) {
+            // Later bindings usually consume the failed operation's outputs;
+            // running them would bury the root error under follow-on noise.
+            console.error(
+              `Error handling event ${eventName} for operation ${operationId}:`,
+              error
+            );
+            break;
+          }
         }
       };
-    });
+    }
 
     // A native form submit navigates the webview and wipes the app. Forms
     // always swallow the navigation; a contract-defined submit binding still
     // runs after the default is prevented.
-    if (element.type === 'form') {
+    if (node.type === 'form') {
       const contractSubmit = handlers.onSubmit;
       handlers.onSubmit = async (event: any) => {
         if (typeof event?.preventDefault === 'function') {
@@ -434,23 +316,6 @@ export class ComponentRenderer {
     return eventMap[eventType] || `on${eventType.charAt(0).toUpperCase()}${eventType.slice(1)}`;
   }
 
-  private async handleEvent(
-    binding: EventBinding,
-    event: any,
-    onOperationExecute: OperationExecuteHandler,
-    scope?: ItemScope
-  ): Promise<boolean> {
-    if (binding.event === 'submit' && typeof event?.preventDefault === 'function') {
-      event.preventDefault();
-    }
-    try {
-      await onOperationExecute(binding.operationId, { item: scope?.item });
-      return true;
-    } catch (error) {
-      console.error(`Error handling event ${binding.event} for operation ${binding.operationId}:`, error);
-      return false;
-    }
-  }
 }
 
 // Standard UI Components

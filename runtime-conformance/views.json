@@ -1,0 +1,926 @@
+{
+  "formatVersion": 1,
+  "views": [
+    {
+      "name": "binding sources resolve and undefined props stay absent",
+      "elements": [
+        {
+          "id": "panel",
+          "type": "container",
+          "properties": {
+            "padding": "8",
+            "stale": "shadowed"
+          },
+          "dataBindings": [
+            {
+              "property": "a",
+              "source": "state",
+              "sourceId": "greeting"
+            },
+            {
+              "property": "b",
+              "source": "operation",
+              "sourceId": "op-1"
+            },
+            {
+              "property": "c",
+              "source": "constant",
+              "sourceId": "true",
+              "value": true
+            },
+            {
+              "property": "d",
+              "source": "constant",
+              "sourceId": "plain"
+            },
+            {
+              "property": "e",
+              "source": "unknown-source",
+              "sourceId": "x"
+            },
+            {
+              "property": "stale",
+              "source": "state",
+              "sourceId": "missing"
+            }
+          ]
+        }
+      ],
+      "state": {
+        "greeting": "hi",
+        "operation_op-1": {
+          "value": 7
+        }
+      },
+      "fragmentDefs": {},
+      "expected": [
+        {
+          "id": "panel",
+          "type": "container",
+          "props": {
+            "padding": "8",
+            "a": "hi",
+            "b": {
+              "value": 7
+            },
+            "c": true,
+            "d": "plain"
+          },
+          "events": {},
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "list rows resolve item scopes, keys, and event items",
+      "elements": [
+        {
+          "id": "rows",
+          "type": "list",
+          "properties": {
+            "emptyText": "Nothing yet"
+          },
+          "dataBindings": [
+            {
+              "property": "items",
+              "source": "state",
+              "sourceId": "rows"
+            }
+          ],
+          "children": [
+            {
+              "id": "r-title",
+              "type": "text",
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "item",
+                  "sourceId": "title"
+                }
+              ]
+            },
+            {
+              "id": "r-flag",
+              "type": "text",
+              "visibleWhen": {
+                "source": "item",
+                "sourceId": "done",
+                "operator": "truthy"
+              },
+              "properties": {
+                "content": "done"
+              }
+            },
+            {
+              "id": "r-del",
+              "type": "button",
+              "properties": {
+                "text": "Delete"
+              },
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-del"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "state": {
+        "rows": [
+          {
+            "id": "a",
+            "title": "Bolt",
+            "qty": 4,
+            "done": true
+          },
+          {
+            "id": null,
+            "title": "Washer",
+            "qty": 10
+          },
+          {
+            "title": "Tape",
+            "qty": 3
+          }
+        ]
+      },
+      "fragmentDefs": {},
+      "expected": [
+        {
+          "id": "rows",
+          "type": "list",
+          "props": {
+            "emptyText": "Nothing yet",
+            "items": [
+              {
+                "id": "a",
+                "title": "Bolt",
+                "qty": 4,
+                "done": true
+              },
+              {
+                "title": "Washer",
+                "qty": 10
+              },
+              {
+                "title": "Tape",
+                "qty": 3
+              }
+            ]
+          },
+          "events": {},
+          "children": [],
+          "rows": [
+            {
+              "key": "a",
+              "item": {
+                "id": "a",
+                "title": "Bolt",
+                "qty": 4,
+                "done": true
+              },
+              "children": [
+                {
+                  "id": "r-title",
+                  "type": "text",
+                  "props": {
+                    "content": "Bolt"
+                  },
+                  "events": {},
+                  "children": [],
+                  "eventItem": {
+                    "id": "a",
+                    "title": "Bolt",
+                    "qty": 4,
+                    "done": true
+                  }
+                },
+                {
+                  "id": "r-flag",
+                  "type": "text",
+                  "props": {
+                    "content": "done"
+                  },
+                  "events": {},
+                  "children": [],
+                  "eventItem": {
+                    "id": "a",
+                    "title": "Bolt",
+                    "qty": 4,
+                    "done": true
+                  }
+                },
+                {
+                  "id": "r-del",
+                  "type": "button",
+                  "props": {
+                    "text": "Delete"
+                  },
+                  "events": {
+                    "click": [
+                      "op-del"
+                    ]
+                  },
+                  "children": [],
+                  "eventItem": {
+                    "id": "a",
+                    "title": "Bolt",
+                    "qty": 4,
+                    "done": true
+                  }
+                }
+              ]
+            },
+            {
+              "key": "null",
+              "item": {
+                "title": "Washer",
+                "qty": 10
+              },
+              "children": [
+                {
+                  "id": "r-title",
+                  "type": "text",
+                  "props": {
+                    "content": "Washer"
+                  },
+                  "events": {},
+                  "children": [],
+                  "eventItem": {
+                    "title": "Washer",
+                    "qty": 10
+                  }
+                },
+                {
+                  "id": "r-del",
+                  "type": "button",
+                  "props": {
+                    "text": "Delete"
+                  },
+                  "events": {
+                    "click": [
+                      "op-del"
+                    ]
+                  },
+                  "children": [],
+                  "eventItem": {
+                    "title": "Washer",
+                    "qty": 10
+                  }
+                }
+              ]
+            },
+            {
+              "key": "2",
+              "item": {
+                "title": "Tape",
+                "qty": 3
+              },
+              "children": [
+                {
+                  "id": "r-title",
+                  "type": "text",
+                  "props": {
+                    "content": "Tape"
+                  },
+                  "events": {},
+                  "children": [],
+                  "eventItem": {
+                    "title": "Tape",
+                    "qty": 3
+                  }
+                },
+                {
+                  "id": "r-del",
+                  "type": "button",
+                  "props": {
+                    "text": "Delete"
+                  },
+                  "events": {
+                    "click": [
+                      "op-del"
+                    ]
+                  },
+                  "children": [],
+                  "eventItem": {
+                    "title": "Tape",
+                    "qty": 3
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an empty list keeps its rows empty and its emptyText prop",
+      "elements": [
+        {
+          "id": "rows",
+          "type": "list",
+          "properties": {
+            "emptyText": "Nothing yet"
+          },
+          "dataBindings": [
+            {
+              "property": "items",
+              "source": "state",
+              "sourceId": "rows"
+            }
+          ],
+          "children": [
+            {
+              "id": "r-t",
+              "type": "text"
+            }
+          ]
+        }
+      ],
+      "state": {},
+      "fragmentDefs": {},
+      "expected": [
+        {
+          "id": "rows",
+          "type": "list",
+          "props": {
+            "emptyText": "Nothing yet"
+          },
+          "events": {},
+          "children": [],
+          "rows": []
+        }
+      ]
+    },
+    {
+      "name": "live lookup filters through an element reference",
+      "elements": [
+        {
+          "id": "search-in",
+          "type": "input",
+          "properties": {
+            "label": "Search"
+          }
+        },
+        {
+          "id": "hits",
+          "type": "text",
+          "dataBindings": [
+            {
+              "property": "content",
+              "source": "state",
+              "sourceId": "rows",
+              "transforms": [
+                {
+                  "type": "filterContains",
+                  "parameters": {
+                    "field": "title",
+                    "value": {
+                      "source": "element",
+                      "sourceId": "search-in"
+                    }
+                  }
+                },
+                {
+                  "type": "count",
+                  "parameters": {}
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "state": {
+        "rows": [
+          {
+            "id": "a",
+            "title": "Bolt",
+            "qty": 4,
+            "done": true
+          },
+          {
+            "id": null,
+            "title": "Washer",
+            "qty": 10
+          },
+          {
+            "title": "Tape",
+            "qty": 3
+          }
+        ],
+        "element_search-in": "bo"
+      },
+      "fragmentDefs": {},
+      "expected": [
+        {
+          "id": "search-in",
+          "type": "input",
+          "props": {
+            "label": "Search"
+          },
+          "events": {},
+          "children": [],
+          "control": {
+            "kind": "value",
+            "value": "bo"
+          }
+        },
+        {
+          "id": "hits",
+          "type": "text",
+          "props": {
+            "content": 1
+          },
+          "events": {},
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "controls read state, defaults, and checkbox booleans",
+      "elements": [
+        {
+          "id": "name-in",
+          "type": "input",
+          "properties": {
+            "defaultValue": "hello"
+          }
+        },
+        {
+          "id": "qty-in",
+          "type": "input"
+        },
+        {
+          "id": "done-in",
+          "type": "checkbox"
+        },
+        {
+          "id": "cat-in",
+          "type": "select",
+          "properties": {
+            "options": [
+              "a",
+              "b"
+            ]
+          }
+        }
+      ],
+      "state": {
+        "element_qty-in": "42",
+        "element_done-in": "yes"
+      },
+      "fragmentDefs": {},
+      "expected": [
+        {
+          "id": "name-in",
+          "type": "input",
+          "props": {
+            "defaultValue": "hello"
+          },
+          "events": {},
+          "children": [],
+          "control": {
+            "kind": "value",
+            "value": "hello"
+          }
+        },
+        {
+          "id": "qty-in",
+          "type": "input",
+          "props": {},
+          "events": {},
+          "children": [],
+          "control": {
+            "kind": "value",
+            "value": "42"
+          }
+        },
+        {
+          "id": "done-in",
+          "type": "checkbox",
+          "props": {},
+          "events": {},
+          "children": [],
+          "control": {
+            "kind": "checkbox",
+            "value": true
+          }
+        },
+        {
+          "id": "cat-in",
+          "type": "select",
+          "props": {
+            "options": [
+              "a",
+              "b"
+            ]
+          },
+          "events": {},
+          "children": [],
+          "control": {
+            "kind": "value",
+            "value": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "visibility distinguishes missing from null in comparisons",
+      "elements": [
+        {
+          "id": "gt-missing",
+          "type": "text",
+          "properties": {
+            "content": "never"
+          },
+          "visibleWhen": {
+            "source": "state",
+            "sourceId": "ghost",
+            "operator": "gt",
+            "value": -1
+          }
+        },
+        {
+          "id": "gt-null",
+          "type": "text",
+          "properties": {
+            "content": "shows"
+          },
+          "visibleWhen": {
+            "source": "state",
+            "sourceId": "zeroed",
+            "operator": "gt",
+            "value": -1
+          }
+        },
+        {
+          "id": "and-gate",
+          "type": "text",
+          "properties": {
+            "content": "both"
+          },
+          "visibleWhen": [
+            {
+              "source": "state",
+              "sourceId": "mode",
+              "operator": "equals",
+              "value": "on"
+            },
+            {
+              "source": "state",
+              "sourceId": "rows",
+              "operator": "gt",
+              "value": 2,
+              "transforms": [
+                {
+                  "type": "count",
+                  "parameters": {}
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "state": {
+        "zeroed": null,
+        "mode": "on",
+        "rows": [
+          {
+            "id": "a",
+            "title": "Bolt",
+            "qty": 4,
+            "done": true
+          },
+          {
+            "id": null,
+            "title": "Washer",
+            "qty": 10
+          },
+          {
+            "title": "Tape",
+            "qty": 3
+          }
+        ]
+      },
+      "fragmentDefs": {},
+      "expected": [
+        {
+          "id": "gt-null",
+          "type": "text",
+          "props": {
+            "content": "shows"
+          },
+          "events": {},
+          "children": []
+        },
+        {
+          "id": "and-gate",
+          "type": "text",
+          "props": {
+            "content": "both"
+          },
+          "events": {},
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "fragment instances expand and resolve against state",
+      "elements": [
+        {
+          "id": "task-entry",
+          "type": "basics.entry_row",
+          "properties": {
+            "label": "New task",
+            "operationId": "op-add"
+          },
+          "visibleWhen": {
+            "source": "state",
+            "sourceId": "editing",
+            "operator": "truthy"
+          }
+        },
+        {
+          "id": "tick1",
+          "type": "basics.ticker",
+          "properties": {
+            "label": "Steps"
+          }
+        }
+      ],
+      "state": {
+        "editing": 1,
+        "tick1-count": 5
+      },
+      "fragmentDefs": {
+        "basics.entry_row": {
+          "name": "basics.entry_row",
+          "description": "entry row",
+          "params": [
+            {
+              "name": "label",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "placeholder",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "name": "buttonText",
+              "type": "string",
+              "default": "Add"
+            },
+            {
+              "name": "operationId",
+              "type": "operationId",
+              "required": true
+            }
+          ],
+          "template": {
+            "id": "{{id}}-row",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8",
+              "align": "end"
+            },
+            "children": [
+              {
+                "id": "{{id}}-input",
+                "type": "input",
+                "properties": {
+                  "label": "{{label}}",
+                  "placeholder": "{{placeholder}}"
+                }
+              },
+              {
+                "id": "{{id}}-btn",
+                "type": "button",
+                "properties": {
+                  "text": "{{buttonText}}",
+                  "variant": "primary"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "{{operationId}}"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "basics.ticker": {
+          "name": "basics.ticker",
+          "description": "self-wired ticker",
+          "params": [
+            {
+              "name": "label",
+              "type": "string",
+              "default": "Ticker"
+            }
+          ],
+          "template": {
+            "id": "{{id}}-box",
+            "type": "container",
+            "children": [
+              {
+                "id": "{{id}}-display",
+                "type": "text",
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "{{id}}-count",
+                    "transforms": [
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "{{label}}: {{value}}"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "{{id}}-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Tick"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "{{id}}-step"
+                  }
+                ]
+              }
+            ]
+          },
+          "operations": [
+            {
+              "id": "{{id}}-step",
+              "operationName": "counter.add",
+              "implementation": {
+                "type": "remote",
+                "endpoint": "https://example.com"
+              },
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "{{id}}-count"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "id": "task-entry-row",
+          "type": "container",
+          "props": {
+            "direction": "row",
+            "gap": "8",
+            "align": "end"
+          },
+          "events": {},
+          "children": [
+            {
+              "id": "task-entry-input",
+              "type": "input",
+              "props": {
+                "label": "New task",
+                "placeholder": ""
+              },
+              "events": {},
+              "children": [],
+              "control": {
+                "kind": "value",
+                "value": ""
+              }
+            },
+            {
+              "id": "task-entry-btn",
+              "type": "button",
+              "props": {
+                "text": "Add",
+                "variant": "primary"
+              },
+              "events": {
+                "click": [
+                  "op-add"
+                ]
+              },
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "tick1-box",
+          "type": "container",
+          "props": {},
+          "events": {},
+          "children": [
+            {
+              "id": "tick1-display",
+              "type": "text",
+              "props": {
+                "content": "Steps: 5"
+              },
+              "events": {},
+              "children": []
+            },
+            {
+              "id": "tick1-btn",
+              "type": "button",
+              "props": {
+                "text": "Tick"
+              },
+              "events": {
+                "click": [
+                  "tick1-step"
+                ]
+              },
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "events keep contract order per event",
+      "elements": [
+        {
+          "id": "go-btn",
+          "type": "button",
+          "properties": {
+            "text": "Go"
+          },
+          "eventBindings": [
+            {
+              "event": "click",
+              "operationId": "op-first"
+            },
+            {
+              "event": "click",
+              "operationId": "op-second"
+            },
+            {
+              "event": "focus",
+              "operationId": "op-note"
+            }
+          ]
+        },
+        {
+          "id": "clock",
+          "type": "timer",
+          "eventBindings": [
+            {
+              "event": "tick",
+              "operationId": "op-advance"
+            }
+          ]
+        }
+      ],
+      "state": {},
+      "fragmentDefs": {},
+      "expected": [
+        {
+          "id": "go-btn",
+          "type": "button",
+          "props": {
+            "text": "Go"
+          },
+          "events": {
+            "click": [
+              "op-first",
+              "op-second"
+            ],
+            "focus": [
+              "op-note"
+            ]
+          },
+          "children": []
+        },
+        {
+          "id": "clock",
+          "type": "timer",
+          "props": {},
+          "events": {
+            "tick": [
+              "op-advance"
+            ]
+          },
+          "children": []
+        }
+      ]
+    }
+  ]
+}

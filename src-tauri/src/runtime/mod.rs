@@ -7,5 +7,7 @@
 pub mod expression;
 pub mod operations;
 pub mod session;
+pub mod templates;
 pub mod transforms;
 pub mod value;
+pub mod view;

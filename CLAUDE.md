@@ -287,7 +287,16 @@ a result missing an output's name routes the whole result, ui-element property o
 a sub-object, `operation_` mirrors). Chains stop at the first failure with earlier writes
 standing. Local code, remote endpoints, installed part operations, and http.get fail with a
 resolution error in the session; the host dispatcher owns those. Session vectors in the
-corpus drive the same scenarios through the headless webview classes and the Rust session. The committed vectors in `runtime-conformance/` are
+corpus drive the same scenarios through the headless webview classes and the Rust session.
+The view layer is shared the same way: `resolveViewTree`
+(`src/services/runtime-view/resolve-view.ts`) is the pure resolver (visibility, binding
+resolution, list rows with item scopes, control values, event tables, fragment expansion)
+that `ComponentRenderer` consumes, keeping only presentation (React components, knob classes,
+handler wiring); `runtime/view.rs` plus `runtime/templates.rs` are the Rust twins, held to
+identical trees by the template and view vectors under the protocol's JSON-value semantics
+(object keys holding null and absent keys are equivalent; missing state reads stay distinct
+from null in numeric comparisons). A resolved tree plus the session is everything a renderer
+backend needs; the webview is the reference consumer. The committed vectors in `runtime-conformance/` are
 the semantic contract: both test suites run every vector (vitest
 `runtime-conformance.test.ts`, cargo `runtime_conformance.rs`), covering the
 JavaScript-flavored edges (Math.round at negative halves, toFixed strings, loose equality,

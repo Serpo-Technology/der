@@ -1,0 +1,380 @@
+{
+  "formatVersion": 1,
+  "templates": [
+    {
+      "name": "entry row expands with defaults, params, and id scoping",
+      "kind": "fragment",
+      "def": {
+        "name": "basics.entry_row",
+        "description": "entry row",
+        "params": [
+          {
+            "name": "label",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "placeholder",
+            "type": "string",
+            "default": ""
+          },
+          {
+            "name": "buttonText",
+            "type": "string",
+            "default": "Add"
+          },
+          {
+            "name": "operationId",
+            "type": "operationId",
+            "required": true
+          }
+        ],
+        "template": {
+          "id": "{{id}}-row",
+          "type": "container",
+          "properties": {
+            "direction": "row",
+            "gap": "8",
+            "align": "end"
+          },
+          "children": [
+            {
+              "id": "{{id}}-input",
+              "type": "input",
+              "properties": {
+                "label": "{{label}}",
+                "placeholder": "{{placeholder}}"
+              }
+            },
+            {
+              "id": "{{id}}-btn",
+              "type": "button",
+              "properties": {
+                "text": "{{buttonText}}",
+                "variant": "primary"
+              },
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "{{operationId}}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "instance": {
+        "id": "task-entry",
+        "type": "basics.entry_row",
+        "properties": {
+          "label": "New task",
+          "operationId": "op-add"
+        },
+        "visibleWhen": {
+          "source": "state",
+          "sourceId": "editing",
+          "operator": "truthy"
+        }
+      },
+      "expected": {
+        "id": "task-entry-row",
+        "type": "container",
+        "properties": {
+          "direction": "row",
+          "gap": "8",
+          "align": "end"
+        },
+        "children": [
+          {
+            "id": "task-entry-input",
+            "type": "input",
+            "properties": {
+              "label": "New task",
+              "placeholder": ""
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "task-entry-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add",
+              "variant": "primary"
+            },
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add"
+              }
+            ],
+            "dataBindings": []
+          }
+        ],
+        "dataBindings": [],
+        "eventBindings": [],
+        "visibleWhen": {
+          "source": "state",
+          "sourceId": "editing",
+          "operator": "truthy"
+        }
+      }
+    },
+    {
+      "name": "exact placeholders keep parameter types",
+      "kind": "fragment",
+      "def": {
+        "name": "basics.gauge",
+        "description": "gauge",
+        "params": [
+          {
+            "name": "max",
+            "type": "number",
+            "default": 100
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "default": true
+          }
+        ],
+        "template": {
+          "id": "{{id}}-gauge",
+          "type": "progress",
+          "properties": {
+            "max": "{{max}}",
+            "active": "{{active}}",
+            "hint": "up to {{max}}"
+          }
+        }
+      },
+      "instance": {
+        "id": "g1",
+        "type": "basics.gauge",
+        "properties": {
+          "max": 10
+        }
+      },
+      "expected": {
+        "id": "g1-gauge",
+        "type": "progress",
+        "properties": {
+          "max": 10,
+          "active": true,
+          "hint": "up to 10"
+        },
+        "dataBindings": [],
+        "eventBindings": []
+      }
+    },
+    {
+      "name": "unmatched placeholders survive substitution",
+      "kind": "fragment",
+      "def": {
+        "name": "basics.ticker",
+        "description": "self-wired ticker",
+        "params": [
+          {
+            "name": "label",
+            "type": "string",
+            "default": "Ticker"
+          }
+        ],
+        "template": {
+          "id": "{{id}}-box",
+          "type": "container",
+          "children": [
+            {
+              "id": "{{id}}-display",
+              "type": "text",
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "{{id}}-count",
+                  "transforms": [
+                    {
+                      "type": "format",
+                      "parameters": {
+                        "template": "{{label}}: {{value}}"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "{{id}}-btn",
+              "type": "button",
+              "properties": {
+                "text": "Tick"
+              },
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "{{id}}-step"
+                }
+              ]
+            }
+          ]
+        },
+        "operations": [
+          {
+            "id": "{{id}}-step",
+            "operationName": "counter.add",
+            "implementation": {
+              "type": "remote",
+              "endpoint": "https://example.com"
+            },
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "{{id}}-count"
+              }
+            ]
+          }
+        ]
+      },
+      "instance": {
+        "id": "tick1",
+        "type": "basics.ticker",
+        "properties": {}
+      },
+      "expected": {
+        "id": "tick1-box",
+        "type": "container",
+        "children": [
+          {
+            "id": "tick1-display",
+            "type": "text",
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "tick1-count",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "Ticker: {{value}}"
+                    }
+                  }
+                ]
+              }
+            ],
+            "properties": {},
+            "eventBindings": []
+          },
+          {
+            "id": "tick1-btn",
+            "type": "button",
+            "properties": {
+              "text": "Tick"
+            },
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "tick1-step"
+              }
+            ],
+            "dataBindings": []
+          }
+        ],
+        "properties": {},
+        "dataBindings": [],
+        "eventBindings": []
+      }
+    },
+    {
+      "name": "pack operations instantiate per use and drop implementations",
+      "kind": "packOperations",
+      "def": {
+        "name": "basics.ticker",
+        "description": "self-wired ticker",
+        "params": [
+          {
+            "name": "label",
+            "type": "string",
+            "default": "Ticker"
+          }
+        ],
+        "template": {
+          "id": "{{id}}-box",
+          "type": "container",
+          "children": [
+            {
+              "id": "{{id}}-display",
+              "type": "text",
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "{{id}}-count",
+                  "transforms": [
+                    {
+                      "type": "format",
+                      "parameters": {
+                        "template": "{{label}}: {{value}}"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "{{id}}-btn",
+              "type": "button",
+              "properties": {
+                "text": "Tick"
+              },
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "{{id}}-step"
+                }
+              ]
+            }
+          ]
+        },
+        "operations": [
+          {
+            "id": "{{id}}-step",
+            "operationName": "counter.add",
+            "implementation": {
+              "type": "remote",
+              "endpoint": "https://example.com"
+            },
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "{{id}}-count"
+              }
+            ]
+          }
+        ]
+      },
+      "instance": {
+        "id": "tick1",
+        "type": "basics.ticker",
+        "properties": {}
+      },
+      "expected": [
+        {
+          "id": "tick1-step",
+          "operationName": "counter.add",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "tick1-count"
+            }
+          ],
+          "outputs": [],
+          "triggers": []
+        }
+      ]
+    }
+  ]
+}

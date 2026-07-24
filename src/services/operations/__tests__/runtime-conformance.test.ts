@@ -16,10 +16,13 @@ import {
   applyTransformPipeline,
 } from '../transforms';
 import { parseRowExpression } from '../row-expression';
-import { BUILTIN_OPERATIONS, assembleStructured } from '../registry';
+import { BUILTIN_OPERATIONS, FRAGMENT_ELEMENTS, assembleStructured } from '../registry';
+import type { UiFragmentDef } from '../registry';
 import { ExperienceStateManager } from '../../../components/runtime/ExperienceStateManager';
 import { OperationExecutor } from '../../../components/runtime/OperationExecutor';
-import type { Contract, OperationBinding } from '../../../types/contract';
+import { resolveViewTree } from '../../runtime-view/resolve-view';
+import { expandPackOperations, expandUiFragment } from '../../fragments/ui-fragments';
+import type { Contract, OperationBinding, UIElement } from '../../../types/contract';
 
 const fixtureDir = resolve(__dirname, '../../../../runtime-conformance');
 
@@ -240,6 +243,82 @@ describe('runtime conformance: sessions', () => {
       } finally {
         if (originalUuid) cryptoObject.randomUUID = originalUuid;
         Math.random = originalRandom;
+      }
+    });
+  }
+});
+
+const templateFixtures = JSON.parse(
+  readFileSync(resolve(fixtureDir, 'templates.json'), 'utf8')
+) as {
+  templates: Array<{
+    name: string;
+    kind: 'fragment' | 'packOperations';
+    def: UiFragmentDef;
+    instance: Record<string, unknown>;
+    expected: unknown;
+  }>;
+};
+
+const viewFixtures = JSON.parse(readFileSync(resolve(fixtureDir, 'views.json'), 'utf8')) as {
+  views: Array<{
+    name: string;
+    elements: Array<Record<string, unknown>>;
+    state: Record<string, unknown>;
+    fragmentDefs: Record<string, UiFragmentDef>;
+    expected: unknown;
+  }>;
+};
+
+/** Object keys holding null and absent keys are equivalent in the view
+ * protocol; arrays keep nulls as real entries. */
+function stripNullKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripNullKeys);
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (entry === null || entry === undefined) continue;
+      out[key] = stripNullKeys(entry);
+    }
+    return out;
+  }
+  return value;
+}
+
+describe('runtime conformance: templates', () => {
+  for (const vector of templateFixtures.templates) {
+    it(vector.name, () => {
+      if (vector.kind === 'fragment') {
+        const expanded = expandUiFragment(vector.instance as unknown as UIElement, vector.def);
+        expect(jsonNormalize(expanded)).toEqual(vector.expected);
+        return;
+      }
+      FRAGMENT_ELEMENTS[vector.def.name] = vector.def;
+      try {
+        const packs = expandPackOperations([vector.instance as unknown as UIElement]);
+        expect(jsonNormalize(packs.map((pack) => pack.operation))).toEqual(vector.expected);
+      } finally {
+        delete FRAGMENT_ELEMENTS[vector.def.name];
+      }
+    });
+  }
+});
+
+describe('runtime conformance: views', () => {
+  for (const vector of viewFixtures.views) {
+    it(vector.name, () => {
+      for (const [name, def] of Object.entries(vector.fragmentDefs)) {
+        FRAGMENT_ELEMENTS[name] = def;
+      }
+      try {
+        const tree = resolveViewTree(vector.elements as unknown as UIElement[], {
+          data: vector.state,
+        });
+        expect(stripNullKeys(jsonNormalize(tree))).toEqual(vector.expected);
+      } finally {
+        for (const name of Object.keys(vector.fragmentDefs)) {
+          delete FRAGMENT_ELEMENTS[name];
+        }
       }
     });
   }

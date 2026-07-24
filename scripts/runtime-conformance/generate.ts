@@ -30,7 +30,13 @@ import { parseRowExpression } from '../../src/services/operations/row-expression
 import { BUILTIN_OPERATIONS, assembleStructured } from '../../src/services/operations/registry';
 import { ExperienceStateManager } from '../../src/components/runtime/ExperienceStateManager';
 import { OperationExecutor } from '../../src/components/runtime/OperationExecutor';
-import type { Contract, OperationBinding } from '../../src/types/contract';
+import { resolveViewTree } from '../../src/services/runtime-view/resolve-view';
+import {
+  expandUiFragment,
+  expandPackOperations,
+} from '../../src/services/fragments/ui-fragments';
+import { FRAGMENT_ELEMENTS, UiFragmentDef } from '../../src/services/operations/registry';
+import type { Contract, OperationBinding, UIElement } from '../../src/types/contract';
 
 interface TransformCase {
   name: string;
@@ -736,6 +742,375 @@ function runOperationCase(entry: OperationCase) {
 }
 
 
+const ENTRY_ROW_DEF: UiFragmentDef = {
+  name: 'basics.entry_row',
+  description: 'entry row',
+  params: [
+    { name: 'label', type: 'string', required: true },
+    { name: 'placeholder', type: 'string', default: '' },
+    { name: 'buttonText', type: 'string', default: 'Add' },
+    { name: 'operationId', type: 'operationId', required: true },
+  ],
+  template: {
+    id: '{{id}}-row',
+    type: 'container',
+    properties: { direction: 'row', gap: '8', align: 'end' },
+    children: [
+      {
+        id: '{{id}}-input',
+        type: 'input',
+        properties: { label: '{{label}}', placeholder: '{{placeholder}}' },
+      },
+      {
+        id: '{{id}}-btn',
+        type: 'button',
+        properties: { text: '{{buttonText}}', variant: 'primary' },
+        eventBindings: [{ event: 'click', operationId: '{{operationId}}' }],
+      },
+    ],
+  },
+};
+
+const MINI_PACK_DEF: UiFragmentDef = {
+  name: 'basics.ticker',
+  description: 'self-wired ticker',
+  params: [{ name: 'label', type: 'string', default: 'Ticker' }],
+  template: {
+    id: '{{id}}-box',
+    type: 'container',
+    children: [
+      {
+        id: '{{id}}-display',
+        type: 'text',
+        dataBindings: [
+          {
+            property: 'content',
+            source: 'state',
+            sourceId: '{{id}}-count',
+            transforms: [{ type: 'format', parameters: { template: '{{label}}: {{value}}' } }],
+          },
+        ],
+      },
+      {
+        id: '{{id}}-btn',
+        type: 'button',
+        properties: { text: 'Tick' },
+        eventBindings: [{ event: 'click', operationId: '{{id}}-step' }],
+      },
+    ],
+  },
+  operations: [
+    {
+      id: '{{id}}-step',
+      operationName: 'counter.add',
+      implementation: { type: 'remote', endpoint: 'https://example.com' },
+      inputs: [{ name: 'key', source: 'constant', sourceId: '{{id}}-count' }],
+    },
+  ],
+};
+
+interface TemplateCase {
+  name: string;
+  kind: 'fragment' | 'packOperations';
+  def: UiFragmentDef;
+  instance: Record<string, unknown>;
+}
+
+const TEMPLATE_CASES: TemplateCase[] = [
+  {
+    name: 'entry row expands with defaults, params, and id scoping',
+    kind: 'fragment',
+    def: ENTRY_ROW_DEF,
+    instance: {
+      id: 'task-entry',
+      type: 'basics.entry_row',
+      properties: { label: 'New task', operationId: 'op-add' },
+      visibleWhen: { source: 'state', sourceId: 'editing', operator: 'truthy' },
+    },
+  },
+  {
+    name: 'exact placeholders keep parameter types',
+    kind: 'fragment',
+    def: {
+      name: 'basics.gauge',
+      description: 'gauge',
+      params: [
+        { name: 'max', type: 'number', default: 100 },
+        { name: 'active', type: 'boolean', default: true },
+      ],
+      template: {
+        id: '{{id}}-gauge',
+        type: 'progress',
+        properties: { max: '{{max}}', active: '{{active}}', hint: 'up to {{max}}' },
+      },
+    },
+    instance: { id: 'g1', type: 'basics.gauge', properties: { max: 10 } },
+  },
+  {
+    name: 'unmatched placeholders survive substitution',
+    kind: 'fragment',
+    def: MINI_PACK_DEF,
+    instance: { id: 'tick1', type: 'basics.ticker', properties: {} },
+  },
+  {
+    name: 'pack operations instantiate per use and drop implementations',
+    kind: 'packOperations',
+    def: MINI_PACK_DEF,
+    instance: { id: 'tick1', type: 'basics.ticker', properties: {} },
+  },
+];
+
+interface ViewCase {
+  name: string;
+  elements: Array<Record<string, unknown>>;
+  state: Record<string, unknown>;
+  fragmentDefs?: Record<string, UiFragmentDef>;
+}
+
+const VIEW_ROWS_STATE = {
+  rows: [
+    { id: 'a', title: 'Bolt', qty: 4, done: true },
+    { id: null, title: 'Washer', qty: 10 },
+    { title: 'Tape', qty: 3 },
+  ],
+};
+
+const VIEW_CASES: ViewCase[] = [
+  {
+    name: 'binding sources resolve and undefined props stay absent',
+    elements: [
+      {
+        id: 'panel',
+        type: 'container',
+        properties: { padding: '8', stale: 'shadowed' },
+        dataBindings: [
+          { property: 'a', source: 'state', sourceId: 'greeting' },
+          { property: 'b', source: 'operation', sourceId: 'op-1' },
+          { property: 'c', source: 'constant', sourceId: 'true', value: true },
+          { property: 'd', source: 'constant', sourceId: 'plain' },
+          { property: 'e', source: 'unknown-source', sourceId: 'x' },
+          { property: 'stale', source: 'state', sourceId: 'missing' },
+        ],
+      },
+    ],
+    state: { greeting: 'hi', 'operation_op-1': { value: 7 } },
+  },
+  {
+    name: 'list rows resolve item scopes, keys, and event items',
+    elements: [
+      {
+        id: 'rows',
+        type: 'list',
+        properties: { emptyText: 'Nothing yet' },
+        dataBindings: [{ property: 'items', source: 'state', sourceId: 'rows' }],
+        children: [
+          {
+            id: 'r-title',
+            type: 'text',
+            dataBindings: [{ property: 'content', source: 'item', sourceId: 'title' }],
+          },
+          {
+            id: 'r-flag',
+            type: 'text',
+            visibleWhen: { source: 'item', sourceId: 'done', operator: 'truthy' },
+            properties: { content: 'done' },
+          },
+          {
+            id: 'r-del',
+            type: 'button',
+            properties: { text: 'Delete' },
+            eventBindings: [{ event: 'click', operationId: 'op-del' }],
+          },
+        ],
+      },
+    ],
+    state: VIEW_ROWS_STATE,
+  },
+  {
+    name: 'an empty list keeps its rows empty and its emptyText prop',
+    elements: [
+      {
+        id: 'rows',
+        type: 'list',
+        properties: { emptyText: 'Nothing yet' },
+        dataBindings: [{ property: 'items', source: 'state', sourceId: 'rows' }],
+        children: [{ id: 'r-t', type: 'text' }],
+      },
+    ],
+    state: {},
+  },
+  {
+    name: 'live lookup filters through an element reference',
+    elements: [
+      { id: 'search-in', type: 'input', properties: { label: 'Search' } },
+      {
+        id: 'hits',
+        type: 'text',
+        dataBindings: [
+          {
+            property: 'content',
+            source: 'state',
+            sourceId: 'rows',
+            transforms: [
+              {
+                type: 'filterContains',
+                parameters: { field: 'title', value: { source: 'element', sourceId: 'search-in' } },
+              },
+              { type: 'count', parameters: {} },
+            ],
+          },
+        ],
+      },
+    ],
+    state: { ...VIEW_ROWS_STATE, 'element_search-in': 'bo' },
+  },
+  {
+    name: 'controls read state, defaults, and checkbox booleans',
+    elements: [
+      { id: 'name-in', type: 'input', properties: { defaultValue: 'hello' } },
+      { id: 'qty-in', type: 'input' },
+      { id: 'done-in', type: 'checkbox' },
+      { id: 'cat-in', type: 'select', properties: { options: ['a', 'b'] } },
+    ],
+    state: { 'element_qty-in': '42', 'element_done-in': 'yes' },
+  },
+  {
+    name: 'visibility distinguishes missing from null in comparisons',
+    elements: [
+      {
+        id: 'gt-missing',
+        type: 'text',
+        properties: { content: 'never' },
+        visibleWhen: { source: 'state', sourceId: 'ghost', operator: 'gt', value: -1 },
+      },
+      {
+        id: 'gt-null',
+        type: 'text',
+        properties: { content: 'shows' },
+        visibleWhen: { source: 'state', sourceId: 'zeroed', operator: 'gt', value: -1 },
+      },
+      {
+        id: 'and-gate',
+        type: 'text',
+        properties: { content: 'both' },
+        visibleWhen: [
+          { source: 'state', sourceId: 'mode', operator: 'equals', value: 'on' },
+          {
+            source: 'state',
+            sourceId: 'rows',
+            operator: 'gt',
+            value: 2,
+            transforms: [{ type: 'count', parameters: {} }],
+          },
+        ],
+      },
+    ],
+    state: { zeroed: null, mode: 'on', ...VIEW_ROWS_STATE },
+  },
+  {
+    name: 'fragment instances expand and resolve against state',
+    elements: [
+      {
+        id: 'task-entry',
+        type: 'basics.entry_row',
+        properties: { label: 'New task', operationId: 'op-add' },
+        visibleWhen: { source: 'state', sourceId: 'editing', operator: 'truthy' },
+      },
+      {
+        id: 'tick1',
+        type: 'basics.ticker',
+        properties: { label: 'Steps' },
+      },
+    ],
+    state: { editing: 1, 'tick1-count': 5 },
+    fragmentDefs: { 'basics.entry_row': ENTRY_ROW_DEF, 'basics.ticker': MINI_PACK_DEF },
+  },
+  {
+    name: 'events keep contract order per event',
+    elements: [
+      {
+        id: 'go-btn',
+        type: 'button',
+        properties: { text: 'Go' },
+        eventBindings: [
+          { event: 'click', operationId: 'op-first' },
+          { event: 'click', operationId: 'op-second' },
+          { event: 'focus', operationId: 'op-note' },
+        ],
+      },
+      {
+        id: 'clock',
+        type: 'timer',
+        eventBindings: [{ event: 'tick', operationId: 'op-advance' }],
+      },
+    ],
+    state: {},
+  },
+];
+
+/** Object keys holding null and absent keys are equivalent in the view
+ * protocol; arrays keep nulls as real entries. */
+function stripNullKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripNullKeys);
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (entry === null || entry === undefined) continue;
+      out[key] = stripNullKeys(entry);
+    }
+    return out;
+  }
+  return value;
+}
+
+function runTemplateCase(entry: TemplateCase) {
+  if (entry.kind === 'fragment') {
+    const expanded = expandUiFragment(entry.instance as unknown as UIElement, entry.def);
+    return {
+      name: entry.name,
+      kind: entry.kind,
+      def: jsonNormalize(entry.def),
+      instance: jsonNormalize(entry.instance),
+      expected: jsonNormalize(expanded),
+    };
+  }
+  FRAGMENT_ELEMENTS[entry.def.name] = entry.def;
+  try {
+    const packs = expandPackOperations([entry.instance as unknown as UIElement]);
+    return {
+      name: entry.name,
+      kind: entry.kind,
+      def: jsonNormalize(entry.def),
+      instance: jsonNormalize(entry.instance),
+      expected: jsonNormalize(packs.map((pack) => pack.operation)),
+    };
+  } finally {
+    delete FRAGMENT_ELEMENTS[entry.def.name];
+  }
+}
+
+function runViewCase(entry: ViewCase) {
+  for (const [name, def] of Object.entries(entry.fragmentDefs ?? {})) {
+    FRAGMENT_ELEMENTS[name] = def;
+  }
+  try {
+    const tree = resolveViewTree(entry.elements as unknown as UIElement[], {
+      data: entry.state,
+    });
+    return {
+      name: entry.name,
+      elements: entry.elements,
+      state: jsonNormalize(entry.state),
+      fragmentDefs: jsonNormalize(entry.fragmentDefs ?? {}),
+      expected: stripNullKeys(jsonNormalize(tree)),
+    };
+  } finally {
+    for (const name of Object.keys(entry.fragmentDefs ?? {})) {
+      delete FRAGMENT_ELEMENTS[name];
+    }
+  }
+}
+
 /** Scripts ids, randomness, and the clock for the duration of one case. */
 async function withScriptedGlobals<T>(
   env: { ids?: string[]; randoms?: number[] } | undefined,
@@ -916,8 +1291,20 @@ async function main(): Promise<void> {
     resolve(outDir, 'sessions.json'),
     JSON.stringify({ formatVersion: 1, sessions }, null, 2) + '\n'
   );
+
+  const templates = TEMPLATE_CASES.map(runTemplateCase);
+  writeFileSync(
+    resolve(outDir, 'templates.json'),
+    JSON.stringify({ formatVersion: 1, templates }, null, 2) + '\n'
+  );
+
+  const views = VIEW_CASES.map(runViewCase);
+  writeFileSync(
+    resolve(outDir, 'views.json'),
+    JSON.stringify({ formatVersion: 1, views }, null, 2) + '\n'
+  );
   process.stdout.write(
-    `wrote ${transforms.length} transform, ${pipelines.length} pipeline, ${expressions.length} expression, ${operations.length} operation, ${sessions.length} session vectors\n`
+    `wrote ${transforms.length} transform, ${pipelines.length} pipeline, ${expressions.length} expression, ${operations.length} operation, ${sessions.length} session, ${templates.length} template, ${views.length} view vectors\n`
   );
 }
 
