@@ -40,3 +40,16 @@ window with its state kept.
 Running `DerNativePanel` directly (from a terminal or Finder) starts DER in
 native mode: it finds the app binary via `DER_APP_BINARY` or the dev build
 path and hands over.
+
+## Installable app
+
+```
+./scripts/package-macos.sh
+```
+
+builds the panel in release mode, stages it as a bundled sidecar, and
+produces `src-tauri/target/release/bundle/macos/DER.app` (plus a dmg). The
+packaged app runs native-first out of the box because the panel ships
+inside its bundle; `DER_NATIVE_MODE=0` forces the webview windows back.
+Installed and dev builds share the same app data (settings, parts,
+bookmarks) through the `com.seyit.der` identifier.

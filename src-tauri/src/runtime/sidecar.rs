@@ -242,8 +242,16 @@ struct RunningSidecar {
 #[derive(Default)]
 pub struct NativeRendererState(Mutex<Option<RunningSidecar>>);
 
-/// The panel binary: DER_NATIVE_RENDERER wins; otherwise the dev build
-/// locations relative to the repository layout.
+/// The panel bundled next to the app executable (Contents/MacOS in a
+/// packaged build); how installed apps find their renderer.
+pub(crate) fn bundled_panel() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let candidate = exe.parent()?.join("DerNativePanel");
+    candidate.exists().then_some(candidate)
+}
+
+/// The panel binary: DER_NATIVE_RENDERER wins, then the bundled copy next
+/// to the executable, then the dev build locations in the repository.
 fn panel_binary() -> Result<std::path::PathBuf, String> {
     if let Ok(path) = std::env::var("DER_NATIVE_RENDERER") {
         let path = std::path::PathBuf::from(path);
@@ -251,6 +259,9 @@ fn panel_binary() -> Result<std::path::PathBuf, String> {
             return Ok(path);
         }
         return Err(format!("DER_NATIVE_RENDERER points at nothing: {}", path.display()));
+    }
+    if let Some(bundled) = bundled_panel() {
+        return Ok(bundled);
     }
     for candidate in [
         "../native/macos/.build/release/DerNativePanel",

@@ -1,0 +1,11 @@
+{
+  "productName": "DER",
+  "bundle": {
+    "externalBin": [
+      "binaries/DerNativePanel"
+    ],
+    "targets": [
+      "app"
+    ]
+  }
+}

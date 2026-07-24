@@ -324,7 +324,11 @@ shows DER's home (create relays the prompt to the hidden main window's pipeline 
 `native-create` event; bookmarks open fully natively; the tray hook keeps the home list
 current), and `native_update_experience_contract` lands edits in open native windows with
 state preserved. The webview pipeline consults `runtime_native_mode` to skip streaming
-assembly previews in native mode.
+assembly previews in native mode. `scripts/package-macos.sh` builds the installable app:
+the panel compiles in release mode, stages under `src-tauri/binaries/` (gitignored), and
+`tauri build --config src-tauri/tauri.macos-app.conf.json` bundles it as an externalBin in
+DER.app; a packaged build with the bundled panel runs native-first by default
+(`DER_NATIVE_MODE=0` opts out), while dev builds stay webview-first behind the flag.
 The committed vectors in `runtime-conformance/` are
 the semantic contract: both test suites run every vector (vitest
 `runtime-conformance.test.ts`, cargo `runtime_conformance.rs`), covering the

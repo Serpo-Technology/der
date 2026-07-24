@@ -31,3 +31,4 @@ fragments/*/target/
 !fragments/dist/
 llama.cpp/
 native/macos/.build/
+src-tauri/binaries/

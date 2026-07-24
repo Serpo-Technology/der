@@ -383,11 +383,17 @@ pub(crate) fn write_experience_state_file(
 }
 
 /// Native mode: experiences open in native panel windows by default and the
-/// panel shows DER's home. Set by the --native argument or DER_NATIVE_MODE=1
-/// (the standalone panel binary launches the app this way).
+/// panel shows DER's home. DER_NATIVE_MODE decides when set (1 turns it on,
+/// anything else off), the --native argument turns it on, and a packaged
+/// build with the panel in its bundle runs native-first out of the box.
 pub(crate) fn native_mode() -> bool {
-    std::env::var("DER_NATIVE_MODE").is_ok_and(|value| value == "1")
-        || std::env::args().any(|argument| argument == "--native")
+    if let Ok(value) = std::env::var("DER_NATIVE_MODE") {
+        return value == "1";
+    }
+    if std::env::args().any(|argument| argument == "--native") {
+        return true;
+    }
+    !cfg!(debug_assertions) && runtime::sidecar::bundled_panel().is_some()
 }
 
 #[tauri::command]
