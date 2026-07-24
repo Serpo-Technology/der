@@ -26,7 +26,10 @@ final class PanelWindows: NSObject, NSWindowDelegate {
             entry.window.close()
         case "home":
             homeModel.bookmarks = message.bookmarks ?? []
+            homeModel.recipes = message.recipes ?? []
             showHome()
+        case "generationStatus":
+            homeModel.applyGenerationStatus(message.status ?? "", message: message.message)
         case "operationFailed":
             NSSound.beep()
         default:

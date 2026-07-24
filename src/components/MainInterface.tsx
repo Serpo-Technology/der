@@ -111,6 +111,27 @@ export const MainInterface: React.FC = () => {
         setState(prev => ({ ...prev, currentMode: 'bookmarks' }));
       });
 
+      // The native home's management bridge lands on the settings view.
+      await listen('show-settings', () => {
+        setState(prev => ({ ...prev, currentMode: 'settings' }));
+      });
+
+      // The native home opens ready-made apps through the validated path.
+      await listen<string>('native-open-recipe', (event) => {
+        const name = typeof event.payload === 'string' ? event.payload : '';
+        if (!name) return;
+        void integratedExperienceService.createExperienceFromRecipe(name, {
+          preserveEdits: true,
+          autoSave: true,
+          enableRealTimeUpdates: true
+        }).catch((error) => {
+          setState(prev => ({
+            ...prev,
+            error: error instanceof Error ? error.message : 'Failed to open the app'
+          }));
+        });
+      });
+
       // The native home relays creation prompts here; generation runs in
       // this window's pipeline and the finished app opens natively.
       await listen<string>('native-create', (event) => {

@@ -1201,6 +1201,18 @@ async fn refresh_tray_menu(app: AppHandle) -> Result<(), String> {
 // No explicit tray click handler required; menu shows via macOS left click automatically
 
 fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
+    // Native mode has one front door: every tray surface is the native
+    // home (create prompt and the app list live there); the webview main
+    // window stays a management console reached from the home.
+    if native_mode() {
+        match event.id.as_ref() {
+            "show_window" | "new_experience" | "bookmarks" => {
+                runtime::sidecar::show_native_home(app);
+                return;
+            }
+            _ => {}
+        }
+    }
     match event.id.as_ref() {
         "show_window" => {
             if let Some(window) = app.get_webview_window("main") {
@@ -1420,10 +1432,21 @@ pub fn run() {
             runtime::sessions::runtime_close_session,
             runtime::sidecar::open_native_experience_window,
             runtime::sidecar::native_update_experience_contract,
+            runtime::sidecar::native_generation_status,
             runtime_native_mode
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Reopen { .. } = event {
+                if native_mode() {
+                    runtime::sidecar::show_native_home(app);
+                } else if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        });
 }
 
 #[cfg(test)]

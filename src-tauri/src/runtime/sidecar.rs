@@ -113,11 +113,25 @@ impl SidecarBridge {
         self.send_update(&window_id)
     }
 
-    /// DER's own native surface: a prompt plus the launchable apps.
-    pub fn send_home(&mut self, bookmarks: &[Value]) -> Result<(), String> {
+    /// DER's own native surface: a prompt, the kept apps, and the
+    /// ready-made apps installed parts ship.
+    pub fn send_home(&mut self, bookmarks: &[Value], recipes: &[Value]) -> Result<(), String> {
         self.transport.send(&json!({
             "cmd": "home",
             "bookmarks": bookmarks,
+            "recipes": recipes,
+        }))
+    }
+
+    pub fn send_generation_status(
+        &mut self,
+        status: &str,
+        message: Option<&str>,
+    ) -> Result<(), String> {
+        self.transport.send(&json!({
+            "cmd": "generationStatus",
+            "status": status,
+            "message": message,
         }))
     }
 
@@ -199,7 +213,7 @@ impl SidecarBridge {
                 self.windows.remove(&window_id);
                 Ok(None)
             }
-            "create" | "openBookmark" => Ok(Some(message.clone())),
+            "create" | "openBookmark" | "openManage" | "openRecipe" => Ok(Some(message.clone())),
             "log" => Ok(None),
             other => Err(format!("Unknown panel event \"{}\"", other)),
         }
@@ -294,6 +308,25 @@ fn relay_home_event(app: &tauri::AppHandle, event: &Value) {
             use tauri::Emitter;
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.emit("native-create", prompt);
+            }
+        }
+        Some("openRecipe") => {
+            let Some(name) = event.get("name").and_then(Value::as_str) else {
+                return;
+            };
+            use tauri::Emitter;
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.emit("native-open-recipe", name.to_string());
+            }
+        }
+        Some("openManage") => {
+            // The deliberate bridge to the webview management console:
+            // settings, parts, and the contract editors live there.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+                use tauri::Emitter;
+                let _ = window.emit("show-settings", ());
             }
         }
         Some("openBookmark") => {
@@ -459,22 +492,70 @@ pub fn open_native_for_experience(
     bridge.open_window(&window_id, experience_id, &title, theme.as_deref(), entry, elements)
 }
 
-/// Shows DER's native home: the prompt plus every bookmarked app.
+/// Ready-made apps from the installed manifests (recipe parts).
+fn installed_recipes(app: &tauri::AppHandle) -> Vec<Value> {
+    let Ok(dir) = app.path().app_data_dir().map(|dir| dir.join("fragments")) else {
+        return Vec::new();
+    };
+    let mut recipes = Vec::new();
+    for installed in crate::fragments::list_core(&dir) {
+        if let Some(Value::Array(entries)) = installed
+            .get("manifest")
+            .and_then(|manifest| manifest.get("recipes"))
+        {
+            for entry in entries {
+                recipes.push(json!({
+                    "name": entry.get("name").cloned().unwrap_or(Value::Null),
+                    "title": entry.get("title").cloned().unwrap_or(Value::Null),
+                    "description": entry.get("description").cloned().unwrap_or(Value::Null),
+                }));
+            }
+        }
+    }
+    recipes
+}
+
+/// Shows DER's native home: the prompt, every bookmarked app, and the
+/// installed ready-made apps.
 pub fn show_native_home(app: &tauri::AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let bookmarks = crate::list_bookmarked_experiences(app.clone())
             .await
             .unwrap_or_default();
+        let recipes = installed_recipes(&app);
         match ensure_running(&app) {
             Ok(bridge) => {
-                if let Err(error) = bridge.lock().unwrap().send_home(&bookmarks) {
+                if let Err(error) = bridge.lock().unwrap().send_home(&bookmarks, &recipes) {
                     eprintln!("Failed to show the native home: {}", error);
                 }
             }
             Err(error) => eprintln!("{}", error),
         }
     });
+}
+
+/// The generation pipeline reports its lifecycle here so the native home
+/// shows progress and failures instead of an eternal working note.
+#[tauri::command]
+pub async fn native_generation_status(
+    app: tauri::AppHandle,
+    status: String,
+    message: Option<String>,
+) -> Result<(), String> {
+    let state = app.state::<NativeRendererState>();
+    let bridge = {
+        let guard = state.0.lock().unwrap();
+        match guard.as_ref() {
+            Some(running) => running.bridge.clone(),
+            None => return Ok(()),
+        }
+    };
+    let outcome = {
+        let mut guard = bridge.lock().unwrap();
+        guard.send_generation_status(&status, message.as_deref())
+    };
+    outcome
 }
 
 /// Keeps an already-shown native home current; silent outside native mode

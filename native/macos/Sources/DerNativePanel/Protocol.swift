@@ -131,6 +131,13 @@ public struct HomeBookmark: Decodable, Sendable, Identifiable {
     public let name: String
 }
 
+public struct HomeRecipe: Decodable, Sendable, Identifiable {
+    public let name: String
+    public let title: String
+    public let description: String?
+    public var id: String { name }
+}
+
 /// One inbound line from the runtime core.
 public struct InboundMessage: Decodable, Sendable {
     public let cmd: String
@@ -140,4 +147,7 @@ public struct InboundMessage: Decodable, Sendable {
     public let tree: [ResolvedNode]?
     public let operationId: String?
     public let bookmarks: [HomeBookmark]?
+    public let recipes: [HomeRecipe]?
+    public let status: String?
+    public let message: String?
 }

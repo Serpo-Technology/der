@@ -131,6 +131,9 @@ export class IntegratedExperienceService {
       // blueprint. Streaming partials drive the live assembly preview,
       // except in native mode, where the finished contract opens the window.
       const nativeMode = await this.isNativeMode();
+      if (nativeMode) {
+        invoke('native_generation_status', { status: 'started' }).catch(() => undefined);
+      }
       let windowOpened = false;
       let opening: Promise<void> | null = null;
       const onPartial = isTauriRuntime() && !nativeMode
@@ -166,6 +169,12 @@ export class IntegratedExperienceService {
       try {
         composed = await this.aiInterpreter.compose(input, onPartial);
       } catch (error) {
+        if (nativeMode) {
+          invoke('native_generation_status', {
+            status: 'failed',
+            message: error instanceof Error ? error.message : 'Generation failed'
+          }).catch(() => undefined);
+        }
         // The assembly window may already be showing a partial draft; tell it
         // generation ended without a result.
         if (windowOpened) {
@@ -206,6 +215,10 @@ export class IntegratedExperienceService {
             title: contract.name || windowTitle
           });
         }
+      }
+
+      if (nativeMode) {
+        invoke('native_generation_status', { status: 'done' }).catch(() => undefined);
       }
 
       if (options.preserveEdits) {
