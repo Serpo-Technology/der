@@ -52,6 +52,16 @@ anything the parts cannot express is a repairable validation error, never a sile
 degradation. The end goal is a marketplace of signed parts where service publishers ship
 their own integrations.
 
+Renderer direction, settled 2026-07-24: native rendering is DER's primary face, and the
+webview is a permanent parallel renderer, never removed and never behind (it serves as
+fallback, as a user preference, as coverage for platforms without a native renderer yet, and
+as the basis for possible web versions). Assembling an experience live out of literal native
+elements is a core differentiator; a webview assembling one reads as a page loading. macOS
+is the first native platform; every further platform joins as another parallel renderer held
+to the head. The conformance corpus is the enforcement mechanism: a vocabulary or semantics
+change is complete only when every first-class renderer passes the shared vectors, so
+renderers stay parallel by construction rather than by promise.
+
 ### Generation pipeline
 
 `AIInterpreterService` (`src/services/ai-interpreter/`) is the pipeline core. Creation is ONE
