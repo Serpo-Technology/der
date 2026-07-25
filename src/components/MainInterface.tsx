@@ -116,47 +116,11 @@ export const MainInterface: React.FC = () => {
         setState(prev => ({ ...prev, currentMode: 'settings' }));
       });
 
-      // The native home opens ready-made apps through the validated path.
-      await listen<string>('native-open-recipe', (event) => {
-        const name = typeof event.payload === 'string' ? event.payload : '';
-        if (!name) return;
-        void integratedExperienceService.createExperienceFromRecipe(name, {
-          preserveEdits: true,
-          autoSave: true,
-          enableRealTimeUpdates: true
-        }).catch((error) => {
-          setState(prev => ({
-            ...prev,
-            error: error instanceof Error ? error.message : 'Failed to open the app'
-          }));
-        });
-      });
-
-      // The native home relays creation prompts here; generation runs in
-      // this window's pipeline and the finished app opens natively.
-      await listen<string>('native-create', (event) => {
-        const prompt = typeof event.payload === 'string' ? event.payload : '';
-        if (!prompt.trim()) return;
-        setState(prev => ({ ...prev, naturalLanguageInput: prompt, currentMode: 'create' }));
-        setPendingNativeCreate(true);
-      });
     };
 
     setupEventListeners();
     loadBookmarkedExperiences(); // Load on startup
   }, [loadBookmarkedExperiences]);
-
-  // A relayed prompt generates as soon as the input state carries it.
-  const [pendingNativeCreate, setPendingNativeCreate] = useState(false);
-  useEffect(() => {
-    if (pendingNativeCreate && state.naturalLanguageInput.trim()) {
-      setPendingNativeCreate(false);
-      void handleGenerateBlueprint();
-    }
-    // handleGenerateBlueprint is declared below; the effect only fires once
-    // the relayed prompt is present.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingNativeCreate, state.naturalLanguageInput]);
 
   // Open an experience as its own app window.
   const openExperienceWindow = useCallback(async (

@@ -1,6 +1,6 @@
-// DER's native home: describe an app to create it, or open one you kept.
-// Creation runs in the core's generation pipeline; the finished app opens
-// in its own native window.
+// DER's native home: describe an app to create it, watch it assemble in its
+// own window, or open one you kept. Creation runs in the runtime core; the
+// finished app opens live.
 
 import SwiftUI
 
@@ -8,6 +8,7 @@ import SwiftUI
 final class HomeModel: ObservableObject {
     @Published var bookmarks: [HomeBookmark] = []
     @Published var recipes: [HomeRecipe] = []
+    @Published var recents: [HomeRecent] = []
     @Published var prompt = ""
     @Published var note: String?
     @Published var isBuilding = false
@@ -50,6 +51,10 @@ final class HomeModel: ObservableObject {
         Outbound.shared.send(["event": "openRecipe", "name": recipe.name])
     }
 
+    func open(_ recent: HomeRecent) {
+        Outbound.shared.send(["event": "openRecent", "id": recent.id])
+    }
+
     func openManage() {
         Outbound.shared.send(["event": "openManage"])
     }
@@ -57,19 +62,84 @@ final class HomeModel: ObservableObject {
 
 struct HomeView: View {
     @ObservedObject var model: HomeModel
+    @FocusState private var promptFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("What should your app do?")
-                .font(.title3)
-                .bold()
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if !model.bookmarks.isEmpty {
+                        section("Your apps") {
+                            ForEach(model.bookmarks) { bookmark in
+                                HomeRow(title: bookmark.name, subtitle: nil) {
+                                    model.open(bookmark)
+                                }
+                            }
+                        }
+                    }
+                    if !model.recents.isEmpty {
+                        section("Recent") {
+                            ForEach(model.recents) { recent in
+                                HomeRow(title: recent.name, subtitle: recent.description) {
+                                    model.open(recent)
+                                }
+                            }
+                        }
+                    }
+                    if !model.recipes.isEmpty {
+                        section("Ready-made apps") {
+                            ForEach(model.recipes) { recipe in
+                                HomeRow(title: recipe.title, subtitle: recipe.description) {
+                                    model.open(recipe)
+                                }
+                            }
+                        }
+                    }
+                    if model.bookmarks.isEmpty && model.recents.isEmpty && model.recipes.isEmpty {
+                        VStack(spacing: 6) {
+                            Text("Nothing here yet")
+                                .font(.headline)
+                            Text("Describe an app above and it appears in its own window.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 32)
+                    }
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Divider()
+            footer
+        }
+        .frame(minWidth: 460, minHeight: 480)
+        .onAppear { promptFocused = true }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("DER")
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                Text("Describe an app. Watch it assemble.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
             HStack(spacing: 8) {
-                TextField("Describe the app you want", text: $model.prompt)
+                TextField("A tip calculator, a reading log, a pantry tracker...", text: $model.prompt)
                     .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
+                    .focused($promptFocused)
                     .onSubmit { model.create() }
                 Button("Create") { model.create() }
                     .buttonStyle(.borderedProminent)
-                    .disabled(model.prompt.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .controlSize(.large)
+                    .disabled(
+                        model.prompt.trimmingCharacters(in: .whitespaces).isEmpty || model.isBuilding
+                    )
             }
             if let note = model.note {
                 HStack(spacing: 6) {
@@ -78,63 +148,70 @@ struct HomeView: View {
                     }
                     Text(note)
                         .font(.caption)
-                        .foregroundStyle(model.buildFailed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                        .foregroundStyle(
+                            model.buildFailed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary)
+                        )
+                        .lineLimit(3)
                 }
-            }
-
-            Divider()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Your apps")
-                        .font(.headline)
-                    if model.bookmarks.isEmpty {
-                        Text("Apps you bookmark appear here, ready to open.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(model.bookmarks) { bookmark in
-                            HStack {
-                                Text(bookmark.name)
-                                Spacer()
-                                Button("Open") { model.open(bookmark) }
-                            }
-                        }
-                    }
-
-                    if !model.recipes.isEmpty {
-                        Text("Ready-made apps")
-                            .font(.headline)
-                            .padding(.top, 4)
-                        ForEach(model.recipes) { recipe in
-                            HStack(alignment: .firstTextBaseline) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(recipe.title)
-                                    if let description = recipe.description {
-                                        Text(description)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                Button("Open") { model.open(recipe) }
-                            }
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            Divider()
-            HStack {
-                Text("Model settings, parts, and editors")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Manage") { model.openManage() }
             }
         }
         .padding(20)
-        .frame(minWidth: 460, minHeight: 460)
+    }
+
+    private var footer: some View {
+        HStack {
+            Text("Model settings, parts, and editors")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Manage") { model.openManage() }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+    }
+
+    @ViewBuilder
+    private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            VStack(spacing: 6) {
+                content()
+            }
+        }
+    }
+}
+
+private struct HomeRow: View {
+    let title: String
+    let subtitle: String?
+    let open: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer()
+            Button("Open", action: open)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(hovering ? AnyShapeStyle(.quaternary.opacity(0.6)) : AnyShapeStyle(.clear))
+        )
+        .onHover { hovering = $0 }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2, perform: open)
     }
 }

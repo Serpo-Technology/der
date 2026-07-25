@@ -16,10 +16,13 @@ final class PanelWindows: NSObject, NSWindowDelegate {
         case "open":
             guard let windowId = message.windowId else { return }
             open(windowId: windowId, title: message.title ?? "Experience",
-                 theme: message.theme, tree: message.tree ?? [])
+                 theme: message.theme, tree: message.tree ?? [],
+                 assembling: message.assembling ?? false)
         case "update":
-            guard let windowId = message.windowId, let tree = message.tree else { return }
-            windows[windowId]?.model.tree = tree
+            guard let windowId = message.windowId, let tree = message.tree,
+                  let entry = windows[windowId] else { return }
+            entry.model.tree = tree
+            entry.model.assembling = message.assembling ?? false
         case "close":
             guard let windowId = message.windowId, let entry = windows.removeValue(forKey: windowId) else { return }
             entry.window.delegate = nil
@@ -27,6 +30,7 @@ final class PanelWindows: NSObject, NSWindowDelegate {
         case "home":
             homeModel.bookmarks = message.bookmarks ?? []
             homeModel.recipes = message.recipes ?? []
+            homeModel.recents = message.recents ?? []
             showHome()
         case "generationStatus":
             homeModel.applyGenerationStatus(message.status ?? "", message: message.message)
@@ -43,12 +47,13 @@ final class PanelWindows: NSObject, NSWindowDelegate {
             return
         }
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 600),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
         window.title = "DER"
+        window.minSize = NSSize(width: 460, height: 480)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: HomeView(model: homeModel))
         window.center()
@@ -57,8 +62,9 @@ final class PanelWindows: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func open(windowId: String, title: String, theme: String?, tree: [ResolvedNode]) {
-        let model = TreeModel(windowId: windowId, tree: tree)
+    private func open(windowId: String, title: String, theme: String?, tree: [ResolvedNode],
+                      assembling: Bool) {
+        let model = TreeModel(windowId: windowId, tree: tree, assembling: assembling)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 620),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],

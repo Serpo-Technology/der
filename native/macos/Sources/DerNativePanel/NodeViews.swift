@@ -8,10 +8,12 @@ import SwiftUI
 final class TreeModel: ObservableObject {
     let windowId: String
     @Published var tree: [ResolvedNode]
+    @Published var assembling: Bool
 
-    init(windowId: String, tree: [ResolvedNode]) {
+    init(windowId: String, tree: [ResolvedNode], assembling: Bool = false) {
         self.windowId = windowId
         self.tree = tree
+        self.assembling = assembling
     }
 
     func dispatch(_ operationIds: [String], item: JSONValue?) {
@@ -28,16 +30,33 @@ struct RootView: View {
     @ObservedObject var model: TreeModel
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(model.tree) { node in
-                    NodeView(node: node)
+        VStack(spacing: 0) {
+            if model.assembling {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Assembling")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.quaternary.opacity(0.4))
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(model.tree) { node in
+                        NodeView(node: node)
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            // Drafts are display-only until the finished app takes over.
+            .allowsHitTesting(!model.assembling)
         }
         .environmentObject(model)
+        .animation(.easeOut(duration: 0.2), value: model.assembling)
     }
 }
 

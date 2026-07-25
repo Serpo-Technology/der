@@ -233,15 +233,21 @@ fn openai_delta_reasoning(payload: &str) -> bool {
 const THINKING_ONLY_ERROR: &str =
     "The model spent its entire token budget thinking and returned no answer. Raise max tokens, or use a non-thinking model.";
 
+/// Where streamed text deltas go: a webview channel or a native callback.
+pub(crate) type ChunkSink<'a> = &'a mut (dyn FnMut(&str) + Send);
+
 /// Reads an SSE response to completion, forwarding each extracted text delta
-/// over the channel. Returns the accumulated content and whether any
+/// into the sink. Returns the accumulated content and whether any
 /// reasoning-only deltas were seen (thinking models).
-async fn consume_sse(
+async fn consume_sse<F>(
     response: reqwest::Response,
     extract: fn(&str) -> Option<String>,
     detect_reasoning: fn(&str) -> bool,
-    on_chunk: &Channel<String>,
-) -> Result<(String, bool), String> {
+    on_chunk: &mut F,
+) -> Result<(String, bool), String>
+where
+    F: FnMut(&str) + Send + ?Sized,
+{
     let mut stream = response.bytes_stream();
     let mut buffer: Vec<u8> = Vec::new();
     let mut content = String::new();
@@ -256,7 +262,7 @@ async fn consume_sse(
             saw_reasoning = saw_reasoning || detect_reasoning(&payload);
             if let Some(text) = extract(&payload) {
                 if !text.is_empty() {
-                    let _ = on_chunk.send(text.clone());
+                    on_chunk(&text);
                     content.push_str(&text);
                 }
             }
@@ -265,14 +271,17 @@ async fn consume_sse(
     Ok((content, saw_reasoning))
 }
 
-async fn anthropic_chat(
+async fn anthropic_chat<F>(
     auth: &AnthropicAuth,
     model: &str,
     messages: &[ChatMessage],
     system_blocks: Option<&[SystemBlock]>,
     max_tokens: u32,
-    on_chunk: Option<&Channel<String>>,
-) -> Result<String, String> {
+    on_chunk: Option<&mut F>,
+) -> Result<String, String>
+where
+    F: FnMut(&str) + Send + ?Sized,
+{
     let mut body = build_anthropic_body(
         matches!(auth, AnthropicAuth::Bearer(_)),
         model,
@@ -311,8 +320,8 @@ async fn anthropic_chat(
         return Err(format!("Anthropic {}", error_body(status, &text)));
     }
 
-    if let Some(channel) = on_chunk {
-        let (content, _) = consume_sse(response, anthropic_delta_text, |_| false, channel).await?;
+    if let Some(sink) = on_chunk {
+        let (content, _) = consume_sse(response, anthropic_delta_text, |_| false, sink).await?;
         if content.is_empty() {
             return Err("Anthropic returned an empty response.".to_string());
         }
@@ -345,7 +354,7 @@ async fn anthropic_chat(
     Ok(content)
 }
 
-async fn openai_compat_chat(
+async fn openai_compat_chat<F>(
     base_url: &str,
     api_key: Option<&str>,
     model: &str,
@@ -353,8 +362,11 @@ async fn openai_compat_chat(
     max_tokens: u32,
     temperature: Option<f64>,
     json_mode: bool,
-    on_chunk: Option<&Channel<String>>,
-) -> Result<String, String> {
+    on_chunk: Option<&mut F>,
+) -> Result<String, String>
+where
+    F: FnMut(&str) + Send + ?Sized,
+{
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let mut body = json!({
         "model": model,
@@ -391,9 +403,9 @@ async fn openai_compat_chat(
         return Err(error_body(status, &text));
     }
 
-    if let Some(channel) = on_chunk {
+    if let Some(sink) = on_chunk {
         let (content, saw_reasoning) =
-            consume_sse(response, openai_delta_text, openai_delta_reasoning, channel).await?;
+            consume_sse(response, openai_delta_text, openai_delta_reasoning, sink).await?;
         if content.is_empty() {
             return Err(if saw_reasoning {
                 THINKING_ONLY_ERROR.to_string()
@@ -508,13 +520,16 @@ pub async fn llm_chat_stream(
     request: LlmChatRequest,
     on_chunk: Channel<String>,
 ) -> Result<LlmChatResponse, String> {
-    llm_chat_impl(app, request, Some(on_chunk)).await
+    let mut forward = move |delta: &str| {
+        let _ = on_chunk.send(delta.to_string());
+    };
+    llm_chat_impl(app, request, Some(&mut forward)).await
 }
 
 pub(crate) async fn llm_chat_impl(
     app: AppHandle,
     request: LlmChatRequest,
-    on_chunk: Option<Channel<String>>,
+    on_chunk: Option<ChunkSink<'_>>,
 ) -> Result<LlmChatResponse, String> {
     if request.messages.is_empty() {
         return Err("No messages to send.".to_string());
@@ -545,7 +560,7 @@ pub(crate) async fn llm_chat_impl(
         if provider == "local" { stored.base_url.clone() } else { None }
     });
 
-    let chunk_sink = if request.stream { on_chunk.as_ref() } else { None };
+    let mut chunk_sink = if request.stream { on_chunk } else { None };
 
     // Providers without system-block support get the structured prompt as one
     // plain system message ahead of the conversation.
@@ -570,18 +585,19 @@ pub(crate) async fn llm_chat_impl(
         "claude-subscription" => {
             let token = oauth::claude_access_token(&app, false).await?;
             let auth = AnthropicAuth::Bearer(token);
-            match anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens, chunk_sink).await {
+            let first = anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens, chunk_sink.as_deref_mut()).await;
+            match first {
                 Err(e) if e.starts_with("unauthorized") => {
                     let token = oauth::claude_access_token(&app, true).await?;
                     let auth = AnthropicAuth::Bearer(token);
-                    anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens, chunk_sink).await?
+                    anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens, chunk_sink.as_deref_mut()).await?
                 }
                 other => other?,
             }
         }
         "anthropic" => {
             let auth = AnthropicAuth::ApiKey(api_key(&app, "anthropic")?);
-            anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens, chunk_sink).await?
+            anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens, chunk_sink.as_deref_mut()).await?
         }
         "deepseek" => {
             let key = api_key(&app, "deepseek")?;
@@ -596,7 +612,7 @@ pub(crate) async fn llm_chat_impl(
                 max_tokens,
                 temperature,
                 json_mode,
-                chunk_sink,
+                chunk_sink.as_deref_mut(),
             )
             .await?
         }
@@ -613,7 +629,7 @@ pub(crate) async fn llm_chat_impl(
                 max_tokens,
                 temperature,
                 json_mode,
-                chunk_sink,
+                chunk_sink.as_deref_mut(),
             )
             .await?
         }
@@ -628,7 +644,7 @@ pub(crate) async fn llm_chat_impl(
                 max_tokens,
                 temperature,
                 false,
-                chunk_sink,
+                chunk_sink.as_deref_mut(),
             )
             .await?
         }
@@ -645,7 +661,7 @@ pub(crate) async fn llm_chat_impl(
                 max_tokens,
                 temperature,
                 json_mode,
-                chunk_sink,
+                chunk_sink.as_deref_mut(),
             )
             .await?
         }

@@ -28,6 +28,9 @@ pub struct WindowSession {
     entry: SessionEntry,
     elements: Vec<Value>,
     experience_id: String,
+    /// Streaming assembly: the window shows a growing display-only draft;
+    /// interactions are inert and state never persists.
+    assembling: bool,
 }
 
 /// Fired after every session mutation with the experience id and its state,
@@ -38,6 +41,9 @@ pub struct SidecarBridge {
     windows: HashMap<String, WindowSession>,
     transport: Box<dyn SidecarTransport>,
     on_change: Option<StateChanged>,
+    /// Experiences whose assembly window the user closed mid-generation;
+    /// further previews stay away, the finished app still opens.
+    assembly_dismissed: std::collections::HashSet<String>,
 }
 
 impl SidecarBridge {
@@ -46,6 +52,7 @@ impl SidecarBridge {
             windows: HashMap::new(),
             transport,
             on_change: None,
+            assembly_dismissed: std::collections::HashSet::new(),
         }
     }
 
@@ -61,6 +68,7 @@ impl SidecarBridge {
         theme: Option<&str>,
         entry: SessionEntry,
         elements: Vec<Value>,
+        assembling: bool,
     ) -> Result<(), String> {
         let tree = resolve_entry_view(&entry, &elements);
         self.transport.send(&json!({
@@ -69,6 +77,7 @@ impl SidecarBridge {
             "title": title,
             "theme": theme,
             "tree": tree,
+            "assembling": assembling,
         }))?;
         self.windows.insert(
             window_id.to_string(),
@@ -76,8 +85,28 @@ impl SidecarBridge {
                 entry,
                 elements,
                 experience_id: experience_id.to_string(),
+                assembling,
             },
         );
+        Ok(())
+    }
+
+    pub fn assembly_dismissed(&self, experience_id: &str) -> bool {
+        self.assembly_dismissed.contains(experience_id)
+    }
+
+    /// Closes every window still assembling: generation failed, so the
+    /// half-built drafts go away with it.
+    pub fn close_assembling_windows(&mut self) -> Result<(), String> {
+        let assembling: Vec<String> = self
+            .windows
+            .iter()
+            .filter(|(_, window)| window.assembling)
+            .map(|(window_id, _)| window_id.clone())
+            .collect();
+        for window_id in assembling {
+            self.close_window(&window_id)?;
+        }
         Ok(())
     }
 
@@ -95,13 +124,15 @@ impl SidecarBridge {
             .map(|window| window.entry.session().state().clone())
     }
 
-    /// Swaps an open window's session (a contract edit) and shows the fresh
-    /// tree; the caller rebuilds the entry with the preserved state.
+    /// Swaps an open window's session (a contract edit or the next assembly
+    /// draft) and shows the fresh tree; the caller rebuilds the entry with
+    /// the preserved state.
     pub fn replace_session(
         &mut self,
         experience_id: &str,
         entry: SessionEntry,
         elements: Vec<Value>,
+        assembling: bool,
     ) -> Result<(), String> {
         let window_id = self
             .window_for_experience(experience_id)
@@ -109,17 +140,24 @@ impl SidecarBridge {
         if let Some(window) = self.windows.get_mut(&window_id) {
             window.entry = entry;
             window.elements = elements;
+            window.assembling = assembling;
         }
         self.send_update(&window_id)
     }
 
-    /// DER's own native surface: a prompt, the kept apps, and the
-    /// ready-made apps installed parts ship.
-    pub fn send_home(&mut self, bookmarks: &[Value], recipes: &[Value]) -> Result<(), String> {
+    /// DER's own native surface: a prompt, the kept apps, recent creations,
+    /// and the ready-made apps installed parts ship.
+    pub fn send_home(
+        &mut self,
+        bookmarks: &[Value],
+        recipes: &[Value],
+        recents: &[Value],
+    ) -> Result<(), String> {
         self.transport.send(&json!({
             "cmd": "home",
             "bookmarks": bookmarks,
             "recipes": recipes,
+            "recents": recents,
         }))
     }
 
@@ -149,6 +187,10 @@ impl SidecarBridge {
 
     fn notify_change(&self, window_id: &str) {
         if let (Some(on_change), Some(window)) = (&self.on_change, self.windows.get(window_id)) {
+            // Assembly drafts are inert; nothing they hold is worth saving.
+            if window.assembling {
+                return;
+            }
             on_change(&window.experience_id, window.entry.session().state());
         }
     }
@@ -210,10 +252,16 @@ impl SidecarBridge {
                 self.send_update(&window_id).map(|_| None)
             }
             "windowClosed" => {
-                self.windows.remove(&window_id);
+                if let Some(window) = self.windows.remove(&window_id) {
+                    if window.assembling {
+                        self.assembly_dismissed.insert(window.experience_id);
+                    }
+                }
                 Ok(None)
             }
-            "create" | "openBookmark" | "openManage" | "openRecipe" => Ok(Some(message.clone())),
+            "create" | "openBookmark" | "openManage" | "openRecipe" | "openRecent" => {
+                Ok(Some(message.clone()))
+            }
             "log" => Ok(None),
             other => Err(format!("Unknown panel event \"{}\"", other)),
         }
@@ -225,10 +273,12 @@ impl SidecarBridge {
             .get(window_id)
             .ok_or_else(|| format!("No native window {}", window_id))?;
         let tree = resolve_entry_view(&window.entry, &window.elements);
+        let assembling = window.assembling;
         self.transport.send(&json!({
             "cmd": "update",
             "windowId": window_id,
             "tree": tree,
+            "assembling": assembling,
         }))
     }
 }
@@ -291,9 +341,9 @@ fn panel_binary() -> Result<std::path::PathBuf, String> {
     Err("The native panel is not built; run \"swift build\" in native/macos first".to_string())
 }
 
-/// Home actions arrive from the panel and go back into the app: create
-/// relays the prompt to the generation pipeline in the hidden main window,
-/// openBookmark opens the app fully natively.
+/// Home actions arrive from the panel and go back into the app: create and
+/// openRecipe run the native pipeline, openBookmark and openRecent open kept
+/// apps natively.
 fn relay_home_event(app: &tauri::AppHandle, event: &Value) {
     match event.get("event").and_then(Value::as_str) {
         Some("create") => {
@@ -305,19 +355,25 @@ fn relay_home_event(app: &tauri::AppHandle, event: &Value) {
             if prompt.trim().is_empty() {
                 return;
             }
-            use tauri::Emitter;
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.emit("native-create", prompt);
-            }
+            native_create(app, prompt);
         }
         Some("openRecipe") => {
             let Some(name) = event.get("name").and_then(Value::as_str) else {
                 return;
             };
-            use tauri::Emitter;
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.emit("native-open-recipe", name.to_string());
-            }
+            native_open_recipe(app, name.to_string());
+        }
+        Some("openRecent") => {
+            let Some(experience_id) = event.get("id").and_then(Value::as_str) else {
+                return;
+            };
+            let app = app.clone();
+            let experience_id = experience_id.to_string();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = open_saved_experience(&app, &experience_id).await {
+                    eprintln!("Failed to open {} natively: {}", experience_id, error);
+                }
+            });
         }
         Some("openManage") => {
             // The deliberate bridge to the webview management console:
@@ -486,10 +542,67 @@ pub fn open_native_for_experience(
     let theme = contract_theme(&contract);
     let mut bridge = bridge.lock().unwrap();
     if bridge.window_for_experience(experience_id).is_some() {
-        return bridge.replace_session(experience_id, entry, elements);
+        return bridge.replace_session(experience_id, entry, elements, false);
     }
     let window_id = format!("nw-{}", uuid::Uuid::new_v4());
-    bridge.open_window(&window_id, experience_id, &title, theme.as_deref(), entry, elements)
+    bridge.open_window(
+        &window_id,
+        experience_id,
+        &title,
+        theme.as_deref(),
+        entry,
+        elements,
+        false,
+    )
+}
+
+/// A streaming assembly draft lands in its native window: the display-only
+/// contract opens the window on the first parseable partial and replaces the
+/// tree on every one after, until the finished app takes over. Drafts the
+/// user closed stay closed.
+pub fn show_assembly_preview(
+    app: &tauri::AppHandle,
+    experience_id: &str,
+    contract: Value,
+    title: &str,
+) -> Result<(), String> {
+    let bridge = ensure_running(app)?;
+    {
+        let guard = bridge.lock().unwrap();
+        if guard.assembly_dismissed(experience_id) {
+            return Ok(());
+        }
+    }
+    // Display drafts carry no operations, so the session is inert by
+    // construction; no dispatcher is wired on purpose.
+    let (fragment_defs, _) = super::sessions::installed_vocabulary(app);
+    let entry = open_session_core(
+        &contract,
+        Map::new(),
+        fragment_defs,
+        Box::new(SystemEnv),
+        None,
+    )?;
+    let elements = contract
+        .get("elements")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let theme = contract_theme(&contract);
+    let mut bridge = bridge.lock().unwrap();
+    if bridge.window_for_experience(experience_id).is_some() {
+        return bridge.replace_session(experience_id, entry, elements, true);
+    }
+    let window_id = format!("nw-{}", uuid::Uuid::new_v4());
+    bridge.open_window(
+        &window_id,
+        experience_id,
+        title,
+        theme.as_deref(),
+        entry,
+        elements,
+        true,
+    )
 }
 
 /// Ready-made apps from the installed manifests (recipe parts).
@@ -515,8 +628,53 @@ fn installed_recipes(app: &tauri::AppHandle) -> Vec<Value> {
     recipes
 }
 
-/// Shows DER's native home: the prompt, every bookmarked app, and the
-/// installed ready-made apps.
+/// Apps created on this machine, newest first, for the home's recent list.
+fn recent_experiences(app: &tauri::AppHandle) -> Vec<Value> {
+    let Ok(dir) = app.path().app_data_dir().map(|dir| dir.join("experiences")) else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut records: Vec<(std::time::SystemTime, Value)> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(raw) = std::fs::read_to_string(&path) else { continue };
+        let Ok(record) = serde_json::from_str::<Value>(&raw) else { continue };
+        let Some(id) = record.get("experienceId").and_then(Value::as_str) else { continue };
+        let name = record
+            .get("metadata")
+            .and_then(|metadata| metadata.get("name"))
+            .and_then(Value::as_str)
+            .or_else(|| {
+                record
+                    .get("contract")
+                    .and_then(|contract| contract.get("name"))
+                    .and_then(Value::as_str)
+            })
+            .unwrap_or("Untitled app");
+        let description = record
+            .get("metadata")
+            .and_then(|metadata| metadata.get("description"))
+            .and_then(Value::as_str);
+        let modified = entry
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        records.push((
+            modified,
+            json!({ "id": id, "name": name, "description": description }),
+        ));
+    }
+    records.sort_by(|a, b| b.0.cmp(&a.0));
+    records.into_iter().map(|(_, record)| record).take(6).collect()
+}
+
+/// Shows DER's native home: the prompt, every bookmarked app, recently
+/// created apps, and the installed ready-made apps.
 pub fn show_native_home(app: &tauri::AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -524,9 +682,12 @@ pub fn show_native_home(app: &tauri::AppHandle) {
             .await
             .unwrap_or_default();
         let recipes = installed_recipes(&app);
+        let recents = recent_experiences(&app);
         match ensure_running(&app) {
             Ok(bridge) => {
-                if let Err(error) = bridge.lock().unwrap().send_home(&bookmarks, &recipes) {
+                if let Err(error) =
+                    bridge.lock().unwrap().send_home(&bookmarks, &recipes, &recents)
+                {
                     eprintln!("Failed to show the native home: {}", error);
                 }
             }
@@ -536,26 +697,16 @@ pub fn show_native_home(app: &tauri::AppHandle) {
 }
 
 /// The generation pipeline reports its lifecycle here so the native home
-/// shows progress and failures instead of an eternal working note.
+/// shows progress and failures instead of an eternal working note. A failed
+/// generation takes its half-built drafts with it.
 #[tauri::command]
 pub async fn native_generation_status(
     app: tauri::AppHandle,
     status: String,
     message: Option<String>,
 ) -> Result<(), String> {
-    let state = app.state::<NativeRendererState>();
-    let bridge = {
-        let guard = state.0.lock().unwrap();
-        match guard.as_ref() {
-            Some(running) => running.bridge.clone(),
-            None => return Ok(()),
-        }
-    };
-    let outcome = {
-        let mut guard = bridge.lock().unwrap();
-        guard.send_generation_status(&status, message.as_deref())
-    };
-    outcome
+    generation_status(&app, &status, message.as_deref());
+    Ok(())
 }
 
 /// Keeps an already-shown native home current; silent outside native mode
@@ -569,6 +720,219 @@ pub fn refresh_native_home(app: &tauri::AppHandle) {
     if running {
         show_native_home(app);
     }
+}
+
+fn generation_status(app: &tauri::AppHandle, status: &str, message: Option<&str>) {
+    let state = app.state::<NativeRendererState>();
+    let bridge = {
+        let guard = state.0.lock().unwrap();
+        match guard.as_ref() {
+            Some(running) => running.bridge.clone(),
+            None => return,
+        }
+    };
+    let mut guard = bridge.lock().unwrap();
+    if status == "failed" {
+        let _ = guard.close_assembling_windows();
+    }
+    let _ = guard.send_generation_status(status, message);
+}
+
+fn truncated_title(prompt: &str) -> String {
+    let chars: Vec<char> = prompt.chars().collect();
+    if chars.len() > 48 {
+        format!("{}...", chars[..45].iter().collect::<String>())
+    } else {
+        prompt.to_string()
+    }
+}
+
+async fn persist_created_experience(
+    app: &tauri::AppHandle,
+    experience_id: &str,
+    contract: &Value,
+    description: &str,
+    now_iso: &str,
+    recipe_name: Option<&str>,
+) {
+    let name = contract
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("Untitled app");
+    let mut metadata = json!({
+        "name": name,
+        "description": description,
+        "createdAt": now_iso,
+    });
+    if let Some(recipe) = recipe_name {
+        metadata["recipeName"] = json!(recipe);
+    }
+    if let Err(error) = crate::save_experience(
+        app.clone(),
+        experience_id.to_string(),
+        contract.clone(),
+        json!({}),
+        Some(metadata),
+    )
+    .await
+    {
+        eprintln!("Failed to save created experience: {}", error);
+    }
+}
+
+/// Creation without a webview: the Rust compose pipeline streams, every
+/// parseable partial lands in the native assembly window, and the finished
+/// app takes the window over live. The home shows the lifecycle and its
+/// recent list picks up the result.
+pub fn native_create(app: &tauri::AppHandle, prompt: String) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        generation_status(&app, "started", None);
+        let experience_id = format!(
+            "exp-{}-{}",
+            chrono::Utc::now().timestamp_millis(),
+            &uuid::Uuid::new_v4().simple().to_string()[..9]
+        );
+        let title = truncated_title(&prompt);
+        let vocab = super::sessions::compose_vocabulary(&app);
+        let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        let mut llm = super::sessions::HostLlm { app: app.clone() };
+
+        let preview_app = app.clone();
+        let preview_id = experience_id.clone();
+        let preview_title = title.clone();
+        let mut on_partial = move |accumulated: &str, _attempt: u32| {
+            let Some(preview) = super::streaming::extract_streaming_contract(accumulated) else {
+                return;
+            };
+            if let Err(error) =
+                show_assembly_preview(&preview_app, &preview_id, preview, &preview_title)
+            {
+                eprintln!("Assembly preview failed: {}", error);
+            }
+        };
+
+        let outcome = super::compose::compose_from_description(
+            &mut llm,
+            &prompt,
+            &vocab,
+            &now_iso,
+            Some(&mut on_partial),
+        )
+        .await;
+
+        match outcome {
+            Ok(outcome) => {
+                let description = outcome
+                    .spec
+                    .get("goal")
+                    .and_then(Value::as_str)
+                    .filter(|goal| !goal.is_empty())
+                    .unwrap_or(&prompt)
+                    .to_string();
+                persist_created_experience(
+                    &app,
+                    &experience_id,
+                    &outcome.contract,
+                    &description,
+                    &now_iso,
+                    outcome.recipe_name.as_deref(),
+                )
+                .await;
+                let final_title = outcome
+                    .contract
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .unwrap_or(title);
+                if let Err(error) = open_native_for_experience(
+                    &app,
+                    &experience_id,
+                    outcome.contract,
+                    Some(final_title),
+                    None,
+                ) {
+                    generation_status(&app, "failed", Some(&error));
+                    return;
+                }
+                generation_status(&app, "done", None);
+                refresh_native_home(&app);
+            }
+            Err(error) => {
+                generation_status(&app, "failed", Some(&error));
+            }
+        }
+    });
+}
+
+/// Opens an installed ready-made app natively: the proven contract is
+/// revalidated against the installed parts and finalized without a model
+/// call, then persisted and opened like any created app.
+pub fn native_open_recipe(app: &tauri::AppHandle, name: String) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let vocab = super::sessions::compose_vocabulary(&app);
+        let Some(def) = vocab.recipes.get(&name).cloned() else {
+            generation_status(&app, "failed", Some(&format!("\"{}\" is not installed", name)));
+            return;
+        };
+        let resolved = super::compose::resolve_recipe_shape(&def, &vocab);
+        let Some(shape) = resolved.shape.filter(|_| resolved.problems.is_empty()) else {
+            generation_status(
+                &app,
+                "failed",
+                Some(&format!("\"{}\" cannot open ({})", name, resolved.problems.join("; "))),
+            );
+            return;
+        };
+        let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        let description = def
+            .get("description")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let contract = super::compose::finalize_contract_shape(
+            &shape,
+            Some(&description),
+            &now_iso,
+            &vocab,
+        );
+        let experience_id = format!(
+            "exp-{}-{}",
+            chrono::Utc::now().timestamp_millis(),
+            &uuid::Uuid::new_v4().simple().to_string()[..9]
+        );
+        persist_created_experience(&app, &experience_id, &contract, &description, &now_iso, Some(&name))
+            .await;
+        let title = contract
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("Experience")
+            .to_string();
+        if let Err(error) =
+            open_native_for_experience(&app, &experience_id, contract, Some(title), None)
+        {
+            eprintln!("Failed to open recipe {} natively: {}", name, error);
+        } else {
+            refresh_native_home(&app);
+        }
+    });
+}
+
+/// Reopens a saved experience record with its per-app state restored.
+async fn open_saved_experience(app: &tauri::AppHandle, experience_id: &str) -> Result<(), String> {
+    let record = crate::load_experience(app.clone(), experience_id.to_string())
+        .await?
+        .ok_or_else(|| format!("Experience {} not found", experience_id))?;
+    let contract = record.get("contract").cloned().unwrap_or(Value::Null);
+    let title = record
+        .get("metadata")
+        .and_then(|metadata| metadata.get("name"))
+        .and_then(Value::as_str)
+        .or_else(|| contract.get("name").and_then(Value::as_str))
+        .map(str::to_string);
+    let saved_state = crate::read_experience_state(app, experience_id);
+    open_native_for_experience(app, experience_id, contract, title, saved_state)
 }
 
 #[tauri::command]
@@ -619,7 +983,7 @@ pub async fn native_update_experience_contract(
         let (entry, elements) = build_entry(&app, &contract, preserved)?;
         let outcome = {
             let mut guard = bridge.lock().unwrap();
-            guard.replace_session(&experience_id, entry, elements)
+            guard.replace_session(&experience_id, entry, elements, false)
         };
         outcome
     })

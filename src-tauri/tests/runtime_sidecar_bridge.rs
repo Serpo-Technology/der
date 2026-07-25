@@ -68,9 +68,25 @@ fn open_bridge() -> (SidecarBridge, Recorder) {
     .expect("session opens");
     let elements = contract["elements"].as_array().cloned().unwrap();
     bridge
-        .open_window("w1", "exp-counter", "Counter", None, entry, elements)
+        .open_window("w1", "exp-counter", "Counter", None, entry, elements, false)
         .expect("window opens");
     (bridge, recorder)
+}
+
+fn display_entry(contract: &Value) -> dynamic_experience_runtime_lib::runtime::sessions::SessionEntry {
+    open_session_core(
+        contract,
+        Map::new(),
+        Map::new(),
+        Box::new(ScriptedEnv {
+            ids: VecDeque::new(),
+            randoms: VecDeque::new(),
+            epoch_ms: 0,
+            tz_offset_minutes: 0,
+        }),
+        None,
+    )
+    .expect("session opens")
 }
 
 fn content_of(tree: &Value) -> String {
@@ -190,7 +206,7 @@ fn replacing_a_session_preserves_state_and_updates_the_view() {
     .expect("rebuilt session");
     let elements = contract["elements"].as_array().cloned().unwrap();
     bridge
-        .replace_session("exp-counter", entry, elements)
+        .replace_session("exp-counter", entry, elements, false)
         .expect("session replaced");
 
     let sent = recorder.0.lock().unwrap();
@@ -231,4 +247,102 @@ fn closed_windows_drop_their_sessions() {
         }))
         .unwrap_err();
     assert!(error.contains("No native window"), "got: {}", error);
+}
+
+#[test]
+fn assembly_windows_flag_their_trees_and_finish_live() {
+    let recorder = Recorder::default();
+    let mut bridge = SidecarBridge::new(Box::new(recorder.clone()));
+    let contract = counter_contract();
+    let elements = contract["elements"].as_array().cloned().unwrap();
+
+    // The first parseable draft opens the window as assembling.
+    bridge
+        .open_window(
+            "w1",
+            "exp-live",
+            "Building",
+            None,
+            display_entry(&contract),
+            elements.clone(),
+            true,
+        )
+        .expect("assembly window opens");
+    // The next draft replaces the tree, still assembling.
+    bridge
+        .replace_session("exp-live", display_entry(&contract), elements.clone(), true)
+        .expect("draft replaces");
+    // The finished app takes the window over.
+    bridge
+        .replace_session("exp-live", display_entry(&contract), elements, false)
+        .expect("final replaces");
+
+    let sent = recorder.0.lock().unwrap();
+    assert_eq!(sent[0]["cmd"], "open");
+    assert_eq!(sent[0]["assembling"], json!(true));
+    assert_eq!(sent[1]["cmd"], "update");
+    assert_eq!(sent[1]["assembling"], json!(true));
+    assert_eq!(sent[2]["cmd"], "update");
+    assert_eq!(sent[2]["assembling"], json!(false));
+}
+
+#[test]
+fn assembling_windows_never_persist_and_close_on_failure() {
+    let recorder = Recorder::default();
+    let mut bridge = SidecarBridge::new(Box::new(recorder.clone()));
+    let contract = counter_contract();
+    let elements = contract["elements"].as_array().cloned().unwrap();
+    bridge
+        .open_window(
+            "w1",
+            "exp-draft",
+            "Building",
+            None,
+            display_entry(&contract),
+            elements,
+            true,
+        )
+        .expect("assembly window opens");
+
+    let saved: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = saved.clone();
+    bridge.set_on_change(Box::new(move |experience_id, _state| {
+        sink.lock().unwrap().push(experience_id.to_string());
+    }));
+    bridge
+        .handle_event(&json!({
+            "event": "setElement", "windowId": "w1", "elementId": "note-in", "value": "typed"
+        }))
+        .expect("write handled");
+    assert!(saved.lock().unwrap().is_empty(), "drafts never persist state");
+
+    bridge.close_assembling_windows().expect("drafts close");
+    assert_eq!(bridge.window_count(), 0);
+    let sent = recorder.0.lock().unwrap();
+    assert_eq!(sent.last().unwrap()["cmd"], "close");
+}
+
+#[test]
+fn a_dismissed_assembly_stays_dismissed() {
+    let recorder = Recorder::default();
+    let mut bridge = SidecarBridge::new(Box::new(recorder.clone()));
+    let contract = counter_contract();
+    let elements = contract["elements"].as_array().cloned().unwrap();
+    bridge
+        .open_window(
+            "w1",
+            "exp-gone",
+            "Building",
+            None,
+            display_entry(&contract),
+            elements,
+            true,
+        )
+        .expect("assembly window opens");
+    assert!(!bridge.assembly_dismissed("exp-gone"));
+
+    bridge
+        .handle_event(&json!({ "event": "windowClosed", "windowId": "w1" }))
+        .expect("close handled");
+    assert!(bridge.assembly_dismissed("exp-gone"));
 }

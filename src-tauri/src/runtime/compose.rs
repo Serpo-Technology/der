@@ -433,10 +433,59 @@ pub struct LlmReply {
 
 type SendFuture<'a> = Pin<Box<dyn Future<Output = Result<LlmReply, String>> + Send + 'a>>;
 
+/// Streamed response text lands here delta by delta on providers that
+/// stream; the resolved reply still carries the full content.
+pub type ChunkCallback<'a> = &'a mut (dyn FnMut(&str) + Send);
+
 /// The model transport the loop drives: scripted in vectors, llm_chat in
 /// production.
 pub trait ComposeLlm: Send {
-    fn send(&mut self, messages: Vec<Value>, options: LlmSendOptions) -> SendFuture<'_>;
+    fn send<'a>(
+        &'a mut self,
+        messages: Vec<Value>,
+        options: LlmSendOptions,
+        on_chunk: Option<ChunkCallback<'a>>,
+    ) -> SendFuture<'a>;
+}
+
+/// Accumulated raw response text, throttled like the webview's onPartial;
+/// the attempt number (1-based) distinguishes repair rounds.
+pub type PartialCallback<'a> = &'a mut (dyn FnMut(&str, u32) + Send);
+
+async fn send_attempt(
+    llm: &mut dyn ComposeLlm,
+    conversation: Vec<Value>,
+    options: &GenerateOptions,
+    attempt: u32,
+    on_partial: &mut Option<PartialCallback<'_>>,
+) -> Result<LlmReply, String> {
+    let send_options = LlmSendOptions {
+        json_mode: true,
+        max_tokens: options.max_tokens,
+        system_blocks: options.system_blocks.clone(),
+    };
+    match on_partial.as_deref_mut() {
+        None => llm.send(conversation, send_options, None).await,
+        Some(callback) => {
+            let mut accumulated = String::new();
+            let mut last_flush: Option<std::time::Instant> = None;
+            let reply = {
+                let mut chunk = |delta: &str| {
+                    accumulated.push_str(delta);
+                    let due = last_flush.is_none_or(|at| at.elapsed().as_millis() >= 150);
+                    if due {
+                        last_flush = Some(std::time::Instant::now());
+                        callback(&accumulated, attempt);
+                    }
+                };
+                llm.send(conversation, send_options, Some(&mut chunk)).await
+            }?;
+            if !accumulated.is_empty() {
+                callback(&accumulated, attempt);
+            }
+            Ok(reply)
+        }
+    }
 }
 
 pub struct GenerateOptions {
@@ -453,19 +502,11 @@ pub async fn generate_validated_json(
     schema: SchemaKind,
     options: GenerateOptions,
     semantic: &mut (dyn FnMut(&mut Value) -> Vec<String> + Send),
+    mut on_partial: Option<PartialCallback<'_>>,
 ) -> Result<Value, String> {
     let mut conversation = messages;
 
-    let first_reply = llm
-        .send(
-            conversation.clone(),
-            LlmSendOptions {
-                json_mode: true,
-                max_tokens: options.max_tokens,
-                system_blocks: options.system_blocks.clone(),
-            },
-        )
-        .await?;
+    let first_reply = send_attempt(llm, conversation.clone(), &options, 1, &mut on_partial).await?;
     let mut last_provider = first_reply.provider.clone();
     let mut raw = first_reply.content;
     let mut verdict = parse_validated_json(&raw, &schema, semantic);
@@ -475,7 +516,7 @@ pub async fn generate_validated_json(
 
     let cheap_fast = matches!(last_provider.as_deref(), Some("local") | Some("mercury"));
     let max_repairs = if cheap_fast { 2 } else { 1 };
-    for _ in 0..max_repairs {
+    for round in 0..max_repairs {
         let ParseVerdict::Problem(problem) = &verdict else { unreachable!() };
         conversation.push(json!({ "role": "assistant", "content": raw }));
         conversation.push(json!({
@@ -485,16 +526,8 @@ pub async fn generate_validated_json(
                 problem
             ),
         }));
-        let reply = llm
-            .send(
-                conversation.clone(),
-                LlmSendOptions {
-                    json_mode: true,
-                    max_tokens: options.max_tokens,
-                    system_blocks: options.system_blocks.clone(),
-                },
-            )
-            .await?;
+        let reply =
+            send_attempt(llm, conversation.clone(), &options, round + 2, &mut on_partial).await?;
         last_provider = reply.provider.clone();
         raw = reply.content;
         verdict = parse_validated_json(&raw, &schema, semantic);
@@ -572,6 +605,7 @@ pub async fn compose_from_description(
     description: &str,
     vocab: &ComposeVocabulary,
     now_iso: &str,
+    on_partial: Option<PartialCallback<'_>>,
 ) -> Result<ComposeOutcome, String> {
     let catalog = render_catalog_text(vocab, false);
     let messages = vec![json!({
@@ -597,6 +631,7 @@ pub async fn compose_from_description(
             ],
         },
         &mut semantic,
+        on_partial,
     )
     .await?;
 

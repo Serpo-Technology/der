@@ -44,14 +44,19 @@ struct ScriptedLlm {
 }
 
 impl ComposeLlm for ScriptedLlm {
-    fn send(
-        &mut self,
+    fn send<'a>(
+        &'a mut self,
         _messages: Vec<Value>,
         _options: LlmSendOptions,
-    ) -> Pin<Box<dyn Future<Output = Result<LlmReply, String>> + Send + '_>> {
+        on_chunk: Option<dynamic_experience_runtime_lib::runtime::compose::ChunkCallback<'a>>,
+    ) -> Pin<Box<dyn Future<Output = Result<LlmReply, String>> + Send + 'a>> {
         self.calls += 1;
         let content = self.responses.pop_front().expect("scripted response available");
         Box::pin(async move {
+            // Scripted streaming: the whole response arrives as one delta.
+            if let Some(sink) = on_chunk {
+                sink(&content);
+            }
             Ok(LlmReply {
                 content,
                 provider: Some("anthropic".to_string()),
@@ -120,14 +125,31 @@ fn composed_pack_contract_opens_as_a_native_session() {
         responses: VecDeque::from([composed.to_string()]),
         calls: 0,
     };
+    // Streaming previews: accumulated text reaches the partial callback and
+    // the display extraction recovers the draft elements from it.
+    let mut partials: Vec<String> = Vec::new();
+    let mut on_partial = |accumulated: &str, _attempt: u32| {
+        partials.push(accumulated.to_string());
+    };
     let outcome = block_on(compose_from_description(
         &mut llm,
         "a stopwatch for focus sessions",
         &vocab,
         "2026-07-25T12:00:00.000Z",
+        Some(&mut on_partial),
     ))
     .expect("compose succeeds");
     assert_eq!(llm.calls, 1);
+    assert!(!partials.is_empty(), "streaming partials fired");
+    let draft = dynamic_experience_runtime_lib::runtime::streaming::extract_streaming_contract(
+        partials.last().unwrap(),
+    )
+    .expect("draft extracts");
+    assert_eq!(
+        draft["elements"].as_array().map(Vec::len),
+        Some(2),
+        "draft carries the assembled elements"
+    );
     assert!(outcome.recipe_name.is_none());
     assert_eq!(outcome.contract["name"], json!("focus-timer"));
     assert_eq!(outcome.contract["elements"][1]["type"], json!("basics.stopwatch"));
@@ -170,6 +192,7 @@ fn recipe_reuse_composes_and_opens_natively() {
         "an expense tracker",
         &vocab,
         "2026-07-25T12:00:00.000Z",
+        None,
     ))
     .expect("recipe reuse succeeds");
     assert_eq!(outcome.recipe_name.as_deref(), Some("apps.expense_tracker"));
@@ -227,6 +250,7 @@ fn a_repair_round_fixes_a_rejected_composition() {
         "a counter",
         &vocab,
         "2026-07-25T12:00:00.000Z",
+        None,
     ))
     .expect("repair round recovers");
     assert_eq!(llm.calls, 2);

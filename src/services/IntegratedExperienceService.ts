@@ -128,42 +128,54 @@ export class IntegratedExperienceService {
       const windowTitle = input.length > 48 ? `${input.slice(0, 45)}...` : input;
 
       // Step 1: Compose contract + spec in a single call; project the
-      // blueprint. Streaming partials drive the live assembly preview,
-      // except in native mode, where the finished contract opens the window.
+      // blueprint. Streaming partials drive the live assembly preview: in
+      // native mode every parseable draft lands in the native assembly
+      // window, otherwise the webview window opens once and follows events.
       const nativeMode = await this.isNativeMode();
       if (nativeMode) {
         invoke('native_generation_status', { status: 'started' }).catch(() => undefined);
       }
       let windowOpened = false;
       let opening: Promise<void> | null = null;
-      const onPartial = isTauriRuntime() && !nativeMode
-        ? (accumulated: string) => {
-            const preview = extractStreamingContract(accumulated);
-            if (!preview) return;
-            this.assemblySnapshots.set(experienceId, {
-              contract: preview as unknown as Record<string, unknown>,
-              status: 'assembling'
-            });
-            if (!windowOpened) {
-              windowOpened = true;
-              opening = invoke('open_experience_window', {
+      const onPartial = !isTauriRuntime()
+        ? undefined
+        : nativeMode
+          ? (accumulated: string) => {
+              const preview = extractStreamingContract(accumulated);
+              if (!preview) return;
+              invoke('open_experience_window', {
                 experienceId,
                 contract: preview,
                 title: windowTitle,
                 assembling: true
-              }).then(
-                () => undefined,
-                (error) => {
-                  console.warn('Failed to open the assembly window', error);
-                }
-              );
-              return;
+              }).catch(() => undefined);
             }
-            emit('experience-contract-updated', { experienceId, contract: preview }).catch(
-              () => undefined
-            );
-          }
-        : undefined;
+          : (accumulated: string) => {
+              const preview = extractStreamingContract(accumulated);
+              if (!preview) return;
+              this.assemblySnapshots.set(experienceId, {
+                contract: preview as unknown as Record<string, unknown>,
+                status: 'assembling'
+              });
+              if (!windowOpened) {
+                windowOpened = true;
+                opening = invoke('open_experience_window', {
+                  experienceId,
+                  contract: preview,
+                  title: windowTitle,
+                  assembling: true
+                }).then(
+                  () => undefined,
+                  (error) => {
+                    console.warn('Failed to open the assembly window', error);
+                  }
+                );
+                return;
+              }
+              emit('experience-contract-updated', { experienceId, contract: preview }).catch(
+                () => undefined
+              );
+            };
 
       let composed;
       try {

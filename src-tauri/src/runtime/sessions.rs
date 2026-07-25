@@ -293,17 +293,18 @@ pub async fn runtime_close_session(
 /// The model transport for real composition: llm_chat with provider, model,
 /// and credentials resolved from stored settings, exactly like the webview's
 /// LLMClient.
-struct HostLlm {
-    app: tauri::AppHandle,
+pub(crate) struct HostLlm {
+    pub(crate) app: tauri::AppHandle,
 }
 
 impl super::compose::ComposeLlm for HostLlm {
-    fn send(
-        &mut self,
+    fn send<'a>(
+        &'a mut self,
         messages: Vec<Value>,
         options: super::compose::LlmSendOptions,
+        on_chunk: Option<super::compose::ChunkCallback<'a>>,
     ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<super::compose::LlmReply, String>> + Send + '_>,
+        Box<dyn std::future::Future<Output = Result<super::compose::LlmReply, String>> + Send + 'a>,
     > {
         let app = self.app.clone();
         Box::pin(async move {
@@ -326,7 +327,7 @@ impl super::compose::ComposeLlm for HostLlm {
             let request = crate::llm::LlmChatRequest {
                 messages: chat_messages,
                 system_blocks: Some(system_blocks),
-                stream: false,
+                stream: on_chunk.is_some(),
                 provider: None,
                 model: None,
                 max_tokens: options.max_tokens,
@@ -334,7 +335,7 @@ impl super::compose::ComposeLlm for HostLlm {
                 json_mode: Some(options.json_mode),
                 base_url: None,
             };
-            let response = crate::llm::llm_chat_impl(app, request, None).await?;
+            let response = crate::llm::llm_chat_impl(app, request, on_chunk).await?;
             Ok(super::compose::LlmReply {
                 content: response.content,
                 provider: Some(response.provider),
@@ -380,7 +381,8 @@ pub async fn runtime_compose(
     let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
     let mut llm = HostLlm { app: app.clone() };
     let outcome =
-        super::compose::compose_from_description(&mut llm, &description, &vocab, &now_iso).await?;
+        super::compose::compose_from_description(&mut llm, &description, &vocab, &now_iso, None)
+            .await?;
     Ok(ComposeResult {
         contract: outcome.contract,
         spec: outcome.spec,

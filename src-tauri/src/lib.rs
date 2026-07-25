@@ -1275,10 +1275,16 @@ fn open_experience_window_impl(
     assembling: bool,
 ) -> Result<(), String> {
     if native_mode() {
-        // Streaming previews stay unrendered in native mode; the final
-        // contract opens the window.
+        // Streaming assembly drafts render natively too: each call lands the
+        // grown display contract in the experience's assembly window.
         if assembling {
-            return Ok(());
+            let window_title = title.unwrap_or_else(|| "Assembling".to_string());
+            return runtime::sidecar::show_assembly_preview(
+                app,
+                experience_id,
+                contract,
+                &window_title,
+            );
         }
         let saved_state = read_experience_state(app, experience_id);
         return runtime::sidecar::open_native_for_experience(

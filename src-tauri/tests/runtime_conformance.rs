@@ -690,11 +690,12 @@ struct ScriptedLlm {
 }
 
 impl dynamic_experience_runtime_lib::runtime::compose::ComposeLlm for ScriptedLlm {
-    fn send(
-        &mut self,
+    fn send<'a>(
+        &'a mut self,
         messages: Vec<Value>,
         options: dynamic_experience_runtime_lib::runtime::compose::LlmSendOptions,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<dynamic_experience_runtime_lib::runtime::compose::LlmReply, String>> + Send + '_>>
+        _on_chunk: Option<dynamic_experience_runtime_lib::runtime::compose::ChunkCallback<'a>>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<dynamic_experience_runtime_lib::runtime::compose::LlmReply, String>> + Send + 'a>>
     {
         let blocks: Vec<Value> = options
             .system_blocks
@@ -780,6 +781,7 @@ fn compose_loop_vectors_match() {
             schema,
             options,
             &mut semantic,
+            None,
         ));
         let expected = &vector["expected"];
         match outcome {

@@ -327,14 +327,24 @@ host. `native/macos/` is the SwiftUI panel (SwiftPM, built with `swift build`, f
 "Native window" button on macOS. `swift test` decodes the committed view vectors, holding
 the panel's protocol types to the same trees as the other two resolvers. Native mode
 (`--native` or `DER_NATIVE_MODE=1`; the standalone panel binary launches the app this way)
-makes native the default: `open_experience_window_impl` routes every non-assembling open to
-the panel with saved state restored (restored data beats placeholders and element defaults,
-the webview's merge order), the bridge persists per-app state after every action, the panel
-shows DER's home (create relays the prompt to the hidden main window's pipeline via the
-`native-create` event; bookmarks open fully natively; the tray hook keeps the home list
-current), and `native_update_experience_contract` lands edits in open native windows with
-state preserved. The webview pipeline consults `runtime_native_mode` to skip streaming
-assembly previews in native mode. `scripts/package-macos.sh` builds the installable app:
+makes native the default: `open_experience_window_impl` routes every open to the panel with
+saved state restored (restored data beats placeholders and element defaults, the webview's
+merge order), the bridge persists per-app state after every action, and
+`native_update_experience_contract` lands edits in open native windows with state
+preserved. Creation is fully native and streams its assembly: the home's create runs
+`native_create` (the Rust compose pipeline over the streaming transport; `llm_chat`'s chunk
+plumbing is a callback sink the stream command wraps its webview channel around, and the
+compose loop's throttled on_partial mirrors the webview cadence), every parseable partial
+lands in the experience's assembly window as a display-only draft (`show_assembly_preview`
+opens on the first and replaces on the rest; the open/update protocol carries an
+`assembling` flag the panel renders as a building bar with input held; drafts never persist
+state, a failed generation closes them, and a draft the user closes stays closed while the
+finished app still opens), and the finished contract takes the window over live, with the
+experience record saved for the home's Recent list. Ready-made apps open through
+`native_open_recipe` the same way, and webview-initiated creates in native mode stream into
+the same assembly windows through per-tick assembling opens. The panel's home is DER's
+front door: branding, the create field with lifecycle status, bookmarked apps, recent
+creations, installed ready-made apps, and the Manage bridge into the webview console. `scripts/package-macos.sh` builds the installable app:
 the panel compiles in release mode, stages under `src-tauri/binaries/` (gitignored), and
 `tauri build --config src-tauri/tauri.macos-app.conf.json` bundles it as an externalBin in
 DER.app; a packaged build with the bundled panel runs native-first by default

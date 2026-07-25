@@ -138,6 +138,12 @@ public struct HomeRecipe: Decodable, Sendable, Identifiable {
     public var id: String { name }
 }
 
+public struct HomeRecent: Decodable, Sendable, Identifiable {
+    public let id: String
+    public let name: String
+    public let description: String?
+}
+
 /// One inbound line from the runtime core.
 public struct InboundMessage: Decodable, Sendable {
     public let cmd: String
@@ -148,6 +154,9 @@ public struct InboundMessage: Decodable, Sendable {
     public let operationId: String?
     public let bookmarks: [HomeBookmark]?
     public let recipes: [HomeRecipe]?
+    public let recents: [HomeRecent]?
     public let status: String?
     public let message: String?
+    /// Streaming assembly: the tree is a growing draft; interaction waits.
+    public let assembling: Bool?
 }
