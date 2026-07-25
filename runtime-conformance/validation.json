@@ -58,6 +58,9 @@
           "theme": "default"
         }
       },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
       "expected": {
         "errors": [],
         "warnings": [],
@@ -176,6 +179,9 @@
           "accent": "chartreuse"
         }
       },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
       "expected": {
         "errors": [],
         "warnings": [
@@ -318,6 +324,9 @@
           "theme": "default"
         }
       },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
       "expected": {
         "errors": [
           {
@@ -428,6 +437,9 @@
           "theme": "default"
         }
       },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
       "expected": {
         "errors": [
           {
@@ -523,6 +535,9 @@
           "theme": "default"
         }
       },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
       "expected": {
         "errors": [
           {
@@ -667,6 +682,9 @@
           "theme": "default"
         }
       },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
       "expected": {
         "errors": [
           {
@@ -817,6 +835,9 @@
           "theme": "default"
         }
       },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
       "expected": {
         "errors": [
           {
@@ -975,6 +996,9 @@
           "theme": "default"
         }
       },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
       "expected": {
         "errors": [],
         "warnings": [
@@ -1072,6 +1096,3083 @@
       }
     },
     {
+      "name": "unknown transforms and bad param refs fail structurally",
+      "contract": {
+        "name": "pipeline-errors",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "a-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "rows",
+                "transforms": [
+                  {
+                    "type": "reverse",
+                    "parameters": {}
+                  },
+                  {
+                    "type": "filterBy",
+                    "parameters": {
+                      "field": "x",
+                      "value": {
+                        "source": "cosmic",
+                        "sourceId": "y"
+                      }
+                    }
+                  },
+                  {
+                    "type": "filterBy",
+                    "parameters": {
+                      "field": "x",
+                      "value": {
+                        "source": "element",
+                        "sourceId": "ghost-in"
+                      }
+                    }
+                  },
+                  {
+                    "type": "count",
+                    "parameters": {}
+                  }
+                ]
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "clicks"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "add-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add"
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "counter.add",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "clicks"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
+      "expected": {
+        "errors": [
+          {
+            "path": "elements.0.dataBindings.0",
+            "message": "Unknown transform \"reverse\"; available transforms: count, sum, filterBy, filterContains, filterTruthy, filterFalsy, sortBy, deriveField, pick, pluck, equals, not, parseNumber, round, format, formatNumber, formatDate, map. Math on values belongs in expr.evaluate.",
+            "code": "UNKNOWN_TRANSFORM"
+          },
+          {
+            "path": "elements.0.dataBindings.0",
+            "message": "Transform parameter reference source must be \"state\" or \"element\", got \"cosmic\"",
+            "code": "INVALID_PARAM_REF"
+          },
+          {
+            "path": "elements.0.dataBindings.0",
+            "message": "Transform parameter references unknown element \"ghost-in\"; existing element ids: a-text",
+            "code": "UNKNOWN_ELEMENT"
+          }
+        ],
+        "warnings": [
+          {
+            "path": "initialState.rows",
+            "message": "State key \"rows\" was read but never written; seeded with null",
+            "code": "MANIFEST_ADJUSTED"
+          }
+        ],
+        "mutated": {
+          "name": "pipeline-errors",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "a-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "rows",
+                  "transforms": [
+                    {
+                      "type": "reverse",
+                      "parameters": {}
+                    },
+                    {
+                      "type": "filterBy",
+                      "parameters": {
+                        "field": "x",
+                        "value": {
+                          "source": "cosmic",
+                          "sourceId": "y"
+                        }
+                      }
+                    },
+                    {
+                      "type": "filterBy",
+                      "parameters": {
+                        "field": "x",
+                        "value": {
+                          "source": "element",
+                          "sourceId": "ghost-in"
+                        }
+                      }
+                    },
+                    {
+                      "type": "count",
+                      "parameters": {}
+                    }
+                  ]
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "count-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "clicks"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "add-btn",
+              "type": "button",
+              "properties": {
+                "text": "Add"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add",
+              "operationName": "counter.add",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "clicks"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          },
+          "initialState": {
+            "rows": null
+          }
+        }
+      }
+    },
+    {
+      "name": "a live element reference consumes the control",
+      "contract": {
+        "name": "live-search",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "search-in",
+            "type": "input",
+            "properties": {
+              "label": "Search"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "hits",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "rows",
+                "transforms": [
+                  {
+                    "type": "filterContains",
+                    "parameters": {
+                      "field": "title",
+                      "value": {
+                        "source": "element",
+                        "sourceId": "search-in"
+                      }
+                    }
+                  },
+                  {
+                    "type": "count",
+                    "parameters": {}
+                  }
+                ]
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "clicks"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "add-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add"
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "counter.add",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "clicks"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
+      "expected": {
+        "errors": [],
+        "warnings": [
+          {
+            "path": "initialState.rows",
+            "message": "State key \"rows\" was read but never written; seeded with null",
+            "code": "MANIFEST_ADJUSTED"
+          }
+        ],
+        "mutated": {
+          "name": "live-search",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "search-in",
+              "type": "input",
+              "properties": {
+                "label": "Search"
+              },
+              "dataBindings": [],
+              "eventBindings": []
+            },
+            {
+              "id": "hits",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "rows",
+                  "transforms": [
+                    {
+                      "type": "filterContains",
+                      "parameters": {
+                        "field": "title",
+                        "value": {
+                          "source": "element",
+                          "sourceId": "search-in"
+                        }
+                      }
+                    },
+                    {
+                      "type": "count",
+                      "parameters": {}
+                    }
+                  ]
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "count-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "clicks"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "add-btn",
+              "type": "button",
+              "properties": {
+                "text": "Add"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add",
+              "operationName": "counter.add",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "clicks"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          },
+          "initialState": {
+            "rows": null
+          }
+        }
+      }
+    },
+    {
+      "name": "display pipelines cannot end in a list and inputs cannot bind values",
+      "contract": {
+        "name": "display-shape",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "bad-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "rows",
+                "transforms": [
+                  {
+                    "type": "filterTruthy",
+                    "parameters": {
+                      "field": "done"
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "bad-in",
+            "type": "input",
+            "properties": {
+              "label": "Bound"
+            },
+            "dataBindings": [
+              {
+                "property": "value",
+                "source": "state",
+                "sourceId": "draft"
+              }
+            ],
+            "eventBindings": [
+              {
+                "event": "change",
+                "operationId": "op-add"
+              }
+            ]
+          },
+          {
+            "id": "floating",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "item",
+                "sourceId": "title"
+              }
+            ],
+            "eventBindings": [],
+            "visibleWhen": {
+              "source": "item",
+              "sourceId": "done",
+              "operator": "truthy"
+            }
+          },
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "clicks"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "add-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add"
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "counter.add",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "clicks"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
+      "expected": {
+        "errors": [
+          {
+            "path": "elements.0.dataBindings.0",
+            "message": "The \"content\" pipeline ends in \"filterTruthy\", which returns a list; append a reducing step such as count, sum, or pick",
+            "code": "PIPELINE_ENDS_IN_ARRAY"
+          },
+          {
+            "path": "elements.1.dataBindings.0",
+            "message": "input elements are auto-controlled; never bind \"value\". Read the element from operations ({\"source\": \"ui-element\"}) or from transform parameters ({\"source\": \"element\", \"sourceId\": \"bad-in\"}).",
+            "code": "BOUND_INPUT_VALUE"
+          }
+        ],
+        "warnings": [
+          {
+            "path": "elements.2.dataBindings.0",
+            "message": "\"item\" binding outside a list template resolves to nothing",
+            "code": "MANIFEST_ADJUSTED"
+          },
+          {
+            "path": "elements.2.visibleWhen.0",
+            "message": "\"item\" condition outside a list template resolves to nothing",
+            "code": "MANIFEST_ADJUSTED"
+          },
+          {
+            "path": "initialState.rows",
+            "message": "State key \"rows\" was read but never written; seeded with null",
+            "code": "MANIFEST_ADJUSTED"
+          },
+          {
+            "path": "initialState.draft",
+            "message": "State key \"draft\" was read but never written; seeded with null",
+            "code": "MANIFEST_ADJUSTED"
+          }
+        ],
+        "mutated": {
+          "name": "display-shape",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "bad-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "rows",
+                  "transforms": [
+                    {
+                      "type": "filterTruthy",
+                      "parameters": {
+                        "field": "done"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "bad-in",
+              "type": "input",
+              "properties": {
+                "label": "Bound"
+              },
+              "dataBindings": [
+                {
+                  "property": "value",
+                  "source": "state",
+                  "sourceId": "draft"
+                }
+              ],
+              "eventBindings": [
+                {
+                  "event": "change",
+                  "operationId": "op-add"
+                }
+              ]
+            },
+            {
+              "id": "floating",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "item",
+                  "sourceId": "title"
+                }
+              ],
+              "eventBindings": [],
+              "visibleWhen": {
+                "source": "item",
+                "sourceId": "done",
+                "operator": "truthy"
+              }
+            },
+            {
+              "id": "count-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "clicks"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "add-btn",
+              "type": "button",
+              "properties": {
+                "text": "Add"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add",
+              "operationName": "counter.add",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "clicks"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          },
+          "initialState": {
+            "rows": null,
+            "draft": null
+          }
+        }
+      }
+    },
+    {
+      "name": "invalid knob values normalize to their defaults",
+      "contract": {
+        "name": "knobs",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "loud",
+            "type": "text",
+            "properties": {
+              "role": "shouting",
+              "content": "hi"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "big-btn",
+            "type": "button",
+            "properties": {
+              "text": "Go",
+              "variant": "rainbow",
+              "size": "lg"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add"
+              }
+            ]
+          },
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "clicks"
+              }
+            ],
+            "eventBindings": []
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "counter.add",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "clicks"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
+      "expected": {
+        "errors": [],
+        "warnings": [
+          {
+            "path": "elements.0.properties.role",
+            "message": "\"shouting\" is not one of title|subtitle|body|caption|label; using \"body\"",
+            "code": "MANIFEST_ADJUSTED"
+          },
+          {
+            "path": "elements.1.properties.variant",
+            "message": "\"rainbow\" is not one of default|primary|danger|ghost; using \"default\"",
+            "code": "MANIFEST_ADJUSTED"
+          }
+        ],
+        "mutated": {
+          "name": "knobs",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "loud",
+              "type": "text",
+              "properties": {
+                "role": "body",
+                "content": "hi"
+              },
+              "dataBindings": [],
+              "eventBindings": []
+            },
+            {
+              "id": "big-btn",
+              "type": "button",
+              "properties": {
+                "text": "Go",
+                "variant": "default",
+                "size": "lg"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add"
+                }
+              ]
+            },
+            {
+              "id": "count-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "clicks"
+                }
+              ],
+              "eventBindings": []
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add",
+              "operationName": "counter.add",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "clicks"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "list reads of unwritten fields fail with the derive hint",
+      "contract": {
+        "name": "unwritten-field",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "name-in",
+            "type": "input",
+            "properties": {
+              "label": "Name"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "qty-in",
+            "type": "input",
+            "properties": {
+              "label": "Qty"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "add2-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add-row"
+              }
+            ]
+          },
+          {
+            "id": "rows",
+            "type": "list",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "entries",
+                "transforms": [
+                  {
+                    "type": "sortBy",
+                    "parameters": {
+                      "field": "total"
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "r-name",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "name"
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add-row",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entries"
+              },
+              {
+                "name": "item.name",
+                "source": "ui-element",
+                "sourceId": "name-in"
+              },
+              {
+                "name": "item.qty",
+                "source": "ui-element",
+                "sourceId": "qty-in"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
+      "expected": {
+        "errors": [
+          {
+            "path": "elements.3.dataBindings.0",
+            "message": "sortBy reads field \"total\" from \"entries\", but its rows carry: id, name, qty; add an item.total input to the append, or if \"total\" is computed from each row's own fields, insert {\"type\": \"deriveField\", \"parameters\": {\"field\": \"total\", \"expression\": \"<arithmetic over id, name, qty>\"}} before this step",
+            "code": "LIST_FIELD_UNWRITTEN"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "unwritten-field",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "name-in",
+              "type": "input",
+              "properties": {
+                "label": "Name"
+              },
+              "dataBindings": [],
+              "eventBindings": []
+            },
+            {
+              "id": "qty-in",
+              "type": "input",
+              "properties": {
+                "label": "Qty"
+              },
+              "dataBindings": [],
+              "eventBindings": []
+            },
+            {
+              "id": "add2-btn",
+              "type": "button",
+              "properties": {
+                "text": "Add"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add-row"
+                }
+              ]
+            },
+            {
+              "id": "rows",
+              "type": "list",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "entries",
+                  "transforms": [
+                    {
+                      "type": "sortBy",
+                      "parameters": {
+                        "field": "total"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "eventBindings": [],
+              "children": [
+                {
+                  "id": "r-name",
+                  "type": "text",
+                  "properties": {},
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "name"
+                    }
+                  ],
+                  "eventBindings": []
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add-row",
+              "operationName": "list.append",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "entries"
+                },
+                {
+                  "name": "item.name",
+                  "source": "ui-element",
+                  "sourceId": "name-in"
+                },
+                {
+                  "name": "item.qty",
+                  "source": "ui-element",
+                  "sourceId": "qty-in"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "a filter fed by its own entry control fails",
+      "contract": {
+        "name": "entry-filter",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title-in",
+            "type": "input",
+            "properties": {
+              "label": "Title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "add2-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add-row"
+              }
+            ]
+          },
+          {
+            "id": "rows",
+            "type": "list",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "entries",
+                "transforms": [
+                  {
+                    "type": "filterContains",
+                    "parameters": {
+                      "field": "title",
+                      "value": {
+                        "source": "element",
+                        "sourceId": "title-in"
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "r-t",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "title"
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add-row",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entries"
+              },
+              {
+                "name": "item.title",
+                "source": "ui-element",
+                "sourceId": "title-in"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
+      "expected": {
+        "errors": [
+          {
+            "path": "elements.2.dataBindings.0",
+            "message": "The filter on \"entries\" reads entry control \"title-in\", which also feeds its list.append; every add would then hide the other rows. Use a separate filter control bound to its own state key, with an \"All\" option whose value is \"\"",
+            "code": "FILTER_BOUND_TO_ENTRY"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "entry-filter",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "title-in",
+              "type": "input",
+              "properties": {
+                "label": "Title"
+              },
+              "dataBindings": [],
+              "eventBindings": []
+            },
+            {
+              "id": "add2-btn",
+              "type": "button",
+              "properties": {
+                "text": "Add"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add-row"
+                }
+              ]
+            },
+            {
+              "id": "rows",
+              "type": "list",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "entries",
+                  "transforms": [
+                    {
+                      "type": "filterContains",
+                      "parameters": {
+                        "field": "title",
+                        "value": {
+                          "source": "element",
+                          "sourceId": "title-in"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "eventBindings": [],
+              "children": [
+                {
+                  "id": "r-t",
+                  "type": "text",
+                  "properties": {},
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "title"
+                    }
+                  ],
+                  "eventBindings": []
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add-row",
+              "operationName": "list.append",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "entries"
+                },
+                {
+                  "name": "item.title",
+                  "source": "ui-element",
+                  "sourceId": "title-in"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "derive expressions validate syntax and identifiers in place",
+      "contract": {
+        "name": "derive-checks",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "qty-in",
+            "type": "input",
+            "properties": {
+              "label": "Qty"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "add2-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add-row"
+              }
+            ]
+          },
+          {
+            "id": "rows",
+            "type": "list",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "entries",
+                "transforms": [
+                  {
+                    "type": "deriveField",
+                    "parameters": {
+                      "field": "value",
+                      "expression": "qty * price"
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "r-v",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "value"
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          },
+          {
+            "id": "broken",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "entries",
+                "transforms": [
+                  {
+                    "type": "deriveField",
+                    "parameters": {
+                      "field": "v",
+                      "expression": "qty +"
+                    }
+                  },
+                  {
+                    "type": "sum",
+                    "parameters": {
+                      "field": "v"
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": []
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add-row",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entries"
+              },
+              {
+                "name": "item.qty",
+                "source": "ui-element",
+                "sourceId": "qty-in"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
+      "expected": {
+        "errors": [
+          {
+            "path": "elements.2.dataBindings.0",
+            "message": "deriveField expression \"qty * price\" reads \"price\", but rows of \"entries\" carry: id, qty; add an item.price input to the append or fix the expression",
+            "code": "LIST_FIELD_UNWRITTEN"
+          },
+          {
+            "path": "elements.3.dataBindings.0",
+            "message": "deriveField expression \"qty +\" is invalid: unexpected end of expression",
+            "code": "INVALID_EXPRESSION"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "derive-checks",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "qty-in",
+              "type": "input",
+              "properties": {
+                "label": "Qty"
+              },
+              "dataBindings": [],
+              "eventBindings": []
+            },
+            {
+              "id": "add2-btn",
+              "type": "button",
+              "properties": {
+                "text": "Add"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add-row"
+                }
+              ]
+            },
+            {
+              "id": "rows",
+              "type": "list",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "entries",
+                  "transforms": [
+                    {
+                      "type": "deriveField",
+                      "parameters": {
+                        "field": "value",
+                        "expression": "qty * price"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "eventBindings": [],
+              "children": [
+                {
+                  "id": "r-v",
+                  "type": "text",
+                  "properties": {},
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "value"
+                    }
+                  ],
+                  "eventBindings": []
+                }
+              ]
+            },
+            {
+              "id": "broken",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "entries",
+                  "transforms": [
+                    {
+                      "type": "deriveField",
+                      "parameters": {
+                        "field": "v",
+                        "expression": "qty +"
+                      }
+                    },
+                    {
+                      "type": "sum",
+                      "parameters": {
+                        "field": "v"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "eventBindings": []
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add-row",
+              "operationName": "list.append",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "entries"
+                },
+                {
+                  "name": "item.qty",
+                  "source": "ui-element",
+                  "sourceId": "qty-in"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "list edits on unfilled keys and undisplayed appends fail",
+      "contract": {
+        "name": "list-rules",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title-in",
+            "type": "input",
+            "properties": {
+              "label": "Title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "add2-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add-row"
+              }
+            ]
+          },
+          {
+            "id": "del-btn",
+            "type": "button",
+            "properties": {
+              "text": "Clear"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-del"
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add-row",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entries"
+              },
+              {
+                "name": "item.title",
+                "source": "ui-element",
+                "sourceId": "title-in"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-del",
+            "operationName": "list.removeWhere",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "archive"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "x"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
+      "expected": {
+        "errors": [
+          {
+            "path": "operations.1",
+            "message": "list.removeWhere edits \"archive\" but nothing ever fills it; add a list.append flow with entry controls, or seed initialState.archive with starting rows",
+            "code": "LIST_NEVER_FILLED"
+          },
+          {
+            "path": "operations",
+            "message": "list.append fills \"entries\" but no list element displays it; bind a list element's \"items\" to \"entries\"",
+            "code": "LIST_NOT_DISPLAYED"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "list-rules",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "title-in",
+              "type": "input",
+              "properties": {
+                "label": "Title"
+              },
+              "dataBindings": [],
+              "eventBindings": []
+            },
+            {
+              "id": "add2-btn",
+              "type": "button",
+              "properties": {
+                "text": "Add"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add-row"
+                }
+              ]
+            },
+            {
+              "id": "del-btn",
+              "type": "button",
+              "properties": {
+                "text": "Clear"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-del"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add-row",
+              "operationName": "list.append",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "entries"
+                },
+                {
+                  "name": "item.title",
+                  "source": "ui-element",
+                  "sourceId": "title-in"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            },
+            {
+              "id": "op-del",
+              "operationName": "list.removeWhere",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "archive"
+                },
+                {
+                  "name": "value",
+                  "source": "constant",
+                  "sourceId": "x"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "operation inputs validate names, prefixes, and duplicates",
+      "contract": {
+        "name": "op-inputs",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "clicks"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "go-btn",
+            "type": "button",
+            "properties": {
+              "text": "Go"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-bad-flat"
+              },
+              {
+                "event": "click",
+                "operationId": "op-bad-prefix"
+              },
+              {
+                "event": "click",
+                "operationId": "op-missing"
+              },
+              {
+                "event": "click",
+                "operationId": "op-dup"
+              },
+              {
+                "event": "click",
+                "operationId": "op-bad-out"
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-bad-flat",
+            "operationName": "counter.add",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "clicks"
+              },
+              {
+                "name": "delta",
+                "source": "constant",
+                "sourceId": "2"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-bad-prefix",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "clicks"
+              },
+              {
+                "name": "row.title",
+                "source": "constant",
+                "sourceId": "x"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-missing",
+            "operationName": "state.set",
+            "inputs": [],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-dup",
+            "operationName": "counter.add",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "clicks"
+              },
+              {
+                "name": "amount",
+                "source": "constant",
+                "sourceId": "1",
+                "value": 1
+              },
+              {
+                "name": "amount",
+                "source": "constant",
+                "sourceId": "2",
+                "value": 2
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-bad-out",
+            "operationName": "counter.add",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "clicks"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "total",
+                "target": "state",
+                "targetId": "copy"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
+      "expected": {
+        "errors": [
+          {
+            "path": "operations.0.inputs.1",
+            "message": "counter.add has no input \"delta\"; it accepts: key, amount",
+            "code": "UNKNOWN_INPUT"
+          },
+          {
+            "path": "operations.1.inputs.1",
+            "message": "\"row.title\" uses prefix \"row\" but list.append accepts item.<field>",
+            "code": "INVALID_PREFIX"
+          },
+          {
+            "path": "operations.1",
+            "message": "list.append needs at least one \"item.<field>\" input",
+            "code": "MISSING_INPUT"
+          },
+          {
+            "path": "operations.2",
+            "message": "state.set requires input \"key\"",
+            "code": "MISSING_INPUT"
+          },
+          {
+            "path": "operations.2",
+            "message": "state.set requires input \"value\"",
+            "code": "MISSING_INPUT"
+          },
+          {
+            "path": "operations.4.outputs.0",
+            "message": "counter.add has no output \"total\"; it provides: value",
+            "code": "UNKNOWN_OUTPUT"
+          },
+          {
+            "path": "operations",
+            "message": "list.append fills \"clicks\" but no list element displays it; bind a list element's \"items\" to \"clicks\"",
+            "code": "LIST_NOT_DISPLAYED"
+          }
+        ],
+        "warnings": [
+          {
+            "path": "operations.3.inputs.2",
+            "message": "Duplicate input \"amount\"; the last one wins",
+            "code": "MANIFEST_ADJUSTED"
+          }
+        ],
+        "mutated": {
+          "name": "op-inputs",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "count-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "clicks"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "go-btn",
+              "type": "button",
+              "properties": {
+                "text": "Go"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-bad-flat"
+                },
+                {
+                  "event": "click",
+                  "operationId": "op-bad-prefix"
+                },
+                {
+                  "event": "click",
+                  "operationId": "op-missing"
+                },
+                {
+                  "event": "click",
+                  "operationId": "op-dup"
+                },
+                {
+                  "event": "click",
+                  "operationId": "op-bad-out"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-bad-flat",
+              "operationName": "counter.add",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "clicks"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            },
+            {
+              "id": "op-bad-prefix",
+              "operationName": "list.append",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "clicks"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            },
+            {
+              "id": "op-missing",
+              "operationName": "state.set",
+              "inputs": [],
+              "outputs": [],
+              "triggers": []
+            },
+            {
+              "id": "op-dup",
+              "operationName": "counter.add",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "clicks"
+                },
+                {
+                  "name": "amount",
+                  "source": "constant",
+                  "sourceId": "2",
+                  "value": 2
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            },
+            {
+              "id": "op-bad-out",
+              "operationName": "counter.add",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "clicks"
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "total",
+                  "target": "state",
+                  "targetId": "copy"
+                }
+              ],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "expr expressions must bind every identifier",
+      "contract": {
+        "name": "expr-lint",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "x-in",
+            "type": "input",
+            "properties": {
+              "label": "X"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "go-btn",
+            "type": "button",
+            "properties": {
+              "text": "Go"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-calc"
+              }
+            ]
+          },
+          {
+            "id": "result",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "answer"
+              }
+            ],
+            "eventBindings": []
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-calc",
+            "operationName": "expr.evaluate",
+            "inputs": [
+              {
+                "name": "expression",
+                "source": "constant",
+                "sourceId": "x * rate + 1"
+              },
+              {
+                "name": "var.x",
+                "source": "ui-element",
+                "sourceId": "x-in"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "value",
+                "target": "state",
+                "targetId": "answer"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {
+        "expr.evaluate": {
+          "inputs": [
+            {
+              "name": "expression",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "var.<name>",
+              "type": "number",
+              "required": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "value"
+            }
+          ],
+          "structuredPrefixes": [
+            "var"
+          ]
+        }
+      },
+      "credentials": [],
+      "expected": {
+        "errors": [
+          {
+            "path": "operations.0",
+            "message": "expr.evaluate expression uses \"rate\" but binds only: x; add an input named \"var.rate\" or rename it in the expression",
+            "code": "EXPR_UNBOUND_VARIABLE"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "expr-lint",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "x-in",
+              "type": "input",
+              "properties": {
+                "label": "X"
+              },
+              "dataBindings": [],
+              "eventBindings": []
+            },
+            {
+              "id": "go-btn",
+              "type": "button",
+              "properties": {
+                "text": "Go"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-calc"
+                }
+              ]
+            },
+            {
+              "id": "result",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "answer"
+                }
+              ],
+              "eventBindings": []
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-calc",
+              "operationName": "expr.evaluate",
+              "inputs": [
+                {
+                  "name": "expression",
+                  "source": "constant",
+                  "sourceId": "x * rate + 1"
+                },
+                {
+                  "name": "var.x",
+                  "source": "ui-element",
+                  "sourceId": "x-in"
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "value",
+                  "target": "state",
+                  "targetId": "answer"
+                }
+              ],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "numeric part inputs demand a projection from object lists",
+      "contract": {
+        "name": "projection",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title-in",
+            "type": "input",
+            "properties": {
+              "label": "Title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "add2-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add-row"
+              },
+              {
+                "event": "click",
+                "operationId": "op-stats"
+              }
+            ]
+          },
+          {
+            "id": "rows",
+            "type": "list",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "entries"
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "r-t",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "title"
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          },
+          {
+            "id": "mean",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "mean"
+              }
+            ],
+            "eventBindings": []
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add-row",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entries"
+              },
+              {
+                "name": "item.title",
+                "source": "ui-element",
+                "sourceId": "title-in"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-stats",
+            "operationName": "stats.summary",
+            "inputs": [
+              {
+                "name": "values",
+                "source": "state",
+                "sourceId": "entries"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "mean",
+                "target": "state",
+                "targetId": "mean"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {
+        "stats.summary": {
+          "inputs": [
+            {
+              "name": "values",
+              "type": "array",
+              "required": true,
+              "description": "Numbers to summarize"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "count"
+            },
+            {
+              "name": "sum"
+            },
+            {
+              "name": "mean"
+            },
+            {
+              "name": "min"
+            },
+            {
+              "name": "max"
+            }
+          ]
+        }
+      },
+      "credentials": [],
+      "expected": {
+        "errors": [
+          {
+            "path": "operations.1.inputs.0",
+            "message": "\"entries\" holds objects (built by a list operation); project the numeric field first, e.g. transforms [{\"type\": \"pluck\", \"parameters\": {\"field\": \"<field>\"}}]",
+            "code": "NEEDS_PROJECTION"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "projection",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "title-in",
+              "type": "input",
+              "properties": {
+                "label": "Title"
+              },
+              "dataBindings": [],
+              "eventBindings": []
+            },
+            {
+              "id": "add2-btn",
+              "type": "button",
+              "properties": {
+                "text": "Add"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add-row"
+                },
+                {
+                  "event": "click",
+                  "operationId": "op-stats"
+                }
+              ]
+            },
+            {
+              "id": "rows",
+              "type": "list",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "entries"
+                }
+              ],
+              "eventBindings": [],
+              "children": [
+                {
+                  "id": "r-t",
+                  "type": "text",
+                  "properties": {},
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "title"
+                    }
+                  ],
+                  "eventBindings": []
+                }
+              ]
+            },
+            {
+              "id": "mean",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "mean"
+                }
+              ],
+              "eventBindings": []
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add-row",
+              "operationName": "list.append",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "entries"
+                },
+                {
+                  "name": "item.title",
+                  "source": "ui-element",
+                  "sourceId": "title-in"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            },
+            {
+              "id": "op-stats",
+              "operationName": "stats.summary",
+              "inputs": [
+                {
+                  "name": "values",
+                  "source": "state",
+                  "sourceId": "entries"
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "mean",
+                  "target": "state",
+                  "targetId": "mean"
+                }
+              ],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "placeholder endpoints and credential confinement fail",
+      "contract": {
+        "name": "remote-rules",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "clicks"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "go-btn",
+            "type": "button",
+            "properties": {
+              "text": "Go"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-placeholder"
+              },
+              {
+                "event": "click",
+                "operationId": "op-bad-auth"
+              },
+              {
+                "event": "click",
+                "operationId": "op-escaped"
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-placeholder",
+            "operationName": "demo.fetch",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "response",
+                "target": "state",
+                "targetId": "clicks"
+              }
+            ],
+            "triggers": [],
+            "implementation": {
+              "type": "remote",
+              "endpoint": "https://api.example.com/things"
+            }
+          },
+          {
+            "id": "op-bad-auth",
+            "operationName": "other.fetch",
+            "inputs": [],
+            "outputs": [],
+            "triggers": [],
+            "implementation": {
+              "type": "remote",
+              "endpoint": "https://real.service.dev/x",
+              "auth": "ghostkey"
+            }
+          },
+          {
+            "id": "op-escaped",
+            "operationName": "third.fetch",
+            "inputs": [],
+            "outputs": [],
+            "triggers": [],
+            "implementation": {
+              "type": "remote",
+              "endpoint": "https://elsewhere.dev/x",
+              "auth": "weatherkey"
+            }
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [
+        {
+          "name": "weatherkey",
+          "kind": "query",
+          "target": "appid",
+          "baseUrl": "https://api.openweathermap.org"
+        }
+      ],
+      "expected": {
+        "errors": [
+          {
+            "path": "operations.0.implementation.endpoint",
+            "message": "\"https://api.example.com/things\" is a placeholder, not a real service. Use an installed integration part if one fits, a real documented API recorded in the assumptions, or leave the feature out.",
+            "code": "PLACEHOLDER_ENDPOINT"
+          },
+          {
+            "path": "operations.1.implementation.auth",
+            "message": "\"ghostkey\" is not a configured integration credential; available: weatherkey",
+            "code": "UNKNOWN_CREDENTIAL"
+          },
+          {
+            "path": "operations.2.implementation.endpoint",
+            "message": "Credential \"weatherkey\" is confined to https://api.openweathermap.org; the endpoint must start with it",
+            "code": "CREDENTIAL_CONFINEMENT"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "remote-rules",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "count-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "clicks"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "go-btn",
+              "type": "button",
+              "properties": {
+                "text": "Go"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-placeholder"
+                },
+                {
+                  "event": "click",
+                  "operationId": "op-bad-auth"
+                },
+                {
+                  "event": "click",
+                  "operationId": "op-escaped"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-placeholder",
+              "operationName": "demo.fetch",
+              "inputs": [],
+              "outputs": [
+                {
+                  "name": "response",
+                  "target": "state",
+                  "targetId": "clicks"
+                }
+              ],
+              "triggers": [],
+              "implementation": {
+                "type": "remote",
+                "endpoint": "https://api.example.com/things"
+              }
+            },
+            {
+              "id": "op-bad-auth",
+              "operationName": "other.fetch",
+              "inputs": [],
+              "outputs": [],
+              "triggers": [],
+              "implementation": {
+                "type": "remote",
+                "endpoint": "https://real.service.dev/x",
+                "auth": "ghostkey"
+              }
+            },
+            {
+              "id": "op-escaped",
+              "operationName": "third.fetch",
+              "inputs": [],
+              "outputs": [],
+              "triggers": [],
+              "implementation": {
+                "type": "remote",
+                "endpoint": "https://elsewhere.dev/x",
+                "auth": "weatherkey"
+              }
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "fragment params enforce and packs validate through every rule",
+      "contract": {
+        "name": "fragments",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "entry",
+            "type": "basics.entry_row",
+            "properties": {
+              "label": "Task"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "tick",
+            "type": "basics.ticker",
+            "properties": {},
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "rows",
+            "type": "list",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "tasks"
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "r-t",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "title"
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add-task",
+            "operationName": "list.append",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "tasks"
+              },
+              {
+                "name": "item.title",
+                "source": "ui-element",
+                "sourceId": "entry-input"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {
+        "basics.entry_row": {
+          "name": "basics.entry_row",
+          "description": "entry row",
+          "params": [
+            {
+              "name": "label",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "placeholder",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "name": "buttonText",
+              "type": "string",
+              "default": "Add"
+            },
+            {
+              "name": "operationId",
+              "type": "operationId",
+              "required": true
+            }
+          ],
+          "template": {
+            "id": "{{id}}-row",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8",
+              "align": "end"
+            },
+            "children": [
+              {
+                "id": "{{id}}-input",
+                "type": "input",
+                "properties": {
+                  "label": "{{label}}",
+                  "placeholder": "{{placeholder}}"
+                }
+              },
+              {
+                "id": "{{id}}-btn",
+                "type": "button",
+                "properties": {
+                  "text": "{{buttonText}}",
+                  "variant": "primary"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "{{operationId}}"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "basics.ticker": {
+          "name": "basics.ticker",
+          "description": "self-wired ticker",
+          "params": [
+            {
+              "name": "label",
+              "type": "string",
+              "default": "Ticker"
+            }
+          ],
+          "template": {
+            "id": "{{id}}-box",
+            "type": "container",
+            "children": [
+              {
+                "id": "{{id}}-display",
+                "type": "text",
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "{{id}}-count",
+                    "transforms": [
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "{{label}}: {{value}}"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "{{id}}-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Tick"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "{{id}}-step"
+                  }
+                ]
+              }
+            ]
+          },
+          "operations": [
+            {
+              "id": "{{id}}-step",
+              "operationName": "chrono.advance",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "{{id}}-count"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "partOperations": {},
+      "credentials": [],
+      "expected": {
+        "errors": [
+          {
+            "path": "elements.0.properties.operationId",
+            "message": "UI fragment basics.entry_row requires the \"operationId\" parameter",
+            "code": "MISSING_FRAGMENT_PARAM"
+          },
+          {
+            "path": "elements.1 (basics.ticker operation \"tick-step\")",
+            "message": "\"chrono.advance\" is not a builtin operation and has no remote endpoint. Use an exact builtin name from the catalog or a remote implementation.",
+            "code": "UNKNOWN_OPERATION_NAME"
+          },
+          {
+            "path": "operations.0",
+            "message": "Nothing runs operation \"op-add-task\"; wire it to an element event (a click, change, or timer tick) or remove it",
+            "code": "ORPHAN_OPERATION"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "fragments",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "entry",
+              "type": "basics.entry_row",
+              "properties": {
+                "label": "Task"
+              },
+              "dataBindings": [],
+              "eventBindings": []
+            },
+            {
+              "id": "tick",
+              "type": "basics.ticker",
+              "properties": {},
+              "dataBindings": [],
+              "eventBindings": []
+            },
+            {
+              "id": "rows",
+              "type": "list",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "tasks"
+                }
+              ],
+              "eventBindings": [],
+              "children": [
+                {
+                  "id": "r-t",
+                  "type": "text",
+                  "properties": {},
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "title"
+                    }
+                  ],
+                  "eventBindings": []
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add-task",
+              "operationName": "list.append",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "tasks"
+                },
+                {
+                  "name": "item.title",
+                  "source": "ui-element",
+                  "sourceId": "entry-input"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
       "name": "centered entry rows align to end",
       "contract": {
         "name": "entry-row",
@@ -1154,6 +4255,9 @@
           "theme": "default"
         }
       },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
       "expected": {
         "errors": [],
         "warnings": [

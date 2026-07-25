@@ -38,6 +38,12 @@ import {
 import { ContractSchema, checkAgainstManifests } from '../../src/schemas/contract';
 import type { ContractShape } from '../../src/schemas/contract';
 import {
+  ELEMENT_MANIFESTS,
+  FRAGMENT_OPERATIONS,
+  setIntegrationCredentials,
+} from '../../src/services/operations/registry';
+import type { IntegrationCredentialView } from '../../src/services/operations/registry';
+import {
   expandUiFragment,
   expandPackOperations,
 } from '../../src/services/fragments/ui-fragments';
@@ -1180,6 +1186,16 @@ const STREAMING_CASES: StreamingCase[] = [
 interface ValidationCase {
   name: string;
   contract: Record<string, unknown>;
+  fragmentDefs?: Record<string, UiFragmentDef>;
+  partOperations?: Record<
+    string,
+    {
+      inputs: Array<{ name: string; type: string; required?: boolean; description?: string }>;
+      outputs: Array<{ name: string }>;
+      structuredPrefixes?: string[];
+    }
+  >;
+  credentials?: IntegrationCredentialView[];
 }
 
 const WIRED_COUNTER = {
@@ -1317,6 +1333,526 @@ const VALIDATION_CASES: ValidationCase[] = [
     },
   },
   {
+    name: 'unknown transforms and bad param refs fail structurally',
+    contract: {
+      name: 'pipeline-errors',
+      elements: [
+        {
+          id: 'a-text',
+          type: 'text',
+          dataBindings: [
+            {
+              property: 'content',
+              source: 'state',
+              sourceId: 'rows',
+              transforms: [
+                { type: 'reverse', parameters: {} },
+                { type: 'filterBy', parameters: { field: 'x', value: { source: 'cosmic', sourceId: 'y' } } },
+                { type: 'filterBy', parameters: { field: 'x', value: { source: 'element', sourceId: 'ghost-in' } } },
+                { type: 'count', parameters: {} },
+              ],
+            },
+          ],
+        },
+        COUNT_TEXT,
+        ADD_BTN,
+      ],
+      operations: [WIRED_COUNTER],
+    },
+  },
+  {
+    name: 'a live element reference consumes the control',
+    contract: {
+      name: 'live-search',
+      elements: [
+        { id: 'search-in', type: 'input', properties: { label: 'Search' } },
+        {
+          id: 'hits',
+          type: 'text',
+          dataBindings: [
+            {
+              property: 'content',
+              source: 'state',
+              sourceId: 'rows',
+              transforms: [
+                { type: 'filterContains', parameters: { field: 'title', value: { source: 'element', sourceId: 'search-in' } } },
+                { type: 'count', parameters: {} },
+              ],
+            },
+          ],
+        },
+        COUNT_TEXT,
+        ADD_BTN,
+      ],
+      operations: [WIRED_COUNTER],
+    },
+  },
+  {
+    name: 'display pipelines cannot end in a list and inputs cannot bind values',
+    contract: {
+      name: 'display-shape',
+      elements: [
+        {
+          id: 'bad-text',
+          type: 'text',
+          dataBindings: [
+            {
+              property: 'content',
+              source: 'state',
+              sourceId: 'rows',
+              transforms: [{ type: 'filterTruthy', parameters: { field: 'done' } }],
+            },
+          ],
+        },
+        {
+          id: 'bad-in',
+          type: 'input',
+          properties: { label: 'Bound' },
+          dataBindings: [{ property: 'value', source: 'state', sourceId: 'draft' }],
+          eventBindings: [{ event: 'change', operationId: 'op-add' }],
+        },
+        {
+          id: 'floating',
+          type: 'text',
+          dataBindings: [{ property: 'content', source: 'item', sourceId: 'title' }],
+          visibleWhen: { source: 'item', sourceId: 'done', operator: 'truthy' },
+        },
+        COUNT_TEXT,
+        ADD_BTN,
+      ],
+      operations: [WIRED_COUNTER],
+    },
+  },
+  {
+    name: 'invalid knob values normalize to their defaults',
+    contract: {
+      name: 'knobs',
+      elements: [
+        { id: 'loud', type: 'text', properties: { role: 'shouting', content: 'hi' } },
+        {
+          id: 'big-btn',
+          type: 'button',
+          properties: { text: 'Go', variant: 'rainbow', size: 'lg' },
+          eventBindings: [{ event: 'click', operationId: 'op-add' }],
+        },
+        COUNT_TEXT,
+      ],
+      operations: [WIRED_COUNTER],
+    },
+  },
+  {
+    name: 'list reads of unwritten fields fail with the derive hint',
+    contract: {
+      name: 'unwritten-field',
+      elements: [
+        { id: 'name-in', type: 'input', properties: { label: 'Name' } },
+        { id: 'qty-in', type: 'input', properties: { label: 'Qty' } },
+        {
+          id: 'add2-btn',
+          type: 'button',
+          properties: { text: 'Add' },
+          eventBindings: [{ event: 'click', operationId: 'op-add-row' }],
+        },
+        {
+          id: 'rows',
+          type: 'list',
+          dataBindings: [
+            {
+              property: 'items',
+              source: 'state',
+              sourceId: 'entries',
+              transforms: [{ type: 'sortBy', parameters: { field: 'total' } }],
+            },
+          ],
+          children: [
+            { id: 'r-name', type: 'text', dataBindings: [{ property: 'content', source: 'item', sourceId: 'name' }] },
+          ],
+        },
+      ],
+      operations: [
+        {
+          id: 'op-add-row',
+          operationName: 'list.append',
+          inputs: [
+            { name: 'key', source: 'constant', sourceId: 'entries' },
+            { name: 'item.name', source: 'ui-element', sourceId: 'name-in' },
+            { name: 'item.qty', source: 'ui-element', sourceId: 'qty-in' },
+          ],
+          outputs: [],
+        },
+      ],
+    },
+  },
+  {
+    name: 'a filter fed by its own entry control fails',
+    contract: {
+      name: 'entry-filter',
+      elements: [
+        { id: 'title-in', type: 'input', properties: { label: 'Title' } },
+        {
+          id: 'add2-btn',
+          type: 'button',
+          properties: { text: 'Add' },
+          eventBindings: [{ event: 'click', operationId: 'op-add-row' }],
+        },
+        {
+          id: 'rows',
+          type: 'list',
+          dataBindings: [
+            {
+              property: 'items',
+              source: 'state',
+              sourceId: 'entries',
+              transforms: [
+                { type: 'filterContains', parameters: { field: 'title', value: { source: 'element', sourceId: 'title-in' } } },
+              ],
+            },
+          ],
+          children: [
+            { id: 'r-t', type: 'text', dataBindings: [{ property: 'content', source: 'item', sourceId: 'title' }] },
+          ],
+        },
+      ],
+      operations: [
+        {
+          id: 'op-add-row',
+          operationName: 'list.append',
+          inputs: [
+            { name: 'key', source: 'constant', sourceId: 'entries' },
+            { name: 'item.title', source: 'ui-element', sourceId: 'title-in' },
+          ],
+          outputs: [],
+        },
+      ],
+    },
+  },
+  {
+    name: 'derive expressions validate syntax and identifiers in place',
+    contract: {
+      name: 'derive-checks',
+      elements: [
+        { id: 'qty-in', type: 'input', properties: { label: 'Qty' } },
+        {
+          id: 'add2-btn',
+          type: 'button',
+          properties: { text: 'Add' },
+          eventBindings: [{ event: 'click', operationId: 'op-add-row' }],
+        },
+        {
+          id: 'rows',
+          type: 'list',
+          dataBindings: [
+            {
+              property: 'items',
+              source: 'state',
+              sourceId: 'entries',
+              transforms: [{ type: 'deriveField', parameters: { field: 'value', expression: 'qty * price' } }],
+            },
+          ],
+          children: [
+            { id: 'r-v', type: 'text', dataBindings: [{ property: 'content', source: 'item', sourceId: 'value' }] },
+          ],
+        },
+        {
+          id: 'broken',
+          type: 'text',
+          dataBindings: [
+            {
+              property: 'content',
+              source: 'state',
+              sourceId: 'entries',
+              transforms: [
+                { type: 'deriveField', parameters: { field: 'v', expression: 'qty +' } },
+                { type: 'sum', parameters: { field: 'v' } },
+              ],
+            },
+          ],
+        },
+      ],
+      operations: [
+        {
+          id: 'op-add-row',
+          operationName: 'list.append',
+          inputs: [
+            { name: 'key', source: 'constant', sourceId: 'entries' },
+            { name: 'item.qty', source: 'ui-element', sourceId: 'qty-in' },
+          ],
+          outputs: [],
+        },
+      ],
+    },
+  },
+  {
+    name: 'list edits on unfilled keys and undisplayed appends fail',
+    contract: {
+      name: 'list-rules',
+      elements: [
+        { id: 'title-in', type: 'input', properties: { label: 'Title' } },
+        {
+          id: 'add2-btn',
+          type: 'button',
+          properties: { text: 'Add' },
+          eventBindings: [{ event: 'click', operationId: 'op-add-row' }],
+        },
+        {
+          id: 'del-btn',
+          type: 'button',
+          properties: { text: 'Clear' },
+          eventBindings: [{ event: 'click', operationId: 'op-del' }],
+        },
+      ],
+      operations: [
+        {
+          id: 'op-add-row',
+          operationName: 'list.append',
+          inputs: [
+            { name: 'key', source: 'constant', sourceId: 'entries' },
+            { name: 'item.title', source: 'ui-element', sourceId: 'title-in' },
+          ],
+          outputs: [],
+        },
+        {
+          id: 'op-del',
+          operationName: 'list.removeWhere',
+          inputs: [
+            { name: 'key', source: 'constant', sourceId: 'archive' },
+            { name: 'value', source: 'constant', sourceId: 'x' },
+          ],
+          outputs: [],
+        },
+      ],
+    },
+  },
+  {
+    name: 'operation inputs validate names, prefixes, and duplicates',
+    contract: {
+      name: 'op-inputs',
+      elements: [
+        COUNT_TEXT,
+        {
+          id: 'go-btn',
+          type: 'button',
+          properties: { text: 'Go' },
+          eventBindings: [
+            { event: 'click', operationId: 'op-bad-flat' },
+            { event: 'click', operationId: 'op-bad-prefix' },
+            { event: 'click', operationId: 'op-missing' },
+            { event: 'click', operationId: 'op-dup' },
+            { event: 'click', operationId: 'op-bad-out' },
+          ],
+        },
+      ],
+      operations: [
+        {
+          id: 'op-bad-flat',
+          operationName: 'counter.add',
+          inputs: [
+            { name: 'key', source: 'constant', sourceId: 'clicks' },
+            { name: 'delta', source: 'constant', sourceId: '2' },
+          ],
+          outputs: [],
+        },
+        {
+          id: 'op-bad-prefix',
+          operationName: 'list.append',
+          inputs: [
+            { name: 'key', source: 'constant', sourceId: 'clicks' },
+            { name: 'row.title', source: 'constant', sourceId: 'x' },
+          ],
+          outputs: [],
+        },
+        { id: 'op-missing', operationName: 'state.set', inputs: [], outputs: [] },
+        {
+          id: 'op-dup',
+          operationName: 'counter.add',
+          inputs: [
+            { name: 'key', source: 'constant', sourceId: 'clicks' },
+            { name: 'amount', source: 'constant', sourceId: '1', value: 1 },
+            { name: 'amount', source: 'constant', sourceId: '2', value: 2 },
+          ],
+          outputs: [],
+        },
+        {
+          id: 'op-bad-out',
+          operationName: 'counter.add',
+          inputs: [{ name: 'key', source: 'constant', sourceId: 'clicks' }],
+          outputs: [{ name: 'total', target: 'state', targetId: 'copy' }],
+        },
+      ],
+    },
+  },
+  {
+    name: 'expr expressions must bind every identifier',
+    contract: {
+      name: 'expr-lint',
+      elements: [
+        { id: 'x-in', type: 'input', properties: { label: 'X' } },
+        {
+          id: 'go-btn',
+          type: 'button',
+          properties: { text: 'Go' },
+          eventBindings: [{ event: 'click', operationId: 'op-calc' }],
+        },
+        { id: 'result', type: 'text', dataBindings: [{ property: 'content', source: 'state', sourceId: 'answer' }] },
+      ],
+      operations: [
+        {
+          id: 'op-calc',
+          operationName: 'expr.evaluate',
+          inputs: [
+            { name: 'expression', source: 'constant', sourceId: 'x * rate + 1' },
+            { name: 'var.x', source: 'ui-element', sourceId: 'x-in' },
+          ],
+          outputs: [{ name: 'value', target: 'state', targetId: 'answer' }],
+        },
+      ],
+    },
+    partOperations: {
+      'expr.evaluate': {
+        inputs: [
+          { name: 'expression', type: 'string', required: true },
+          { name: 'var.<name>', type: 'number', required: false },
+        ],
+        outputs: [{ name: 'value' }],
+        structuredPrefixes: ['var'],
+      },
+    },
+  },
+  {
+    name: 'numeric part inputs demand a projection from object lists',
+    contract: {
+      name: 'projection',
+      elements: [
+        { id: 'title-in', type: 'input', properties: { label: 'Title' } },
+        {
+          id: 'add2-btn',
+          type: 'button',
+          properties: { text: 'Add' },
+          eventBindings: [{ event: 'click', operationId: 'op-add-row' }, { event: 'click', operationId: 'op-stats' }],
+        },
+        {
+          id: 'rows',
+          type: 'list',
+          dataBindings: [{ property: 'items', source: 'state', sourceId: 'entries' }],
+          children: [
+            { id: 'r-t', type: 'text', dataBindings: [{ property: 'content', source: 'item', sourceId: 'title' }] },
+          ],
+        },
+        { id: 'mean', type: 'text', dataBindings: [{ property: 'content', source: 'state', sourceId: 'mean' }] },
+      ],
+      operations: [
+        {
+          id: 'op-add-row',
+          operationName: 'list.append',
+          inputs: [
+            { name: 'key', source: 'constant', sourceId: 'entries' },
+            { name: 'item.title', source: 'ui-element', sourceId: 'title-in' },
+          ],
+          outputs: [],
+        },
+        {
+          id: 'op-stats',
+          operationName: 'stats.summary',
+          inputs: [{ name: 'values', source: 'state', sourceId: 'entries' }],
+          outputs: [{ name: 'mean', target: 'state', targetId: 'mean' }],
+        },
+      ],
+    },
+    partOperations: {
+      'stats.summary': {
+        inputs: [{ name: 'values', type: 'array', required: true, description: 'Numbers to summarize' }],
+        outputs: [{ name: 'count' }, { name: 'sum' }, { name: 'mean' }, { name: 'min' }, { name: 'max' }],
+      },
+    },
+  },
+  {
+    name: 'placeholder endpoints and credential confinement fail',
+    contract: {
+      name: 'remote-rules',
+      elements: [
+        COUNT_TEXT,
+        {
+          id: 'go-btn',
+          type: 'button',
+          properties: { text: 'Go' },
+          eventBindings: [
+            { event: 'click', operationId: 'op-placeholder' },
+            { event: 'click', operationId: 'op-bad-auth' },
+            { event: 'click', operationId: 'op-escaped' },
+          ],
+        },
+      ],
+      operations: [
+        {
+          id: 'op-placeholder',
+          operationName: 'demo.fetch',
+          implementation: { type: 'remote', endpoint: 'https://api.example.com/things' },
+          inputs: [],
+          outputs: [{ name: 'response', target: 'state', targetId: 'clicks' }],
+        },
+        {
+          id: 'op-bad-auth',
+          operationName: 'other.fetch',
+          implementation: { type: 'remote', endpoint: 'https://real.service.dev/x', auth: 'ghostkey' },
+          inputs: [],
+          outputs: [],
+        },
+        {
+          id: 'op-escaped',
+          operationName: 'third.fetch',
+          implementation: { type: 'remote', endpoint: 'https://elsewhere.dev/x', auth: 'weatherkey' },
+          inputs: [],
+          outputs: [],
+        },
+      ],
+    },
+    credentials: [
+      { name: 'weatherkey', kind: 'query', target: 'appid', baseUrl: 'https://api.openweathermap.org' },
+    ],
+  },
+  {
+    name: 'fragment params enforce and packs validate through every rule',
+    contract: {
+      name: 'fragments',
+      elements: [
+        { id: 'entry', type: 'basics.entry_row', properties: { label: 'Task' } },
+        { id: 'tick', type: 'basics.ticker', properties: {} },
+        {
+          id: 'rows',
+          type: 'list',
+          dataBindings: [{ property: 'items', source: 'state', sourceId: 'tasks' }],
+          children: [
+            { id: 'r-t', type: 'text', dataBindings: [{ property: 'content', source: 'item', sourceId: 'title' }] },
+          ],
+        },
+      ],
+      operations: [
+        {
+          id: 'op-add-task',
+          operationName: 'list.append',
+          inputs: [
+            { name: 'key', source: 'constant', sourceId: 'tasks' },
+            { name: 'item.title', source: 'ui-element', sourceId: 'entry-input' },
+          ],
+          outputs: [],
+        },
+      ],
+    },
+    fragmentDefs: {
+      'basics.entry_row': ENTRY_ROW_DEF,
+      'basics.ticker': {
+        ...MINI_PACK_DEF,
+        operations: [
+          {
+            id: '{{id}}-step',
+            operationName: 'chrono.advance',
+            inputs: [{ name: 'key', source: 'constant', sourceId: '{{id}}-count' }],
+          },
+        ],
+      },
+    },
+  },
+  {
     name: 'centered entry rows align to end',
     contract: {
       name: 'entry-row',
@@ -1352,20 +1888,94 @@ const VALIDATION_CASES: ValidationCase[] = [
   },
 ];
 
-function runValidationCase(entry: ValidationCase) {
-  const contract = JSON.parse(
-    JSON.stringify(ContractSchema.parse(entry.contract))
-  ) as ContractShape;
-  const result = checkAgainstManifests(contract);
+/** The registry snapshot the Rust checker embeds: knob tables, builtin
+ * operation shapes, transform output kinds, style vocabulary. Generated
+ * from the live TS registry so there is one source of truth. */
+function buildRegistrySnapshot() {
+  const elements = Object.fromEntries(
+    Object.entries(ELEMENT_MANIFESTS).map(([type, manifest]) => [
+      type,
+      {
+        knobs: manifest.knobs.map((knob) => ({
+          name: knob.name,
+          type: knob.type,
+          ...(knob.values ? { values: knob.values } : {}),
+          ...(knob.default !== undefined ? { default: knob.default } : {}),
+        })),
+      },
+    ])
+  );
+  const operations = Object.fromEntries(
+    Object.entries(BUILTIN_OPERATIONS).map(([name, def]) => [
+      name,
+      {
+        inputs: def.inputs.map((input) => ({
+          name: input.name,
+          type: input.type,
+          ...(input.required !== undefined ? { required: input.required } : {}),
+          ...(input.description !== undefined ? { description: input.description } : {}),
+        })),
+        outputs: def.outputs.map((output) => ({ name: output.name })),
+        ...(def.structuredPrefixes ? { structuredPrefixes: def.structuredPrefixes } : {}),
+      },
+    ])
+  );
+  const transforms = Object.entries(TRANSFORMS).map(([name, def]) => ({
+    name,
+    output: def.output,
+  }));
   return {
-    name: entry.name,
-    contract: jsonNormalize(JSON.parse(JSON.stringify(ContractSchema.parse(entry.contract)))),
-    expected: {
-      errors: jsonNormalize(result.errors),
-      warnings: jsonNormalize(result.warnings),
-      mutated: jsonNormalize(contract),
-    },
+    formatVersion: 1,
+    elements,
+    operations,
+    transforms,
+    styleThemes: ['default', 'dark', 'paper', 'terminal'],
+    styleAccents: ['blue', 'green', 'violet', 'rose', 'amber'],
+    exprReserved: ['sqrt', 'abs', 'floor', 'ceil', 'round', 'min', 'max', 'pow', 'pi', 'e'],
   };
+}
+
+function runValidationCase(entry: ValidationCase) {
+  for (const [name, def] of Object.entries(entry.fragmentDefs ?? {})) {
+    FRAGMENT_ELEMENTS[name] = def;
+  }
+  for (const [name, def] of Object.entries(entry.partOperations ?? {})) {
+    FRAGMENT_OPERATIONS[name] = {
+      name,
+      description: 'conformance double',
+      inputs: def.inputs,
+      outputs: def.outputs,
+      structuredPrefixes: def.structuredPrefixes,
+      execute: async () => ({}),
+    };
+  }
+  setIntegrationCredentials(entry.credentials ?? []);
+  try {
+    const contract = JSON.parse(
+      JSON.stringify(ContractSchema.parse(entry.contract))
+    ) as ContractShape;
+    const result = checkAgainstManifests(contract);
+    return {
+      name: entry.name,
+      contract: jsonNormalize(JSON.parse(JSON.stringify(ContractSchema.parse(entry.contract)))),
+      fragmentDefs: jsonNormalize(entry.fragmentDefs ?? {}),
+      partOperations: jsonNormalize(entry.partOperations ?? {}),
+      credentials: jsonNormalize(entry.credentials ?? []),
+      expected: {
+        errors: jsonNormalize(result.errors),
+        warnings: jsonNormalize(result.warnings),
+        mutated: jsonNormalize(contract),
+      },
+    };
+  } finally {
+    for (const name of Object.keys(entry.fragmentDefs ?? {})) {
+      delete FRAGMENT_ELEMENTS[name];
+    }
+    for (const name of Object.keys(entry.partOperations ?? {})) {
+      delete FRAGMENT_OPERATIONS[name];
+    }
+    setIntegrationCredentials([]);
+  }
 }
 
 function runStreamingCase(entry: StreamingCase) {
@@ -1646,6 +2256,11 @@ async function main(): Promise<void> {
   writeFileSync(
     resolve(outDir, 'validation.json'),
     JSON.stringify({ formatVersion: 1, validation }, null, 2) + '\n'
+  );
+
+  writeFileSync(
+    resolve(outDir, 'registry.json'),
+    JSON.stringify(buildRegistrySnapshot(), null, 2) + '\n'
   );
   process.stdout.write(
     `wrote ${transforms.length} transform, ${pipelines.length} pipeline, ${expressions.length} expression, ${operations.length} operation, ${sessions.length} session, ${templates.length} template, ${views.length} view, ${streaming.length} streaming, ${validation.length} validation vectors\n`

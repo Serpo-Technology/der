@@ -342,7 +342,21 @@ DER.app; a packaged build with the bundled panel runs native-first by default
 `runtime/streaming.rs` is the twin of `partial-json.ts`
 (truncated-stream recovery over UTF-16 indices and the display-only contract extraction,
 with the transform-name filter spanning the full registry including the presentation
-transforms the kernel does not execute). The committed vectors in `runtime-conformance/` are
+transforms the kernel does not execute). `runtime/validation.rs` is the twin of
+`checkAgainstManifests`: every rule family (transform pipelines and param refs, list-field
+reads with deriveField growth, knob and styling normalization, operation input/output
+manifest checks with in-place dedup, expr.evaluate lint, placeholder endpoints and
+credential confinement, fragment params and pack-operation merging, orphan/dead-control/
+display rules, the seed pass) reproduces the webview checker's error paths, codes, and
+message text byte for byte, because those messages feed the repair round. It reads the same
+part vocabulary two ways: `runtime/manifests.rs` embeds `runtime-conformance/registry.json`
+(knob tables, builtin shapes, transform kinds, expr reserved words, generated from the TS
+registry by the vector generator) at compile time, and installed vocabulary (fragment defs,
+part operations, credentials) is passed per check; serde_json runs with `preserve_order` so
+object iteration matches JS insertion order in message text. Validation vectors freeze
+{errors, warnings, mutated contract} per fixture, with each fixture's installed vocabulary
+carried alongside and published into the registries by both harnesses.
+The committed vectors in `runtime-conformance/` are
 the semantic contract: both test suites run every vector (vitest
 `runtime-conformance.test.ts`, cargo `runtime_conformance.rs`), covering the
 JavaScript-flavored edges (Math.round at negative halves, toFixed strings, loose equality,

@@ -7,6 +7,7 @@
 pub mod env;
 pub mod expression;
 pub mod host;
+pub mod manifests;
 pub mod operations;
 pub mod session;
 pub mod sessions;

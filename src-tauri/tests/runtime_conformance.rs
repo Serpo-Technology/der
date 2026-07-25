@@ -341,14 +341,22 @@ fn view_vectors_match() {
 
 #[test]
 fn validation_vectors_match() {
-    use dynamic_experience_runtime_lib::runtime::validation::check_structural;
+    use dynamic_experience_runtime_lib::runtime::validation::check_against_manifests;
     let fixtures = fixture("validation.json");
     let vectors = fixtures["validation"].as_array().expect("validation vectors");
     let mut failures = Vec::new();
     for vector in vectors {
         let name = vector["name"].as_str().unwrap_or("?");
         let mut contract = vector["contract"].clone();
-        let outcome = check_structural(&mut contract);
+        let empty = serde_json::Map::new();
+        let fragment_defs = vector["fragmentDefs"].as_object().unwrap_or(&empty);
+        let part_operations = vector["partOperations"].as_object().unwrap_or(&empty);
+        let credentials: Vec<Value> = vector["credentials"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let outcome =
+            check_against_manifests(&mut contract, fragment_defs, part_operations, &credentials);
         if !semantically_equal(&Value::Array(outcome.errors.clone()), &vector["expected"]["errors"]) {
             failures.push(format!(
                 "{}: errors mismatch

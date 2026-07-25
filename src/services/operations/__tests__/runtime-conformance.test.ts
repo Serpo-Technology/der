@@ -16,7 +16,14 @@ import {
   applyTransformPipeline,
 } from '../transforms';
 import { parseRowExpression } from '../row-expression';
-import { BUILTIN_OPERATIONS, FRAGMENT_ELEMENTS, assembleStructured } from '../registry';
+import {
+  BUILTIN_OPERATIONS,
+  FRAGMENT_ELEMENTS,
+  FRAGMENT_OPERATIONS,
+  assembleStructured,
+  setIntegrationCredentials,
+} from '../registry';
+import type { IntegrationCredentialView } from '../registry';
 import type { UiFragmentDef } from '../registry';
 import { ExperienceStateManager } from '../../../components/runtime/ExperienceStateManager';
 import { OperationExecutor } from '../../../components/runtime/OperationExecutor';
@@ -348,6 +355,16 @@ const validationFixtures = JSON.parse(
   validation: Array<{
     name: string;
     contract: Record<string, unknown>;
+    fragmentDefs: Record<string, UiFragmentDef>;
+    partOperations: Record<
+      string,
+      {
+        inputs: Array<{ name: string; type: string; required?: boolean; description?: string }>;
+        outputs: Array<{ name: string }>;
+        structuredPrefixes?: string[];
+      }
+    >;
+    credentials: IntegrationCredentialView[];
     expected: { errors: unknown; warnings: unknown; mutated: unknown };
   }>;
 };
@@ -355,11 +372,35 @@ const validationFixtures = JSON.parse(
 describe('runtime conformance: validation', () => {
   for (const vector of validationFixtures.validation) {
     it(vector.name, () => {
-      const contract = JSON.parse(JSON.stringify(vector.contract)) as ContractShape;
-      const result = checkAgainstManifests(contract);
-      expect(jsonNormalize(result.errors)).toEqual(vector.expected.errors);
-      expect(jsonNormalize(result.warnings)).toEqual(vector.expected.warnings);
-      expect(jsonNormalize(contract)).toEqual(vector.expected.mutated);
+      for (const [name, def] of Object.entries(vector.fragmentDefs ?? {})) {
+        FRAGMENT_ELEMENTS[name] = def;
+      }
+      for (const [name, def] of Object.entries(vector.partOperations ?? {})) {
+        FRAGMENT_OPERATIONS[name] = {
+          name,
+          description: 'conformance double',
+          inputs: def.inputs,
+          outputs: def.outputs,
+          structuredPrefixes: def.structuredPrefixes,
+          execute: async () => ({}),
+        };
+      }
+      setIntegrationCredentials(vector.credentials ?? []);
+      try {
+        const contract = JSON.parse(JSON.stringify(vector.contract)) as ContractShape;
+        const result = checkAgainstManifests(contract);
+        expect(jsonNormalize(result.errors)).toEqual(vector.expected.errors);
+        expect(jsonNormalize(result.warnings)).toEqual(vector.expected.warnings);
+        expect(jsonNormalize(contract)).toEqual(vector.expected.mutated);
+      } finally {
+        for (const name of Object.keys(vector.fragmentDefs ?? {})) {
+          delete FRAGMENT_ELEMENTS[name];
+        }
+        for (const name of Object.keys(vector.partOperations ?? {})) {
+          delete FRAGMENT_OPERATIONS[name];
+        }
+        setIntegrationCredentials([]);
+      }
     });
   }
 });

@@ -1,0 +1,593 @@
+{
+  "formatVersion": 1,
+  "elements": {
+    "text": {
+      "knobs": [
+        {
+          "name": "role",
+          "type": "enum",
+          "values": [
+            "title",
+            "subtitle",
+            "body",
+            "caption",
+            "label"
+          ],
+          "default": "body"
+        }
+      ]
+    },
+    "button": {
+      "knobs": [
+        {
+          "name": "variant",
+          "type": "enum",
+          "values": [
+            "default",
+            "primary",
+            "danger",
+            "ghost"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "size",
+          "type": "enum",
+          "values": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ]
+    },
+    "input": {
+      "knobs": [
+        {
+          "name": "label",
+          "type": "string"
+        }
+      ]
+    },
+    "textarea": {
+      "knobs": [
+        {
+          "name": "label",
+          "type": "string"
+        },
+        {
+          "name": "rows",
+          "type": "number",
+          "default": 4
+        }
+      ]
+    },
+    "timer": {
+      "knobs": [
+        {
+          "name": "seconds",
+          "type": "number",
+          "default": 1
+        }
+      ]
+    },
+    "container": {
+      "knobs": [
+        {
+          "name": "direction",
+          "type": "enum",
+          "values": [
+            "row",
+            "column"
+          ],
+          "default": "row"
+        },
+        {
+          "name": "gap",
+          "type": "enum",
+          "values": [
+            "0",
+            "4",
+            "8",
+            "12",
+            "16",
+            "24"
+          ],
+          "default": "8"
+        },
+        {
+          "name": "align",
+          "type": "enum",
+          "values": [
+            "start",
+            "center",
+            "end",
+            "stretch"
+          ],
+          "default": "center"
+        },
+        {
+          "name": "justify",
+          "type": "enum",
+          "values": [
+            "start",
+            "center",
+            "end",
+            "between"
+          ],
+          "default": "start"
+        },
+        {
+          "name": "padding",
+          "type": "enum",
+          "values": [
+            "0",
+            "4",
+            "8",
+            "12",
+            "16",
+            "24"
+          ],
+          "default": "0"
+        }
+      ]
+    },
+    "list": {
+      "knobs": [
+        {
+          "name": "emptyText",
+          "type": "string"
+        }
+      ]
+    },
+    "form": {
+      "knobs": []
+    },
+    "image": {
+      "knobs": []
+    },
+    "link": {
+      "knobs": []
+    },
+    "select": {
+      "knobs": [
+        {
+          "name": "label",
+          "type": "string"
+        },
+        {
+          "name": "placeholder",
+          "type": "string"
+        }
+      ]
+    },
+    "checkbox": {
+      "knobs": [
+        {
+          "name": "label",
+          "type": "string"
+        }
+      ]
+    },
+    "progress": {
+      "knobs": [
+        {
+          "name": "max",
+          "type": "number",
+          "default": 100
+        }
+      ]
+    },
+    "divider": {
+      "knobs": []
+    }
+  },
+  "operations": {
+    "state.set": {
+      "inputs": [
+        {
+          "name": "key",
+          "type": "string",
+          "required": true,
+          "description": "State key to write"
+        },
+        {
+          "name": "value",
+          "type": "any",
+          "required": true,
+          "description": "Value to store"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "value"
+        }
+      ]
+    },
+    "counter.add": {
+      "inputs": [
+        {
+          "name": "key",
+          "type": "string",
+          "required": true,
+          "description": "State key holding the number"
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": false,
+          "description": "Amount to add (default 1)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "value"
+        }
+      ]
+    },
+    "list.append": {
+      "inputs": [
+        {
+          "name": "key",
+          "type": "string",
+          "required": true,
+          "description": "State key of the array"
+        },
+        {
+          "name": "item.<field>",
+          "type": "any",
+          "required": true,
+          "description": "One input per item field, e.g. item.title, item.amount"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "list"
+        },
+        {
+          "name": "item"
+        },
+        {
+          "name": "reset"
+        }
+      ],
+      "structuredPrefixes": [
+        "item"
+      ]
+    },
+    "list.updateWhere": {
+      "inputs": [
+        {
+          "name": "key",
+          "type": "string",
+          "required": true,
+          "description": "State key of the array"
+        },
+        {
+          "name": "field",
+          "type": "string",
+          "required": false,
+          "description": "Match field (default 'id')"
+        },
+        {
+          "name": "value",
+          "type": "any",
+          "required": true,
+          "description": "Value the match field must equal"
+        },
+        {
+          "name": "set.<field>",
+          "type": "any",
+          "required": true,
+          "description": "One input per field to write"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "list"
+        },
+        {
+          "name": "count"
+        }
+      ],
+      "structuredPrefixes": [
+        "set"
+      ]
+    },
+    "list.removeWhere": {
+      "inputs": [
+        {
+          "name": "key",
+          "type": "string",
+          "required": true,
+          "description": "State key of the array"
+        },
+        {
+          "name": "field",
+          "type": "string",
+          "required": false,
+          "description": "Match field (default 'id')"
+        },
+        {
+          "name": "value",
+          "type": "any",
+          "required": true,
+          "description": "Value the match field must equal"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "list"
+        }
+      ]
+    },
+    "list.toggleField": {
+      "inputs": [
+        {
+          "name": "key",
+          "type": "string",
+          "required": true,
+          "description": "State key of the array"
+        },
+        {
+          "name": "id",
+          "type": "any",
+          "required": true,
+          "description": "Id of the item to toggle"
+        },
+        {
+          "name": "field",
+          "type": "string",
+          "required": false,
+          "description": "Boolean field (default 'completed')"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "list"
+        }
+      ]
+    },
+    "math.add": {
+      "inputs": [
+        {
+          "name": "a",
+          "type": "number",
+          "required": true
+        },
+        {
+          "name": "b",
+          "type": "number",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result"
+        }
+      ]
+    },
+    "time.now": {
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "iso"
+        },
+        {
+          "name": "date"
+        },
+        {
+          "name": "time"
+        },
+        {
+          "name": "epoch"
+        }
+      ]
+    },
+    "random.int": {
+      "inputs": [
+        {
+          "name": "min",
+          "type": "number",
+          "required": true,
+          "description": "Lowest possible value"
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "required": true,
+          "description": "Highest possible value"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "value"
+        }
+      ]
+    },
+    "random.pick": {
+      "inputs": [
+        {
+          "name": "list",
+          "type": "array",
+          "required": true,
+          "description": "Entries to choose from"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "value"
+        },
+        {
+          "name": "index"
+        }
+      ]
+    },
+    "http.get": {
+      "inputs": [
+        {
+          "name": "url",
+          "type": "string",
+          "required": true,
+          "description": "http(s) URL"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "response"
+        }
+      ]
+    },
+    "todos.add": {
+      "inputs": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "description": "Todo text"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "todos"
+        },
+        {
+          "name": "todo"
+        },
+        {
+          "name": "reset"
+        }
+      ]
+    },
+    "todos.toggle": {
+      "inputs": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "description": "Todo id"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "todos"
+        }
+      ]
+    },
+    "todos.remove": {
+      "inputs": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "description": "Todo id"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "todos"
+        }
+      ]
+    }
+  },
+  "transforms": [
+    {
+      "name": "count",
+      "output": "scalar"
+    },
+    {
+      "name": "sum",
+      "output": "scalar"
+    },
+    {
+      "name": "filterBy",
+      "output": "array"
+    },
+    {
+      "name": "filterContains",
+      "output": "array"
+    },
+    {
+      "name": "filterTruthy",
+      "output": "array"
+    },
+    {
+      "name": "filterFalsy",
+      "output": "array"
+    },
+    {
+      "name": "sortBy",
+      "output": "array"
+    },
+    {
+      "name": "deriveField",
+      "output": "array"
+    },
+    {
+      "name": "pick",
+      "output": "any"
+    },
+    {
+      "name": "pluck",
+      "output": "array"
+    },
+    {
+      "name": "equals",
+      "output": "scalar"
+    },
+    {
+      "name": "not",
+      "output": "scalar"
+    },
+    {
+      "name": "parseNumber",
+      "output": "scalar"
+    },
+    {
+      "name": "round",
+      "output": "scalar"
+    },
+    {
+      "name": "format",
+      "output": "scalar"
+    },
+    {
+      "name": "formatNumber",
+      "output": "scalar"
+    },
+    {
+      "name": "formatDate",
+      "output": "scalar"
+    },
+    {
+      "name": "map",
+      "output": "any"
+    }
+  ],
+  "styleThemes": [
+    "default",
+    "dark",
+    "paper",
+    "terminal"
+  ],
+  "styleAccents": [
+    "blue",
+    "green",
+    "violet",
+    "rose",
+    "amber"
+  ],
+  "exprReserved": [
+    "sqrt",
+    "abs",
+    "floor",
+    "ceil",
+    "round",
+    "min",
+    "max",
+    "pow",
+    "pi",
+    "e"
+  ]
+}
