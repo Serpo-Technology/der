@@ -11,6 +11,7 @@ pub mod operations;
 pub mod session;
 pub mod sessions;
 pub mod sidecar;
+pub mod streaming;
 pub mod templates;
 pub mod transforms;
 pub mod value;

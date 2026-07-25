@@ -339,7 +339,10 @@ the panel compiles in release mode, stages under `src-tauri/binaries/` (gitignor
 `tauri build --config src-tauri/tauri.macos-app.conf.json` bundles it as an externalBin in
 DER.app; a packaged build with the bundled panel runs native-first by default
 (`DER_NATIVE_MODE=0` opts out), while dev builds stay webview-first behind the flag.
-The committed vectors in `runtime-conformance/` are
+`runtime/streaming.rs` is the twin of `partial-json.ts`
+(truncated-stream recovery over UTF-16 indices and the display-only contract extraction,
+with the transform-name filter spanning the full registry including the presentation
+transforms the kernel does not execute). The committed vectors in `runtime-conformance/` are
 the semantic contract: both test suites run every vector (vitest
 `runtime-conformance.test.ts`, cargo `runtime_conformance.rs`), covering the
 JavaScript-flavored edges (Math.round at negative halves, toFixed strings, loose equality,

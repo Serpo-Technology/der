@@ -340,6 +340,58 @@ fn view_vectors_match() {
 }
 
 #[test]
+fn streaming_vectors_match() {
+    use dynamic_experience_runtime_lib::runtime::streaming::{
+        extract_streaming_contract, parse_partial_json,
+    };
+    let fixtures = fixture("streaming.json");
+    let vectors = fixtures["streaming"].as_array().expect("streaming vectors");
+    let mut failures = Vec::new();
+    for vector in vectors {
+        let name = vector["name"].as_str().unwrap_or("?");
+        let raw = vector["raw"].as_str().expect("raw text");
+        let expected_recovered = vector["partialRecovered"].as_bool() == Some(true);
+
+        match parse_partial_json(raw) {
+            Some(partial) => {
+                if !expected_recovered {
+                    failures.push(format!("{}: unexpected recovery", name));
+                } else if !semantically_equal(&partial, &vector["partial"]) {
+                    failures.push(format!(
+                        "{}: partial mismatch\n  actual: {}\n  expected: {}",
+                        name, partial, vector["partial"]
+                    ));
+                }
+            }
+            None => {
+                if expected_recovered {
+                    failures.push(format!("{}: expected recovery", name));
+                }
+            }
+        }
+
+        match extract_streaming_contract(raw) {
+            Some(contract) => {
+                if vector["contract"].is_null() {
+                    failures.push(format!("{}: unexpected contract", name));
+                } else if !semantically_equal(&contract, &vector["contract"]) {
+                    failures.push(format!(
+                        "{}: contract mismatch\n  actual: {}\n  expected: {}",
+                        name, contract, vector["contract"]
+                    ));
+                }
+            }
+            None => {
+                if !vector["contract"].is_null() {
+                    failures.push(format!("{}: expected a contract", name));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
+#[test]
 fn expression_vectors_match() {
     let fixtures = fixture("expressions.json");
     let vectors = fixtures["expressions"].as_array().expect("expression vectors");

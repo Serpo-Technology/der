@@ -32,6 +32,10 @@ import { ExperienceStateManager } from '../../src/components/runtime/ExperienceS
 import { OperationExecutor } from '../../src/components/runtime/OperationExecutor';
 import { resolveViewTree } from '../../src/services/runtime-view/resolve-view';
 import {
+  extractStreamingContract,
+  parsePartialJson,
+} from '../../src/services/ai-interpreter/partial-json';
+import {
   expandUiFragment,
   expandPackOperations,
 } from '../../src/services/fragments/ui-fragments';
@@ -1048,6 +1052,137 @@ const VIEW_CASES: ViewCase[] = [
   },
 ];
 
+// A realistic compose response with multibyte text; cut points across it
+// exercise every recovery path (mid-string, mid-number, dangling keys and
+// separators, half-open arrays).
+const STREAM_FULL = JSON.stringify({
+  spec: { goal: 'Track dueler scores', assumptions: [], openQuestions: [] },
+  contract: {
+    name: 'skor-takibi',
+    version: '1.0.0',
+    styling: { theme: 'dark', accent: 'green' },
+    elements: [
+      { id: 'title', type: 'text', properties: { content: 'Skor Takibi Üst Düzey', role: 'title' } },
+      {
+        id: 'rows',
+        type: 'list',
+        properties: { emptyText: 'Henüz yok' },
+        dataBindings: [
+          {
+            property: 'items',
+            source: 'state',
+            sourceId: 'scores',
+            transforms: [
+              { type: 'sortBy', parameters: { field: 'points', direction: 'desc' } },
+              { type: 'imaginary', parameters: {} },
+            ],
+          },
+        ],
+        children: [
+          { id: 'r-name', type: 'text', dataBindings: [{ property: 'content', source: 'item', sourceId: 'name' }] },
+          {
+            id: 'r-pts',
+            type: 'text',
+            dataBindings: [
+              {
+                property: 'content',
+                source: 'item',
+                sourceId: 'points',
+                transforms: [{ type: 'formatNumber', parameters: { decimals: 0 } }],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'add-btn',
+        type: 'button',
+        properties: { text: 'Ekle', variant: 'primary' },
+        eventBindings: [{ event: 'click', operationId: 'op-add' }],
+      },
+    ],
+    operations: [
+      {
+        id: 'op-add',
+        operationName: 'list.append',
+        inputs: [
+          { name: 'key', source: 'constant', sourceId: 'scores' },
+          { name: 'item.points', source: 'ui-element', sourceId: 'pts-in', value: 12.5 },
+        ],
+      },
+    ],
+  },
+});
+
+interface StreamingCase {
+  name: string;
+  raw: string;
+}
+
+const STREAMING_CASES: StreamingCase[] = [
+  { name: 'no object yet', raw: 'Sure, here is' },
+  { name: 'empty input', raw: '' },
+  { name: 'open brace only', raw: '{' },
+  { name: 'spec only, no elements', raw: STREAM_FULL.slice(0, STREAM_FULL.indexOf('"elements"')) },
+  {
+    name: 'first element mid-string',
+    raw: STREAM_FULL.slice(0, STREAM_FULL.indexOf('Takibi') + 4),
+  },
+  {
+    name: 'cut inside a multibyte word',
+    raw: STREAM_FULL.slice(0, STREAM_FULL.indexOf('Düzey') + 1),
+  },
+  {
+    name: 'dangling key after comma',
+    raw: STREAM_FULL.slice(0, STREAM_FULL.indexOf('"role"') + 6),
+  },
+  {
+    name: 'dangling colon takes null',
+    raw: STREAM_FULL.slice(0, STREAM_FULL.indexOf('"role"') + 7),
+  },
+  {
+    name: 'mid-number backs up',
+    raw: STREAM_FULL.slice(0, STREAM_FULL.indexOf('12.5') + 2),
+  },
+  {
+    name: 'transform list half open keeps known steps',
+    raw: STREAM_FULL.slice(0, STREAM_FULL.indexOf('"imaginary"') + 3),
+  },
+  {
+    name: 'unknown transform dropped when complete',
+    raw: STREAM_FULL.slice(0, STREAM_FULL.indexOf("'op-add'")),
+  },
+  {
+    name: 'row template children accumulate',
+    raw: STREAM_FULL.slice(0, STREAM_FULL.indexOf('"r-pts"') + 7),
+  },
+  { name: 'complete response', raw: STREAM_FULL },
+  {
+    name: 'bare contract without the compose envelope',
+    raw: '{ "name": "düz", "elements": [ { "id": "a", "type": "text", "properties": { "content": "x" } }, { "id": "", "type": "text" }, { "type": "text" } ], "unknown": tru',
+  },
+  {
+    name: 'escape cut at the backslash',
+    raw: '{ "contract": { "elements": [ { "id": "a", "type": "text", "properties": { "content": "say \\"hi\\',
+  },
+  {
+    name: 'styling passes through whole',
+    raw: '{ "contract": { "name": "s", "styling": { "theme": "paper", "custom": 1 }, "elements": [ { "id": "a", "type": "text" } ] } }',
+  },
+];
+
+function runStreamingCase(entry: StreamingCase) {
+  const partial = parsePartialJson(entry.raw);
+  const contract = extractStreamingContract(entry.raw);
+  return {
+    name: entry.name,
+    raw: entry.raw,
+    partial: partial === null ? null : jsonNormalize(partial),
+    partialRecovered: partial !== null,
+    contract: contract === null ? null : jsonNormalize(contract),
+  };
+}
+
 /** Object keys holding null and absent keys are equivalent in the view
  * protocol; arrays keep nulls as real entries. */
 function stripNullKeys(value: unknown): unknown {
@@ -1303,8 +1438,14 @@ async function main(): Promise<void> {
     resolve(outDir, 'views.json'),
     JSON.stringify({ formatVersion: 1, views }, null, 2) + '\n'
   );
+
+  const streaming = STREAMING_CASES.map(runStreamingCase);
+  writeFileSync(
+    resolve(outDir, 'streaming.json'),
+    JSON.stringify({ formatVersion: 1, streaming }, null, 2) + '\n'
+  );
   process.stdout.write(
-    `wrote ${transforms.length} transform, ${pipelines.length} pipeline, ${expressions.length} expression, ${operations.length} operation, ${sessions.length} session, ${templates.length} template, ${views.length} view vectors\n`
+    `wrote ${transforms.length} transform, ${pipelines.length} pipeline, ${expressions.length} expression, ${operations.length} operation, ${sessions.length} session, ${templates.length} template, ${views.length} view, ${streaming.length} streaming vectors\n`
   );
 }
 

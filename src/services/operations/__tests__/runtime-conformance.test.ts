@@ -21,6 +21,10 @@ import type { UiFragmentDef } from '../registry';
 import { ExperienceStateManager } from '../../../components/runtime/ExperienceStateManager';
 import { OperationExecutor } from '../../../components/runtime/OperationExecutor';
 import { resolveViewTree } from '../../runtime-view/resolve-view';
+import {
+  extractStreamingContract,
+  parsePartialJson,
+} from '../../ai-interpreter/partial-json';
 import { expandPackOperations, expandUiFragment } from '../../fragments/ui-fragments';
 import type { Contract, OperationBinding, UIElement } from '../../../types/contract';
 
@@ -319,6 +323,36 @@ describe('runtime conformance: views', () => {
         for (const name of Object.keys(vector.fragmentDefs)) {
           delete FRAGMENT_ELEMENTS[name];
         }
+      }
+    });
+  }
+});
+
+const streamingFixtures = JSON.parse(
+  readFileSync(resolve(fixtureDir, 'streaming.json'), 'utf8')
+) as {
+  streaming: Array<{
+    name: string;
+    raw: string;
+    partial: unknown;
+    partialRecovered: boolean;
+    contract: unknown;
+  }>;
+};
+
+describe('runtime conformance: streaming', () => {
+  for (const vector of streamingFixtures.streaming) {
+    it(vector.name, () => {
+      const partial = parsePartialJson(vector.raw);
+      expect(partial !== null).toBe(vector.partialRecovered);
+      if (vector.partialRecovered) {
+        expect(jsonNormalize(partial)).toEqual(vector.partial);
+      }
+      const contract = extractStreamingContract(vector.raw);
+      if (vector.contract === null) {
+        expect(contract).toBeNull();
+      } else {
+        expect(jsonNormalize(contract)).toEqual(vector.contract);
       }
     });
   }

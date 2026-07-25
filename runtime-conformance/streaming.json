@@ -1,0 +1,1326 @@
+{
+  "formatVersion": 1,
+  "streaming": [
+    {
+      "name": "no object yet",
+      "raw": "Sure, here is",
+      "partial": null,
+      "partialRecovered": false,
+      "contract": null
+    },
+    {
+      "name": "empty input",
+      "raw": "",
+      "partial": null,
+      "partialRecovered": false,
+      "contract": null
+    },
+    {
+      "name": "open brace only",
+      "raw": "{",
+      "partial": {},
+      "partialRecovered": true,
+      "contract": null
+    },
+    {
+      "name": "spec only, no elements",
+      "raw": "{\"spec\":{\"goal\":\"Track dueler scores\",\"assumptions\":[],\"openQuestions\":[]},\"contract\":{\"name\":\"skor-takibi\",\"version\":\"1.0.0\",\"styling\":{\"theme\":\"dark\",\"accent\":\"green\"},",
+      "partial": {
+        "spec": {
+          "goal": "Track dueler scores",
+          "assumptions": [],
+          "openQuestions": []
+        },
+        "contract": {
+          "name": "skor-takibi",
+          "version": "1.0.0",
+          "styling": {
+            "theme": "dark",
+            "accent": "green"
+          }
+        }
+      },
+      "partialRecovered": true,
+      "contract": null
+    },
+    {
+      "name": "first element mid-string",
+      "raw": "{\"spec\":{\"goal\":\"Track dueler scores\",\"assumptions\":[],\"openQuestions\":[]},\"contract\":{\"name\":\"skor-takibi\",\"version\":\"1.0.0\",\"styling\":{\"theme\":\"dark\",\"accent\":\"green\"},\"elements\":[{\"id\":\"title\",\"type\":\"text\",\"properties\":{\"content\":\"Skor Taki",
+      "partial": {
+        "spec": {
+          "goal": "Track dueler scores",
+          "assumptions": [],
+          "openQuestions": []
+        },
+        "contract": {
+          "name": "skor-takibi",
+          "version": "1.0.0",
+          "styling": {
+            "theme": "dark",
+            "accent": "green"
+          },
+          "elements": [
+            {
+              "id": "title",
+              "type": "text",
+              "properties": {
+                "content": "Skor Taki"
+              }
+            }
+          ]
+        }
+      },
+      "partialRecovered": true,
+      "contract": {
+        "name": "skor-takibi",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Skor Taki"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          }
+        ],
+        "operations": [],
+        "layout": {
+          "type": "flex",
+          "properties": {
+            "flexDirection": "column",
+            "gap": "12px",
+            "padding": "16px"
+          }
+        },
+        "styling": {
+          "theme": "dark",
+          "accent": "green"
+        }
+      }
+    },
+    {
+      "name": "cut inside a multibyte word",
+      "raw": "{\"spec\":{\"goal\":\"Track dueler scores\",\"assumptions\":[],\"openQuestions\":[]},\"contract\":{\"name\":\"skor-takibi\",\"version\":\"1.0.0\",\"styling\":{\"theme\":\"dark\",\"accent\":\"green\"},\"elements\":[{\"id\":\"title\",\"type\":\"text\",\"properties\":{\"content\":\"Skor Takibi Üst D",
+      "partial": {
+        "spec": {
+          "goal": "Track dueler scores",
+          "assumptions": [],
+          "openQuestions": []
+        },
+        "contract": {
+          "name": "skor-takibi",
+          "version": "1.0.0",
+          "styling": {
+            "theme": "dark",
+            "accent": "green"
+          },
+          "elements": [
+            {
+              "id": "title",
+              "type": "text",
+              "properties": {
+                "content": "Skor Takibi Üst D"
+              }
+            }
+          ]
+        }
+      },
+      "partialRecovered": true,
+      "contract": {
+        "name": "skor-takibi",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Skor Takibi Üst D"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          }
+        ],
+        "operations": [],
+        "layout": {
+          "type": "flex",
+          "properties": {
+            "flexDirection": "column",
+            "gap": "12px",
+            "padding": "16px"
+          }
+        },
+        "styling": {
+          "theme": "dark",
+          "accent": "green"
+        }
+      }
+    },
+    {
+      "name": "dangling key after comma",
+      "raw": "{\"spec\":{\"goal\":\"Track dueler scores\",\"assumptions\":[],\"openQuestions\":[]},\"contract\":{\"name\":\"skor-takibi\",\"version\":\"1.0.0\",\"styling\":{\"theme\":\"dark\",\"accent\":\"green\"},\"elements\":[{\"id\":\"title\",\"type\":\"text\",\"properties\":{\"content\":\"Skor Takibi Üst Düzey\",\"role\"",
+      "partial": {
+        "spec": {
+          "goal": "Track dueler scores",
+          "assumptions": [],
+          "openQuestions": []
+        },
+        "contract": {
+          "name": "skor-takibi",
+          "version": "1.0.0",
+          "styling": {
+            "theme": "dark",
+            "accent": "green"
+          },
+          "elements": [
+            {
+              "id": "title",
+              "type": "text",
+              "properties": {
+                "content": "Skor Takibi Üst Düzey"
+              }
+            }
+          ]
+        }
+      },
+      "partialRecovered": true,
+      "contract": {
+        "name": "skor-takibi",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Skor Takibi Üst Düzey"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          }
+        ],
+        "operations": [],
+        "layout": {
+          "type": "flex",
+          "properties": {
+            "flexDirection": "column",
+            "gap": "12px",
+            "padding": "16px"
+          }
+        },
+        "styling": {
+          "theme": "dark",
+          "accent": "green"
+        }
+      }
+    },
+    {
+      "name": "dangling colon takes null",
+      "raw": "{\"spec\":{\"goal\":\"Track dueler scores\",\"assumptions\":[],\"openQuestions\":[]},\"contract\":{\"name\":\"skor-takibi\",\"version\":\"1.0.0\",\"styling\":{\"theme\":\"dark\",\"accent\":\"green\"},\"elements\":[{\"id\":\"title\",\"type\":\"text\",\"properties\":{\"content\":\"Skor Takibi Üst Düzey\",\"role\":",
+      "partial": {
+        "spec": {
+          "goal": "Track dueler scores",
+          "assumptions": [],
+          "openQuestions": []
+        },
+        "contract": {
+          "name": "skor-takibi",
+          "version": "1.0.0",
+          "styling": {
+            "theme": "dark",
+            "accent": "green"
+          },
+          "elements": [
+            {
+              "id": "title",
+              "type": "text",
+              "properties": {
+                "content": "Skor Takibi Üst Düzey",
+                "role": null
+              }
+            }
+          ]
+        }
+      },
+      "partialRecovered": true,
+      "contract": {
+        "name": "skor-takibi",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Skor Takibi Üst Düzey",
+              "role": null
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          }
+        ],
+        "operations": [],
+        "layout": {
+          "type": "flex",
+          "properties": {
+            "flexDirection": "column",
+            "gap": "12px",
+            "padding": "16px"
+          }
+        },
+        "styling": {
+          "theme": "dark",
+          "accent": "green"
+        }
+      }
+    },
+    {
+      "name": "mid-number backs up",
+      "raw": "{\"spec\":{\"goal\":\"Track dueler scores\",\"assumptions\":[],\"openQuestions\":[]},\"contract\":{\"name\":\"skor-takibi\",\"version\":\"1.0.0\",\"styling\":{\"theme\":\"dark\",\"accent\":\"green\"},\"elements\":[{\"id\":\"title\",\"type\":\"text\",\"properties\":{\"content\":\"Skor Takibi Üst Düzey\",\"role\":\"title\"}},{\"id\":\"rows\",\"type\":\"list\",\"properties\":{\"emptyText\":\"Henüz yok\"},\"dataBindings\":[{\"property\":\"items\",\"source\":\"state\",\"sourceId\":\"scores\",\"transforms\":[{\"type\":\"sortBy\",\"parameters\":{\"field\":\"points\",\"direction\":\"desc\"}},{\"type\":\"imaginary\",\"parameters\":{}}]}],\"children\":[{\"id\":\"r-name\",\"type\":\"text\",\"dataBindings\":[{\"property\":\"content\",\"source\":\"item\",\"sourceId\":\"name\"}]},{\"id\":\"r-pts\",\"type\":\"text\",\"dataBindings\":[{\"property\":\"content\",\"source\":\"item\",\"sourceId\":\"points\",\"transforms\":[{\"type\":\"formatNumber\",\"parameters\":{\"decimals\":0}}]}]}]},{\"id\":\"add-btn\",\"type\":\"button\",\"properties\":{\"text\":\"Ekle\",\"variant\":\"primary\"},\"eventBindings\":[{\"event\":\"click\",\"operationId\":\"op-add\"}]}],\"operations\":[{\"id\":\"op-add\",\"operationName\":\"list.append\",\"inputs\":[{\"name\":\"key\",\"source\":\"constant\",\"sourceId\":\"scores\"},{\"name\":\"item.points\",\"source\":\"ui-element\",\"sourceId\":\"pts-in\",\"value\":12",
+      "partial": {
+        "spec": {
+          "goal": "Track dueler scores",
+          "assumptions": [],
+          "openQuestions": []
+        },
+        "contract": {
+          "name": "skor-takibi",
+          "version": "1.0.0",
+          "styling": {
+            "theme": "dark",
+            "accent": "green"
+          },
+          "elements": [
+            {
+              "id": "title",
+              "type": "text",
+              "properties": {
+                "content": "Skor Takibi Üst Düzey",
+                "role": "title"
+              }
+            },
+            {
+              "id": "rows",
+              "type": "list",
+              "properties": {
+                "emptyText": "Henüz yok"
+              },
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "scores",
+                  "transforms": [
+                    {
+                      "type": "sortBy",
+                      "parameters": {
+                        "field": "points",
+                        "direction": "desc"
+                      }
+                    },
+                    {
+                      "type": "imaginary",
+                      "parameters": {}
+                    }
+                  ]
+                }
+              ],
+              "children": [
+                {
+                  "id": "r-name",
+                  "type": "text",
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "name"
+                    }
+                  ]
+                },
+                {
+                  "id": "r-pts",
+                  "type": "text",
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "points",
+                      "transforms": [
+                        {
+                          "type": "formatNumber",
+                          "parameters": {
+                            "decimals": 0
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "add-btn",
+              "type": "button",
+              "properties": {
+                "text": "Ekle",
+                "variant": "primary"
+              },
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add",
+              "operationName": "list.append",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "scores"
+                },
+                {
+                  "name": "item.points",
+                  "source": "ui-element",
+                  "sourceId": "pts-in",
+                  "value": 12
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "partialRecovered": true,
+      "contract": {
+        "name": "skor-takibi",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Skor Takibi Üst Düzey",
+              "role": "title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "rows",
+            "type": "list",
+            "properties": {
+              "emptyText": "Henüz yok"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "scores",
+                "transforms": [
+                  {
+                    "type": "sortBy",
+                    "parameters": {
+                      "field": "points",
+                      "direction": "desc"
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "r-name",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "name"
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "r-pts",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "points",
+                    "transforms": [
+                      {
+                        "type": "formatNumber",
+                        "parameters": {
+                          "decimals": 0
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          },
+          {
+            "id": "add-btn",
+            "type": "button",
+            "properties": {
+              "text": "Ekle",
+              "variant": "primary"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          }
+        ],
+        "operations": [],
+        "layout": {
+          "type": "flex",
+          "properties": {
+            "flexDirection": "column",
+            "gap": "12px",
+            "padding": "16px"
+          }
+        },
+        "styling": {
+          "theme": "dark",
+          "accent": "green"
+        }
+      }
+    },
+    {
+      "name": "transform list half open keeps known steps",
+      "raw": "{\"spec\":{\"goal\":\"Track dueler scores\",\"assumptions\":[],\"openQuestions\":[]},\"contract\":{\"name\":\"skor-takibi\",\"version\":\"1.0.0\",\"styling\":{\"theme\":\"dark\",\"accent\":\"green\"},\"elements\":[{\"id\":\"title\",\"type\":\"text\",\"properties\":{\"content\":\"Skor Takibi Üst Düzey\",\"role\":\"title\"}},{\"id\":\"rows\",\"type\":\"list\",\"properties\":{\"emptyText\":\"Henüz yok\"},\"dataBindings\":[{\"property\":\"items\",\"source\":\"state\",\"sourceId\":\"scores\",\"transforms\":[{\"type\":\"sortBy\",\"parameters\":{\"field\":\"points\",\"direction\":\"desc\"}},{\"type\":\"im",
+      "partial": {
+        "spec": {
+          "goal": "Track dueler scores",
+          "assumptions": [],
+          "openQuestions": []
+        },
+        "contract": {
+          "name": "skor-takibi",
+          "version": "1.0.0",
+          "styling": {
+            "theme": "dark",
+            "accent": "green"
+          },
+          "elements": [
+            {
+              "id": "title",
+              "type": "text",
+              "properties": {
+                "content": "Skor Takibi Üst Düzey",
+                "role": "title"
+              }
+            },
+            {
+              "id": "rows",
+              "type": "list",
+              "properties": {
+                "emptyText": "Henüz yok"
+              },
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "scores",
+                  "transforms": [
+                    {
+                      "type": "sortBy",
+                      "parameters": {
+                        "field": "points",
+                        "direction": "desc"
+                      }
+                    },
+                    {
+                      "type": "im"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "partialRecovered": true,
+      "contract": {
+        "name": "skor-takibi",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Skor Takibi Üst Düzey",
+              "role": "title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "rows",
+            "type": "list",
+            "properties": {
+              "emptyText": "Henüz yok"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "scores",
+                "transforms": [
+                  {
+                    "type": "sortBy",
+                    "parameters": {
+                      "field": "points",
+                      "direction": "desc"
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": []
+          }
+        ],
+        "operations": [],
+        "layout": {
+          "type": "flex",
+          "properties": {
+            "flexDirection": "column",
+            "gap": "12px",
+            "padding": "16px"
+          }
+        },
+        "styling": {
+          "theme": "dark",
+          "accent": "green"
+        }
+      }
+    },
+    {
+      "name": "unknown transform dropped when complete",
+      "raw": "{\"spec\":{\"goal\":\"Track dueler scores\",\"assumptions\":[],\"openQuestions\":[]},\"contract\":{\"name\":\"skor-takibi\",\"version\":\"1.0.0\",\"styling\":{\"theme\":\"dark\",\"accent\":\"green\"},\"elements\":[{\"id\":\"title\",\"type\":\"text\",\"properties\":{\"content\":\"Skor Takibi Üst Düzey\",\"role\":\"title\"}},{\"id\":\"rows\",\"type\":\"list\",\"properties\":{\"emptyText\":\"Henüz yok\"},\"dataBindings\":[{\"property\":\"items\",\"source\":\"state\",\"sourceId\":\"scores\",\"transforms\":[{\"type\":\"sortBy\",\"parameters\":{\"field\":\"points\",\"direction\":\"desc\"}},{\"type\":\"imaginary\",\"parameters\":{}}]}],\"children\":[{\"id\":\"r-name\",\"type\":\"text\",\"dataBindings\":[{\"property\":\"content\",\"source\":\"item\",\"sourceId\":\"name\"}]},{\"id\":\"r-pts\",\"type\":\"text\",\"dataBindings\":[{\"property\":\"content\",\"source\":\"item\",\"sourceId\":\"points\",\"transforms\":[{\"type\":\"formatNumber\",\"parameters\":{\"decimals\":0}}]}]}]},{\"id\":\"add-btn\",\"type\":\"button\",\"properties\":{\"text\":\"Ekle\",\"variant\":\"primary\"},\"eventBindings\":[{\"event\":\"click\",\"operationId\":\"op-add\"}]}],\"operations\":[{\"id\":\"op-add\",\"operationName\":\"list.append\",\"inputs\":[{\"name\":\"key\",\"source\":\"constant\",\"sourceId\":\"scores\"},{\"name\":\"item.points\",\"source\":\"ui-element\",\"sourceId\":\"pts-in\",\"value\":12.5}]}]}",
+      "partial": {
+        "spec": {
+          "goal": "Track dueler scores",
+          "assumptions": [],
+          "openQuestions": []
+        },
+        "contract": {
+          "name": "skor-takibi",
+          "version": "1.0.0",
+          "styling": {
+            "theme": "dark",
+            "accent": "green"
+          },
+          "elements": [
+            {
+              "id": "title",
+              "type": "text",
+              "properties": {
+                "content": "Skor Takibi Üst Düzey",
+                "role": "title"
+              }
+            },
+            {
+              "id": "rows",
+              "type": "list",
+              "properties": {
+                "emptyText": "Henüz yok"
+              },
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "scores",
+                  "transforms": [
+                    {
+                      "type": "sortBy",
+                      "parameters": {
+                        "field": "points",
+                        "direction": "desc"
+                      }
+                    },
+                    {
+                      "type": "imaginary",
+                      "parameters": {}
+                    }
+                  ]
+                }
+              ],
+              "children": [
+                {
+                  "id": "r-name",
+                  "type": "text",
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "name"
+                    }
+                  ]
+                },
+                {
+                  "id": "r-pts",
+                  "type": "text",
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "points",
+                      "transforms": [
+                        {
+                          "type": "formatNumber",
+                          "parameters": {
+                            "decimals": 0
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "add-btn",
+              "type": "button",
+              "properties": {
+                "text": "Ekle",
+                "variant": "primary"
+              },
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add",
+              "operationName": "list.append",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "scores"
+                },
+                {
+                  "name": "item.points",
+                  "source": "ui-element",
+                  "sourceId": "pts-in",
+                  "value": 12.5
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "partialRecovered": true,
+      "contract": {
+        "name": "skor-takibi",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Skor Takibi Üst Düzey",
+              "role": "title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "rows",
+            "type": "list",
+            "properties": {
+              "emptyText": "Henüz yok"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "scores",
+                "transforms": [
+                  {
+                    "type": "sortBy",
+                    "parameters": {
+                      "field": "points",
+                      "direction": "desc"
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "r-name",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "name"
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "r-pts",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "points",
+                    "transforms": [
+                      {
+                        "type": "formatNumber",
+                        "parameters": {
+                          "decimals": 0
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          },
+          {
+            "id": "add-btn",
+            "type": "button",
+            "properties": {
+              "text": "Ekle",
+              "variant": "primary"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          }
+        ],
+        "operations": [],
+        "layout": {
+          "type": "flex",
+          "properties": {
+            "flexDirection": "column",
+            "gap": "12px",
+            "padding": "16px"
+          }
+        },
+        "styling": {
+          "theme": "dark",
+          "accent": "green"
+        }
+      }
+    },
+    {
+      "name": "row template children accumulate",
+      "raw": "{\"spec\":{\"goal\":\"Track dueler scores\",\"assumptions\":[],\"openQuestions\":[]},\"contract\":{\"name\":\"skor-takibi\",\"version\":\"1.0.0\",\"styling\":{\"theme\":\"dark\",\"accent\":\"green\"},\"elements\":[{\"id\":\"title\",\"type\":\"text\",\"properties\":{\"content\":\"Skor Takibi Üst Düzey\",\"role\":\"title\"}},{\"id\":\"rows\",\"type\":\"list\",\"properties\":{\"emptyText\":\"Henüz yok\"},\"dataBindings\":[{\"property\":\"items\",\"source\":\"state\",\"sourceId\":\"scores\",\"transforms\":[{\"type\":\"sortBy\",\"parameters\":{\"field\":\"points\",\"direction\":\"desc\"}},{\"type\":\"imaginary\",\"parameters\":{}}]}],\"children\":[{\"id\":\"r-name\",\"type\":\"text\",\"dataBindings\":[{\"property\":\"content\",\"source\":\"item\",\"sourceId\":\"name\"}]},{\"id\":\"r-pts\"",
+      "partial": {
+        "spec": {
+          "goal": "Track dueler scores",
+          "assumptions": [],
+          "openQuestions": []
+        },
+        "contract": {
+          "name": "skor-takibi",
+          "version": "1.0.0",
+          "styling": {
+            "theme": "dark",
+            "accent": "green"
+          },
+          "elements": [
+            {
+              "id": "title",
+              "type": "text",
+              "properties": {
+                "content": "Skor Takibi Üst Düzey",
+                "role": "title"
+              }
+            },
+            {
+              "id": "rows",
+              "type": "list",
+              "properties": {
+                "emptyText": "Henüz yok"
+              },
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "scores",
+                  "transforms": [
+                    {
+                      "type": "sortBy",
+                      "parameters": {
+                        "field": "points",
+                        "direction": "desc"
+                      }
+                    },
+                    {
+                      "type": "imaginary",
+                      "parameters": {}
+                    }
+                  ]
+                }
+              ],
+              "children": [
+                {
+                  "id": "r-name",
+                  "type": "text",
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "name"
+                    }
+                  ]
+                },
+                {
+                  "id": "r-pts"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "partialRecovered": true,
+      "contract": {
+        "name": "skor-takibi",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Skor Takibi Üst Düzey",
+              "role": "title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "rows",
+            "type": "list",
+            "properties": {
+              "emptyText": "Henüz yok"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "scores",
+                "transforms": [
+                  {
+                    "type": "sortBy",
+                    "parameters": {
+                      "field": "points",
+                      "direction": "desc"
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "r-name",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "name"
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          }
+        ],
+        "operations": [],
+        "layout": {
+          "type": "flex",
+          "properties": {
+            "flexDirection": "column",
+            "gap": "12px",
+            "padding": "16px"
+          }
+        },
+        "styling": {
+          "theme": "dark",
+          "accent": "green"
+        }
+      }
+    },
+    {
+      "name": "complete response",
+      "raw": "{\"spec\":{\"goal\":\"Track dueler scores\",\"assumptions\":[],\"openQuestions\":[]},\"contract\":{\"name\":\"skor-takibi\",\"version\":\"1.0.0\",\"styling\":{\"theme\":\"dark\",\"accent\":\"green\"},\"elements\":[{\"id\":\"title\",\"type\":\"text\",\"properties\":{\"content\":\"Skor Takibi Üst Düzey\",\"role\":\"title\"}},{\"id\":\"rows\",\"type\":\"list\",\"properties\":{\"emptyText\":\"Henüz yok\"},\"dataBindings\":[{\"property\":\"items\",\"source\":\"state\",\"sourceId\":\"scores\",\"transforms\":[{\"type\":\"sortBy\",\"parameters\":{\"field\":\"points\",\"direction\":\"desc\"}},{\"type\":\"imaginary\",\"parameters\":{}}]}],\"children\":[{\"id\":\"r-name\",\"type\":\"text\",\"dataBindings\":[{\"property\":\"content\",\"source\":\"item\",\"sourceId\":\"name\"}]},{\"id\":\"r-pts\",\"type\":\"text\",\"dataBindings\":[{\"property\":\"content\",\"source\":\"item\",\"sourceId\":\"points\",\"transforms\":[{\"type\":\"formatNumber\",\"parameters\":{\"decimals\":0}}]}]}]},{\"id\":\"add-btn\",\"type\":\"button\",\"properties\":{\"text\":\"Ekle\",\"variant\":\"primary\"},\"eventBindings\":[{\"event\":\"click\",\"operationId\":\"op-add\"}]}],\"operations\":[{\"id\":\"op-add\",\"operationName\":\"list.append\",\"inputs\":[{\"name\":\"key\",\"source\":\"constant\",\"sourceId\":\"scores\"},{\"name\":\"item.points\",\"source\":\"ui-element\",\"sourceId\":\"pts-in\",\"value\":12.5}]}]}}",
+      "partial": {
+        "spec": {
+          "goal": "Track dueler scores",
+          "assumptions": [],
+          "openQuestions": []
+        },
+        "contract": {
+          "name": "skor-takibi",
+          "version": "1.0.0",
+          "styling": {
+            "theme": "dark",
+            "accent": "green"
+          },
+          "elements": [
+            {
+              "id": "title",
+              "type": "text",
+              "properties": {
+                "content": "Skor Takibi Üst Düzey",
+                "role": "title"
+              }
+            },
+            {
+              "id": "rows",
+              "type": "list",
+              "properties": {
+                "emptyText": "Henüz yok"
+              },
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "scores",
+                  "transforms": [
+                    {
+                      "type": "sortBy",
+                      "parameters": {
+                        "field": "points",
+                        "direction": "desc"
+                      }
+                    },
+                    {
+                      "type": "imaginary",
+                      "parameters": {}
+                    }
+                  ]
+                }
+              ],
+              "children": [
+                {
+                  "id": "r-name",
+                  "type": "text",
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "name"
+                    }
+                  ]
+                },
+                {
+                  "id": "r-pts",
+                  "type": "text",
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "points",
+                      "transforms": [
+                        {
+                          "type": "formatNumber",
+                          "parameters": {
+                            "decimals": 0
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "add-btn",
+              "type": "button",
+              "properties": {
+                "text": "Ekle",
+                "variant": "primary"
+              },
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add",
+              "operationName": "list.append",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "scores"
+                },
+                {
+                  "name": "item.points",
+                  "source": "ui-element",
+                  "sourceId": "pts-in",
+                  "value": 12.5
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "partialRecovered": true,
+      "contract": {
+        "name": "skor-takibi",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "content": "Skor Takibi Üst Düzey",
+              "role": "title"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "rows",
+            "type": "list",
+            "properties": {
+              "emptyText": "Henüz yok"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "scores",
+                "transforms": [
+                  {
+                    "type": "sortBy",
+                    "parameters": {
+                      "field": "points",
+                      "direction": "desc"
+                    }
+                  }
+                ]
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "r-name",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "name"
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "r-pts",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "points",
+                    "transforms": [
+                      {
+                        "type": "formatNumber",
+                        "parameters": {
+                          "decimals": 0
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          },
+          {
+            "id": "add-btn",
+            "type": "button",
+            "properties": {
+              "text": "Ekle",
+              "variant": "primary"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          }
+        ],
+        "operations": [],
+        "layout": {
+          "type": "flex",
+          "properties": {
+            "flexDirection": "column",
+            "gap": "12px",
+            "padding": "16px"
+          }
+        },
+        "styling": {
+          "theme": "dark",
+          "accent": "green"
+        }
+      }
+    },
+    {
+      "name": "bare contract without the compose envelope",
+      "raw": "{ \"name\": \"düz\", \"elements\": [ { \"id\": \"a\", \"type\": \"text\", \"properties\": { \"content\": \"x\" } }, { \"id\": \"\", \"type\": \"text\" }, { \"type\": \"text\" } ], \"unknown\": tru",
+      "partial": {
+        "name": "düz",
+        "elements": [
+          {
+            "id": "a",
+            "type": "text",
+            "properties": {
+              "content": "x"
+            }
+          },
+          {
+            "id": "",
+            "type": "text"
+          },
+          {
+            "type": "text"
+          }
+        ]
+      },
+      "partialRecovered": true,
+      "contract": {
+        "name": "düz",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "a",
+            "type": "text",
+            "properties": {
+              "content": "x"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          }
+        ],
+        "operations": [],
+        "layout": {
+          "type": "flex",
+          "properties": {
+            "flexDirection": "column",
+            "gap": "12px",
+            "padding": "16px"
+          }
+        }
+      }
+    },
+    {
+      "name": "escape cut at the backslash",
+      "raw": "{ \"contract\": { \"elements\": [ { \"id\": \"a\", \"type\": \"text\", \"properties\": { \"content\": \"say \\\"hi\\",
+      "partial": {
+        "contract": {
+          "elements": [
+            {
+              "id": "a",
+              "type": "text",
+              "properties": {
+                "content": "say \"hi"
+              }
+            }
+          ]
+        }
+      },
+      "partialRecovered": true,
+      "contract": {
+        "name": "new-app",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "a",
+            "type": "text",
+            "properties": {
+              "content": "say \"hi"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          }
+        ],
+        "operations": [],
+        "layout": {
+          "type": "flex",
+          "properties": {
+            "flexDirection": "column",
+            "gap": "12px",
+            "padding": "16px"
+          }
+        }
+      }
+    },
+    {
+      "name": "styling passes through whole",
+      "raw": "{ \"contract\": { \"name\": \"s\", \"styling\": { \"theme\": \"paper\", \"custom\": 1 }, \"elements\": [ { \"id\": \"a\", \"type\": \"text\" } ] } }",
+      "partial": {
+        "contract": {
+          "name": "s",
+          "styling": {
+            "theme": "paper",
+            "custom": 1
+          },
+          "elements": [
+            {
+              "id": "a",
+              "type": "text"
+            }
+          ]
+        }
+      },
+      "partialRecovered": true,
+      "contract": {
+        "name": "s",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "a",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [],
+            "eventBindings": []
+          }
+        ],
+        "operations": [],
+        "layout": {
+          "type": "flex",
+          "properties": {
+            "flexDirection": "column",
+            "gap": "12px",
+            "padding": "16px"
+          }
+        },
+        "styling": {
+          "theme": "paper",
+          "custom": 1
+        }
+      }
+    }
+  ]
+}
