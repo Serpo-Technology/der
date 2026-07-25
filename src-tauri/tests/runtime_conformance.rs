@@ -340,6 +340,52 @@ fn view_vectors_match() {
 }
 
 #[test]
+fn validation_vectors_match() {
+    use dynamic_experience_runtime_lib::runtime::validation::check_structural;
+    let fixtures = fixture("validation.json");
+    let vectors = fixtures["validation"].as_array().expect("validation vectors");
+    let mut failures = Vec::new();
+    for vector in vectors {
+        let name = vector["name"].as_str().unwrap_or("?");
+        let mut contract = vector["contract"].clone();
+        let outcome = check_structural(&mut contract);
+        if !semantically_equal(&Value::Array(outcome.errors.clone()), &vector["expected"]["errors"]) {
+            failures.push(format!(
+                "{}: errors mismatch
+  actual: {}
+  expected: {}",
+                name,
+                Value::Array(outcome.errors),
+                vector["expected"]["errors"]
+            ));
+            continue;
+        }
+        if !semantically_equal(&Value::Array(outcome.warnings.clone()), &vector["expected"]["warnings"]) {
+            failures.push(format!(
+                "{}: warnings mismatch
+  actual: {}
+  expected: {}",
+                name,
+                Value::Array(outcome.warnings),
+                vector["expected"]["warnings"]
+            ));
+            continue;
+        }
+        if !semantically_equal(&contract, &vector["expected"]["mutated"]) {
+            failures.push(format!(
+                "{}: mutation mismatch
+  actual: {}
+  expected: {}",
+                name, contract, vector["expected"]["mutated"]
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "
+{}", failures.join("
+"));
+}
+
+#[test]
 fn streaming_vectors_match() {
     use dynamic_experience_runtime_lib::runtime::streaming::{
         extract_streaming_contract, parse_partial_json,

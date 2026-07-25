@@ -14,5 +14,6 @@ pub mod sidecar;
 pub mod streaming;
 pub mod templates;
 pub mod transforms;
+pub mod validation;
 pub mod value;
 pub mod view;

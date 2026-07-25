@@ -35,6 +35,8 @@ import {
   extractStreamingContract,
   parsePartialJson,
 } from '../../src/services/ai-interpreter/partial-json';
+import { ContractSchema, checkAgainstManifests } from '../../src/schemas/contract';
+import type { ContractShape } from '../../src/schemas/contract';
 import {
   expandUiFragment,
   expandPackOperations,
@@ -1171,6 +1173,201 @@ const STREAMING_CASES: StreamingCase[] = [
   },
 ];
 
+// Contract fixtures for the validation port, scoped to the structural
+// spine: every fixture keeps unrelated rule families silent (operations
+// wired, appends displayed, controls consumed) so a partial Rust port can
+// reach zero diff family by family.
+interface ValidationCase {
+  name: string;
+  contract: Record<string, unknown>;
+}
+
+const WIRED_COUNTER = {
+  id: 'op-add',
+  operationName: 'counter.add',
+  inputs: [{ name: 'key', source: 'constant', sourceId: 'clicks' }],
+  outputs: [],
+};
+
+const COUNT_TEXT = {
+  id: 'count-text',
+  type: 'text',
+  dataBindings: [{ property: 'content', source: 'state', sourceId: 'clicks' }],
+};
+
+const ADD_BTN = {
+  id: 'add-btn',
+  type: 'button',
+  properties: { text: 'Add' },
+  eventBindings: [{ event: 'click', operationId: 'op-add' }],
+};
+
+const VALIDATION_CASES: ValidationCase[] = [
+  {
+    name: 'a wired counter passes clean with an items seed',
+    contract: {
+      name: 'clean',
+      elements: [COUNT_TEXT, ADD_BTN],
+      operations: [WIRED_COUNTER],
+    },
+  },
+  {
+    name: 'unknown styling normalizes with warnings',
+    contract: {
+      name: 'styled',
+      styling: { theme: 'vaporwave', accent: 'chartreuse' },
+      elements: [COUNT_TEXT, ADD_BTN],
+      operations: [WIRED_COUNTER],
+    },
+  },
+  {
+    name: 'an event referencing a missing operation fails with the id list',
+    contract: {
+      name: 'missing-ref',
+      elements: [
+        COUNT_TEXT,
+        {
+          id: 'go-btn',
+          type: 'button',
+          properties: { text: 'Go' },
+          eventBindings: [{ event: 'click', operationId: 'op-ghost' }],
+        },
+        ADD_BTN,
+      ],
+      operations: [WIRED_COUNTER],
+    },
+  },
+  {
+    name: 'events without any operations array get the outright fix first',
+    contract: {
+      name: 'no-ops',
+      elements: [
+        {
+          id: 'go-btn',
+          type: 'button',
+          properties: { text: 'Go' },
+          eventBindings: [{ event: 'click', operationId: 'op-ghost' }],
+        },
+      ],
+      operations: [],
+    },
+  },
+  {
+    name: 'an unknown operation name with no endpoint fails',
+    contract: {
+      name: 'unknown-op',
+      elements: [
+        COUNT_TEXT,
+        {
+          id: 'go-btn',
+          type: 'button',
+          properties: { text: 'Go' },
+          eventBindings: [{ event: 'click', operationId: 'op-cast' }],
+        },
+      ],
+      operations: [{ id: 'op-cast', operationName: 'wizardry.cast', inputs: [], outputs: [] }],
+    },
+  },
+  {
+    name: 'an operation nothing runs is an orphan',
+    contract: {
+      name: 'orphan',
+      elements: [COUNT_TEXT, ADD_BTN],
+      operations: [
+        WIRED_COUNTER,
+        {
+          id: 'op-idle',
+          operationName: 'state.set',
+          inputs: [
+            { name: 'key', source: 'constant', sourceId: 'mode' },
+            { name: 'value', source: 'constant', sourceId: 'x' },
+          ],
+          outputs: [],
+        },
+      ],
+    },
+  },
+  {
+    name: 'a control nothing consumes is dead',
+    contract: {
+      name: 'dead-control',
+      elements: [
+        COUNT_TEXT,
+        ADD_BTN,
+        { id: 'lonely-in', type: 'input', properties: { label: 'Lonely' } },
+      ],
+      operations: [WIRED_COUNTER],
+    },
+  },
+  {
+    name: 'read but unwritten keys seed by reader shape',
+    contract: {
+      name: 'seeds',
+      elements: [
+        {
+          id: 'rows',
+          type: 'list',
+          dataBindings: [{ property: 'items', source: 'state', sourceId: 'entries' }],
+        },
+        { id: 'note', type: 'text', dataBindings: [{ property: 'content', source: 'state', sourceId: 'motto' }] },
+        COUNT_TEXT,
+        ADD_BTN,
+      ],
+      operations: [WIRED_COUNTER],
+    },
+  },
+  {
+    name: 'centered entry rows align to end',
+    contract: {
+      name: 'entry-row',
+      elements: [
+        {
+          id: 'entry',
+          type: 'container',
+          properties: { direction: 'row', align: 'center' },
+          children: [
+            { id: 'what-in', type: 'input', properties: { label: 'What' } },
+            {
+              id: 'go-btn',
+              type: 'button',
+              properties: { text: 'Go' },
+              eventBindings: [{ event: 'click', operationId: 'op-note' }],
+            },
+          ],
+        },
+        { id: 'note', type: 'text', dataBindings: [{ property: 'content', source: 'state', sourceId: 'note' }] },
+      ],
+      operations: [
+        {
+          id: 'op-note',
+          operationName: 'state.set',
+          inputs: [
+            { name: 'key', source: 'constant', sourceId: 'note' },
+            { name: 'value', source: 'ui-element', sourceId: 'what-in' },
+          ],
+          outputs: [],
+        },
+      ],
+    },
+  },
+];
+
+function runValidationCase(entry: ValidationCase) {
+  const contract = JSON.parse(
+    JSON.stringify(ContractSchema.parse(entry.contract))
+  ) as ContractShape;
+  const result = checkAgainstManifests(contract);
+  return {
+    name: entry.name,
+    contract: jsonNormalize(JSON.parse(JSON.stringify(ContractSchema.parse(entry.contract)))),
+    expected: {
+      errors: jsonNormalize(result.errors),
+      warnings: jsonNormalize(result.warnings),
+      mutated: jsonNormalize(contract),
+    },
+  };
+}
+
 function runStreamingCase(entry: StreamingCase) {
   const partial = parsePartialJson(entry.raw);
   const contract = extractStreamingContract(entry.raw);
@@ -1444,8 +1641,14 @@ async function main(): Promise<void> {
     resolve(outDir, 'streaming.json'),
     JSON.stringify({ formatVersion: 1, streaming }, null, 2) + '\n'
   );
+
+  const validation = VALIDATION_CASES.map(runValidationCase);
+  writeFileSync(
+    resolve(outDir, 'validation.json'),
+    JSON.stringify({ formatVersion: 1, validation }, null, 2) + '\n'
+  );
   process.stdout.write(
-    `wrote ${transforms.length} transform, ${pipelines.length} pipeline, ${expressions.length} expression, ${operations.length} operation, ${sessions.length} session, ${templates.length} template, ${views.length} view, ${streaming.length} streaming vectors\n`
+    `wrote ${transforms.length} transform, ${pipelines.length} pipeline, ${expressions.length} expression, ${operations.length} operation, ${sessions.length} session, ${templates.length} template, ${views.length} view, ${streaming.length} streaming, ${validation.length} validation vectors\n`
   );
 }
 

@@ -1,0 +1,1250 @@
+{
+  "formatVersion": 1,
+  "validation": [
+    {
+      "name": "a wired counter passes clean with an items seed",
+      "contract": {
+        "name": "clean",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "clicks"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "add-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add"
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "counter.add",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "clicks"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "expected": {
+        "errors": [],
+        "warnings": [],
+        "mutated": {
+          "name": "clean",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "count-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "clicks"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "add-btn",
+              "type": "button",
+              "properties": {
+                "text": "Add"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add",
+              "operationName": "counter.add",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "clicks"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "unknown styling normalizes with warnings",
+      "contract": {
+        "name": "styled",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "clicks"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "add-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add"
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "counter.add",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "clicks"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "vaporwave",
+          "accent": "chartreuse"
+        }
+      },
+      "expected": {
+        "errors": [],
+        "warnings": [
+          {
+            "path": "styling.theme",
+            "message": "\"vaporwave\" is not one of default|dark|paper|terminal; using \"default\"",
+            "code": "MANIFEST_ADJUSTED"
+          },
+          {
+            "path": "styling.accent",
+            "message": "\"chartreuse\" is not one of blue|green|violet|rose|amber; accent removed",
+            "code": "MANIFEST_ADJUSTED"
+          }
+        ],
+        "mutated": {
+          "name": "styled",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "count-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "clicks"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "add-btn",
+              "type": "button",
+              "properties": {
+                "text": "Add"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add",
+              "operationName": "counter.add",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "clicks"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "an event referencing a missing operation fails with the id list",
+      "contract": {
+        "name": "missing-ref",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "clicks"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "go-btn",
+            "type": "button",
+            "properties": {
+              "text": "Go"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-ghost"
+              }
+            ]
+          },
+          {
+            "id": "add-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add"
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "counter.add",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "clicks"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "expected": {
+        "errors": [
+          {
+            "path": "elements.1.eventBindings.0",
+            "message": "Event \"click\" references unknown operation \"op-ghost\"; defined operation ids: op-add",
+            "code": "UNKNOWN_OPERATION"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "missing-ref",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "count-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "clicks"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "go-btn",
+              "type": "button",
+              "properties": {
+                "text": "Go"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-ghost"
+                }
+              ]
+            },
+            {
+              "id": "add-btn",
+              "type": "button",
+              "properties": {
+                "text": "Add"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add",
+              "operationName": "counter.add",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "clicks"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "events without any operations array get the outright fix first",
+      "contract": {
+        "name": "no-ops",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "go-btn",
+            "type": "button",
+            "properties": {
+              "text": "Go"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-ghost"
+              }
+            ]
+          }
+        ],
+        "operations": [],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "expected": {
+        "errors": [
+          {
+            "path": "operations",
+            "message": "The contract has no \"operations\" array but elements reference 1 operation id(s): op-ghost. Add a top-level \"operations\" array with one entry per referenced id.",
+            "code": "MISSING_OPERATIONS"
+          },
+          {
+            "path": "elements.0.eventBindings.0",
+            "message": "Event \"click\" references unknown operation \"op-ghost\"; defined operation ids: none",
+            "code": "UNKNOWN_OPERATION"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "no-ops",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "go-btn",
+              "type": "button",
+              "properties": {
+                "text": "Go"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-ghost"
+                }
+              ]
+            }
+          ],
+          "operations": [],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "an unknown operation name with no endpoint fails",
+      "contract": {
+        "name": "unknown-op",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "clicks"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "go-btn",
+            "type": "button",
+            "properties": {
+              "text": "Go"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-cast"
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-cast",
+            "operationName": "wizardry.cast",
+            "inputs": [],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "expected": {
+        "errors": [
+          {
+            "path": "operations.0",
+            "message": "\"wizardry.cast\" is not a builtin operation and has no remote endpoint. Use an exact builtin name from the catalog or a remote implementation.",
+            "code": "UNKNOWN_OPERATION_NAME"
+          }
+        ],
+        "warnings": [
+          {
+            "path": "initialState.clicks",
+            "message": "State key \"clicks\" was read but never written; seeded with null",
+            "code": "MANIFEST_ADJUSTED"
+          }
+        ],
+        "mutated": {
+          "name": "unknown-op",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "count-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "clicks"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "go-btn",
+              "type": "button",
+              "properties": {
+                "text": "Go"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-cast"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-cast",
+              "operationName": "wizardry.cast",
+              "inputs": [],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          },
+          "initialState": {
+            "clicks": null
+          }
+        }
+      }
+    },
+    {
+      "name": "an operation nothing runs is an orphan",
+      "contract": {
+        "name": "orphan",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "clicks"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "add-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add"
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "counter.add",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "clicks"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-idle",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "mode"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "x"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "expected": {
+        "errors": [
+          {
+            "path": "operations.1",
+            "message": "Nothing runs operation \"op-idle\"; wire it to an element event (a click, change, or timer tick) or remove it",
+            "code": "ORPHAN_OPERATION"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "orphan",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "count-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "clicks"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "add-btn",
+              "type": "button",
+              "properties": {
+                "text": "Add"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add",
+              "operationName": "counter.add",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "clicks"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            },
+            {
+              "id": "op-idle",
+              "operationName": "state.set",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "mode"
+                },
+                {
+                  "name": "value",
+                  "source": "constant",
+                  "sourceId": "x"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "a control nothing consumes is dead",
+      "contract": {
+        "name": "dead-control",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "clicks"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "add-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add"
+              }
+            ]
+          },
+          {
+            "id": "lonely-in",
+            "type": "input",
+            "properties": {
+              "label": "Lonely"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "counter.add",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "clicks"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "expected": {
+        "errors": [
+          {
+            "path": "elements.2",
+            "message": "input \"lonely-in\" affects nothing: read it from an operation input ({\"source\": \"ui-element\"}), reference it live from a filter parameter ({\"source\": \"element\"}), or give it a change binding, or remove it",
+            "code": "DEAD_CONTROL"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "dead-control",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "count-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "clicks"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "add-btn",
+              "type": "button",
+              "properties": {
+                "text": "Add"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add"
+                }
+              ]
+            },
+            {
+              "id": "lonely-in",
+              "type": "input",
+              "properties": {
+                "label": "Lonely"
+              },
+              "dataBindings": [],
+              "eventBindings": []
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add",
+              "operationName": "counter.add",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "clicks"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "read but unwritten keys seed by reader shape",
+      "contract": {
+        "name": "seeds",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "rows",
+            "type": "list",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "entries"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "note",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "motto"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "clicks"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "add-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-add"
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-add",
+            "operationName": "counter.add",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "clicks"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "expected": {
+        "errors": [],
+        "warnings": [
+          {
+            "path": "initialState.motto",
+            "message": "State key \"motto\" was read but never written; seeded with null",
+            "code": "MANIFEST_ADJUSTED"
+          }
+        ],
+        "mutated": {
+          "name": "seeds",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "rows",
+              "type": "list",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "entries"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "note",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "motto"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "count-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "clicks"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "add-btn",
+              "type": "button",
+              "properties": {
+                "text": "Add"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-add"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-add",
+              "operationName": "counter.add",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "clicks"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          },
+          "initialState": {
+            "entries": [],
+            "motto": null
+          }
+        }
+      }
+    },
+    {
+      "name": "centered entry rows align to end",
+      "contract": {
+        "name": "entry-row",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "entry",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "align": "center"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "what-in",
+                "type": "input",
+                "properties": {
+                  "label": "What"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "go-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Go"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-note"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "note",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "note"
+              }
+            ],
+            "eventBindings": []
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-note",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "note"
+              },
+              {
+                "name": "value",
+                "source": "ui-element",
+                "sourceId": "what-in"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "expected": {
+        "errors": [],
+        "warnings": [
+          {
+            "path": "elements.0.properties.align",
+            "message": "Row mixes labeled fields with other controls; align \"center\" floats them, using \"end\"",
+            "code": "MANIFEST_ADJUSTED"
+          }
+        ],
+        "mutated": {
+          "name": "entry-row",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "entry",
+              "type": "container",
+              "properties": {
+                "direction": "row",
+                "align": "end"
+              },
+              "dataBindings": [],
+              "eventBindings": [],
+              "children": [
+                {
+                  "id": "what-in",
+                  "type": "input",
+                  "properties": {
+                    "label": "What"
+                  },
+                  "dataBindings": [],
+                  "eventBindings": []
+                },
+                {
+                  "id": "go-btn",
+                  "type": "button",
+                  "properties": {
+                    "text": "Go"
+                  },
+                  "dataBindings": [],
+                  "eventBindings": [
+                    {
+                      "event": "click",
+                      "operationId": "op-note"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "note",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "note"
+                }
+              ],
+              "eventBindings": []
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-note",
+              "operationName": "state.set",
+              "inputs": [
+                {
+                  "name": "key",
+                  "source": "constant",
+                  "sourceId": "note"
+                },
+                {
+                  "name": "value",
+                  "source": "ui-element",
+                  "sourceId": "what-in"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    }
+  ]
+}

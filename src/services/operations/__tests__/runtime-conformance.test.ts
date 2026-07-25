@@ -25,6 +25,8 @@ import {
   extractStreamingContract,
   parsePartialJson,
 } from '../../ai-interpreter/partial-json';
+import { checkAgainstManifests } from '../../../schemas/contract';
+import type { ContractShape } from '../../../schemas/contract';
 import { expandPackOperations, expandUiFragment } from '../../fragments/ui-fragments';
 import type { Contract, OperationBinding, UIElement } from '../../../types/contract';
 
@@ -339,6 +341,28 @@ const streamingFixtures = JSON.parse(
     contract: unknown;
   }>;
 };
+
+const validationFixtures = JSON.parse(
+  readFileSync(resolve(fixtureDir, 'validation.json'), 'utf8')
+) as {
+  validation: Array<{
+    name: string;
+    contract: Record<string, unknown>;
+    expected: { errors: unknown; warnings: unknown; mutated: unknown };
+  }>;
+};
+
+describe('runtime conformance: validation', () => {
+  for (const vector of validationFixtures.validation) {
+    it(vector.name, () => {
+      const contract = JSON.parse(JSON.stringify(vector.contract)) as ContractShape;
+      const result = checkAgainstManifests(contract);
+      expect(jsonNormalize(result.errors)).toEqual(vector.expected.errors);
+      expect(jsonNormalize(result.warnings)).toEqual(vector.expected.warnings);
+      expect(jsonNormalize(contract)).toEqual(vector.expected.mutated);
+    });
+  }
+});
 
 describe('runtime conformance: streaming', () => {
   for (const vector of streamingFixtures.streaming) {
