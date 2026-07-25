@@ -356,8 +356,15 @@ publisher fingerprint pinning and downgrade consent, then commit), part removal,
 secrets, and recipe opens. Native app windows carry a bottom edit bar
 (`editExperience` runs the Rust edit pipeline: `compose::edit_contract` ports the edit
 mode with the id-stability rules and EDIT_REMOVED_PART warnings, the record updates, and
-the session rebuilds with state preserved under an `editStatus` lifecycle) plus a bookmark
-star wired to the tray and home. `scripts/package-macos.sh` builds the installable app:
+the session rebuilds with state preserved under an `editStatus` lifecycle), a bookmark
+star wired to the tray and home, and an Editor button opening the native editors: the
+contract as JSON validated and applied through `compose::check_contract_json` (structural
+schema plus the manifest checker, verdicts listing every path and message), and the
+blueprint projection (`compose::derive_blueprint`) whose edited plan regenerates the
+contract through `compose::generate_from_blueprint` (blueprint mode over the same loop),
+both landing with state preserved. The home reads the detailed bookmarks list, refreshes
+without raising its window (`raise` on the home message; only explicit opens front it),
+and shows example prompt chips when the create field is empty. `scripts/package-macos.sh` builds the installable app:
 the panel compiles in release mode, stages under `src-tauri/binaries/` (gitignored), and
 `tauri build --config src-tauri/tauri.macos-app.conf.json` bundles it as an externalBin in
 DER.app; a packaged build with the bundled panel runs native-first by default
