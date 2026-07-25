@@ -220,10 +220,12 @@ Contracts may carry `initialState`. Constants can carry a typed `value` field (b
 optional transform pipelines). Manifest knobs map to `type-knob-value` CSS classes via
 `applyKnobs` in the renderer (invalid enum values normalize to the manifest default; `form`
 elements take the container knobs). `contract.styling` picks an app-level look:
-`theme` (`STYLE_THEMES` in the registry: default/dark/paper/terminal) and optional `accent`
-(blue/green/violet/rose/amber) become `der-theme-*`/`der-accent-*` classes driving the CSS
-variables in `experience.css`; the standalone window chrome follows the same variables, and
-unknown values normalize with a warning. List
+`theme` (`STYLE_THEMES` in the registry: default/dark/paper/terminal) and optional `accent`,
+either a palette name (blue/green/violet/rose/amber/cyan, a `der-accent-*` class) or any
+"#RRGGBB" color the model derives from the request (`accent-color.ts` computes the accent
+trio as inline CSS variables; the native panel tints from the same value); the theme classes
+drive the CSS variables in `experience.css`, the standalone window chrome and the native
+windows follow the same look, and unknown values normalize with a warning. List
 elements repeat children per bound item with an `item` binding scope and support an `emptyText`
 knob. `normalizeContract` converts legacy `triggers` into event bindings before rendering.
 
