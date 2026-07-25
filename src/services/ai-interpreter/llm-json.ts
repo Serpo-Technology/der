@@ -72,6 +72,49 @@ export interface GenerateJsonOptions<T = unknown> {
   onPartial?: (accumulated: string, attempt: number) => void;
 }
 
+export type ParseVerdict<T> = { ok: true; value: T } | { ok: false; problem: string };
+
+/**
+ * The response-acceptance stage of validated generation: extract the JSON,
+ * parse it, validate structurally, then semantically. Pure; the repair loop
+ * feeds the returned problem back to the model verbatim.
+ */
+export function parseValidatedJson<S extends z.ZodType>(
+  raw: string,
+  schema: S,
+  semanticCheck?: (value: z.output<S>) => string[]
+): ParseVerdict<z.output<S>> {
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(extractJson(raw));
+  } catch (error) {
+    return {
+      ok: false,
+      problem: `The response was not parseable JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+  const result = schema.safeParse(candidate);
+  if (!result.success) {
+    const lines = result.error.issues.slice(0, 5).map((issue) => {
+      const path = issue.path.join('.') || '(root)';
+      const snippet = snippetNear(candidate, issue.path);
+      return snippet
+        ? `${path}: ${issue.message} (the object there is: ${snippet})`
+        : `${path}: ${issue.message}`;
+    });
+    return { ok: false, problem: `The JSON failed validation:\n${lines.join('\n')}` };
+  }
+  if (semanticCheck) {
+    const problems = semanticCheck(result.data);
+    if (problems.length > 0) {
+      return { ok: false, problem: `The JSON violates part manifests:\n${problems.join('\n')}` };
+    }
+  }
+  return { ok: true, value: result.data };
+}
+
 export async function generateValidatedJson<S extends z.ZodType>(
   llm: LLMClient,
   messages: LLMMessage[],
@@ -110,37 +153,7 @@ export async function generateValidatedJson<S extends z.ZodType>(
     return response.content;
   };
 
-  const parse = (raw: string): { ok: true; value: z.output<S> } | { ok: false; problem: string } => {
-    let candidate: unknown;
-    try {
-      candidate = JSON.parse(extractJson(raw));
-    } catch (error) {
-      return {
-        ok: false,
-        problem: `The response was not parseable JSON: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      };
-    }
-    const result = schema.safeParse(candidate);
-    if (!result.success) {
-      const lines = result.error.issues.slice(0, 5).map((issue) => {
-        const path = issue.path.join('.') || '(root)';
-        const snippet = snippetNear(candidate, issue.path);
-        return snippet
-          ? `${path}: ${issue.message} (the object there is: ${snippet})`
-          : `${path}: ${issue.message}`;
-      });
-      return { ok: false, problem: `The JSON failed validation:\n${lines.join('\n')}` };
-    }
-    if (options.semanticCheck) {
-      const problems = options.semanticCheck(result.data);
-      if (problems.length > 0) {
-        return { ok: false, problem: `The JSON violates part manifests:\n${problems.join('\n')}` };
-      }
-    }
-    return { ok: true, value: result.data };
-  };
+  const parse = (raw: string) => parseValidatedJson(raw, schema, options.semanticCheck);
 
   let conversation: LLMMessage[] = [...messages];
   let raw = await attempt(conversation);

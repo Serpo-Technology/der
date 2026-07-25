@@ -43,6 +43,46 @@ import {
 import { checkRecipe, resolveRecipeShape } from '../recipes/recipe-check';
 import { TRANSFORMS } from '../operations/transforms';
 
+/**
+ * The create-mode semantic gate: a recipe answer must name an installed
+ * recipe that still validates against the current vocabulary; a contract
+ * answer runs the manifest checker. Problems feed the repair round.
+ */
+export function checkComposedCandidate(candidate: { recipe?: string; contract?: unknown }): {
+  problems: string[];
+  warnings: ValidationWarning[];
+} {
+  if (candidate.recipe !== undefined) {
+    const def = getRecipeDef(candidate.recipe);
+    if (!def) {
+      const names = Object.keys(FRAGMENT_RECIPES).sort().join(', ');
+      return {
+        problems: [
+          `recipe: "${candidate.recipe}" is not an installed app${
+            names ? ` (installed: ${names})` : ''
+          }; compose a contract instead`,
+        ],
+        warnings: [],
+      };
+    }
+    const check = checkRecipe(def);
+    if (!check.ok) {
+      return {
+        problems: [
+          `recipe: "${candidate.recipe}" cannot open (${check.problems.join('; ')}); compose a contract instead`,
+        ],
+        warnings: [],
+      };
+    }
+    return { problems: [], warnings: [] };
+  }
+  const result = checkAgainstManifests(candidate.contract as ContractShape);
+  return {
+    problems: result.errors.length > 0 ? [formatManifestErrors(result.errors)] : [],
+    warnings: result.warnings,
+  };
+}
+
 export class ContractBuilder {
   private lastWarnings: ValidationWarning[] = [];
 
@@ -83,28 +123,9 @@ export class ContractBuilder {
       ],
       onPartial,
       semanticCheck: (candidate) => {
-        if (candidate.recipe !== undefined) {
-          warnings = [];
-          const def = getRecipeDef(candidate.recipe);
-          if (!def) {
-            const names = Object.keys(FRAGMENT_RECIPES).sort().join(', ');
-            return [
-              `recipe: "${candidate.recipe}" is not an installed app${
-                names ? ` (installed: ${names})` : ''
-              }; compose a contract instead`,
-            ];
-          }
-          const check = checkRecipe(def);
-          if (!check.ok) {
-            return [
-              `recipe: "${candidate.recipe}" cannot open (${check.problems.join('; ')}); compose a contract instead`,
-            ];
-          }
-          return [];
-        }
-        const result = checkAgainstManifests(candidate.contract as ContractShape);
-        warnings = result.warnings;
-        return result.errors.length > 0 ? [formatManifestErrors(result.errors)] : [];
+        const checked = checkComposedCandidate(candidate);
+        warnings = checked.warnings;
+        return checked.problems;
       },
     });
 
@@ -124,10 +145,7 @@ export class ContractBuilder {
     if (warnings.length > 0) {
       console.warn('Contract adjusted against part manifests:', warnings);
     }
-    const contract = this.postProcess(
-      composed.contract as ContractShape,
-      spec.goal || description
-    );
+    const contract = this.postProcess(composed.contract as ContractShape, spec.goal || description);
     return { contract, spec };
   }
 
@@ -229,8 +247,7 @@ export class ContractBuilder {
       semanticCheck: (candidate) => {
         const result = checkAgainstManifests(candidate as ContractShape);
         warnings = result.warnings;
-        const problems =
-          result.errors.length > 0 ? [formatManifestErrors(result.errors)] : [];
+        const problems = result.errors.length > 0 ? [formatManifestErrors(result.errors)] : [];
         problems.push(...this.checkIdStability(candidate as ContractShape, stableKinds));
         return problems;
       },
@@ -331,139 +348,6 @@ export class ContractBuilder {
 
   /** Compact drops howtos and examples: the retrieval-sized prompt shape. */
   private async renderCatalog(compact = false): Promise<string> {
-    const elementLines = Object.values(ELEMENT_MANIFESTS).flatMap((manifest) => {
-      const lines = [`- ${manifest.type}: ${manifest.description}`];
-      if (manifest.knobs.length > 0) {
-        const knobs = manifest.knobs
-          .map((knob) =>
-            knob.type === 'enum'
-              ? `${knob.name}: ${(knob.values ?? []).join('|')} (default ${knob.default})`
-              : `${knob.name}: ${knob.type}`
-          )
-          .join('; ');
-        lines.push(`  knobs: ${knobs}`);
-      }
-      if (manifest.bindableProps?.length) {
-        lines.push(`  bindable: ${manifest.bindableProps.join(', ')}`);
-      }
-      if (!compact) {
-        lines.push(`  howto: ${manifest.howto}`);
-        if (manifest.example) {
-          lines.push(`  example: ${JSON.stringify(manifest.example)}`);
-        }
-      }
-      return lines;
-    });
-
-    const operationLines = Object.values(BUILTIN_OPERATIONS)
-      .filter((def) => !def.hidden)
-      .flatMap((def) => {
-        const inputs =
-          def.inputs
-            .map((spec) => `${spec.name}${spec.required ? '' : '?'}: ${spec.type}`)
-            .join(', ') || 'none';
-        const outputs = def.outputs.map((spec) => `${spec.name}: ${spec.type}`).join(', ') || 'none';
-        const lines = [`- ${def.name} (inputs: ${inputs}; outputs: ${outputs}): ${def.description}`];
-        if (!compact) {
-          if (def.howto) lines.push(`  howto: ${def.howto}`);
-          if (def.example) lines.push(`  example: ${JSON.stringify(def.example)}`);
-        }
-        return lines;
-      });
-
-    const uiFragmentLines = Object.values(FRAGMENT_ELEMENTS).flatMap((def) => {
-      const params = def.params
-        .map((param) => {
-          const req = param.required ? '!' : '?';
-          const dflt = param.default !== undefined ? ` (default ${JSON.stringify(param.default)})` : '';
-          return `${param.name}${req}: ${param.type}${dflt}`;
-        })
-        .join('; ');
-      const usage = `{"id": "<id>", "type": "${def.name}", "properties": {${def.params
-        .filter((param) => param.required)
-        .map((param) => `"${param.name}": <${param.type}>`)
-        .join(', ')}}}`;
-      const lines = [`- ${def.name}: ${def.description}`];
-      if (params) lines.push(`  params: ${params}`);
-      lines.push(`  usage: ${usage}`);
-      if (def.operations?.length) {
-        // Self-wired packs: derive the state keys their operations write so
-        // the model can read them from outside without guessing.
-        const keys = [
-          ...new Set(
-            def.operations.flatMap((op) => {
-              const inputs = Array.isArray(op.inputs) ? op.inputs : [];
-              return inputs
-                .filter(
-                  (input): input is { name: string; source: string; sourceId: string } =>
-                    !!input &&
-                    typeof input === 'object' &&
-                    (input as { name?: unknown }).name === 'key' &&
-                    (input as { source?: unknown }).source === 'constant' &&
-                    typeof (input as { sourceId?: unknown }).sourceId === 'string' &&
-                    ((input as { sourceId: string }).sourceId).startsWith('{{id}}')
-                )
-                .map((input) => input.sourceId.replace('{{id}}', '<instance id>'));
-            })
-          ),
-        ];
-        lines.push(
-          `  self-wired: ships its own operations, so add NO operations and no operationId for it${
-            keys.length
-              ? `; it writes state keys ${keys.join(' and ')}, which other bindings and operation inputs may read`
-              : ''
-          }`
-        );
-      }
-      if (def.howto) lines.push(`  howto: ${def.howto}`);
-      return lines;
-    });
-
-    const credentialLines = INTEGRATION_CREDENTIALS.flatMap((cred) => {
-      const shape =
-        cred.kind === 'bearer'
-          ? 'bearer token'
-          : cred.kind === 'header'
-            ? `header "${cred.target}"`
-            : `query parameter "${cred.target}"`;
-      const lines = [
-        `- ${cred.name} (${shape})${cred.baseUrl ? `: endpoints MUST start with ${cred.baseUrl}` : ''}`,
-      ];
-      if (cred.notes) lines.push(`  service notes: ${cred.notes}`);
-      return lines;
-    });
-
-    const transformLines = Object.values(TRANSFORMS).map((def) => {
-      const params = def.parameters.map((p) => p.name).join(', ');
-      return compact
-        ? `- ${def.name}${params ? ` {${params}}` : ''}`
-        : `- ${def.name}${params ? ` {${params}}` : ''}: ${def.description}`;
-    });
-
-    // Installed recipes that still validate against the current vocabulary.
-    // Sorted by name so the cached prompt prefix stays byte-stable.
-    const recipeLines = Object.values(FRAGMENT_RECIPES)
-      .filter((def) => checkRecipe(def).ok)
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((def) => {
-        const keywords = def.keywords.length ? ` (keywords: ${def.keywords.join(', ')})` : '';
-        return `- ${def.name} "${def.title}": ${def.description}${keywords}`;
-      });
-
-    const fragmentLines = Object.values(FRAGMENT_OPERATIONS).flatMap((def) => {
-      const inputs =
-        def.inputs
-          .map((spec) => `${spec.name}${spec.required ? '' : '?'}: ${spec.type}`)
-          .join(', ') || 'none';
-      const outputs = def.outputs.map((spec) => `${spec.name}: ${spec.type}`).join(', ') || 'none';
-      const lines = [`- ${def.name} (inputs: ${inputs}; outputs: ${outputs}): ${def.description}`];
-      if (!compact) {
-        if (def.howto) lines.push(`  howto: ${def.howto}`);
-        if (def.example) lines.push(`  example: ${JSON.stringify(def.example)}`);
-      }
-      return lines;
-    });
-
     // Custom (non-builtin) operations registered in the repository, if any.
     // Sorted by name so the prompt prefix stays byte-stable for caching.
     let customLines: string[] = [];
@@ -480,145 +364,300 @@ export class ContractBuilder {
     } catch {
       // Repository unavailable; the builtin catalog is enough to generate.
     }
-
-    return [
-      'ELEMENT PARTS (compose these; plain HTML tag names are also accepted):',
-      ...elementLines,
-      '',
-      'BUILTIN OPERATIONS (use the exact name with executionType "builtin"):',
-      ...operationLines,
-      '',
-      'TRANSFORMS (compose into "transforms" pipelines; applied in order):',
-      ...transformLines,
-      ...(fragmentLines.length
-        ? ['', 'INSTALLED PART OPERATIONS (use the exact name with executionType "builtin"):', ...fragmentLines]
-        : []),
-      ...(credentialLines.length
-        ? [
-            '',
-            'INTEGRATION CREDENTIALS (for remote operations: set implementation "auth" to a name below; the runtime injects the secret, which NEVER appears in the contract):',
-            ...credentialLines,
-          ]
-        : []),
-      ...(uiFragmentLines.length
-        ? [
-            '',
-            'COMPOSED UI FRAGMENTS (single elements the runtime expands; params go in "properties"). Prefer these over hand-building the same pattern from raw elements. Give every dashboard or summary number its own stat_tile in a row container instead of running them together as plain text:',
-            ...uiFragmentLines,
-          ]
-        : []),
-      ...(recipeLines.length
-        ? [
-            '',
-            'INSTALLED APPS (complete proven apps already on this machine):',
-            ...recipeLines,
-          ]
-        : []),
-      ...(customLines.length ? ['', 'REGISTERED CUSTOM OPERATIONS:', ...customLines] : []),
-    ].join('\n');
+    return renderCatalogText(compact, customLines);
   }
 
   private postProcess(shape: ContractShape, fallbackDescription?: string): Contract {
-    const warnings: string[] = [];
-
-    // Unique ids across the element tree and operations.
-    const seenIds = new Set<string>();
-    const uniqueId = (id: string): string => {
-      let candidate = id;
-      let n = 2;
-      while (seenIds.has(candidate)) {
-        candidate = `${id}-${n++}`;
-      }
-      seenIds.add(candidate);
-      return candidate;
-    };
-
-    const fixElement = (element: UIElement): UIElement => {
-      const id = uniqueId(element.id);
-      if (id !== element.id) {
-        warnings.push(`Renamed duplicate element id "${element.id}" to "${id}"`);
-      }
-      let type = element.type;
-      if (!isKnownElementType(type)) {
-        if (INTRINSIC_ELEMENT_TYPES.has(type.toLowerCase())) {
-          type = type.toLowerCase();
-        } else {
-          warnings.push(`Unknown element type "${type}" rendered as container`);
-          type = 'container';
-        }
-      }
-      return {
-        ...element,
-        id,
-        type,
-        children: element.children?.map(fixElement),
-      };
-    };
-    const elements = (shape.elements as UIElement[]).map(fixElement);
-
-    // Resolve execution types (unknown names were already repaired or errored).
-    const operations: OperationBinding[] = (shape.operations as OperationBinding[]).map((op) => {
-      const id = uniqueId(op.id);
-      if (getOperationDef(op.operationName)) {
-        return { ...op, id, executionType: 'builtin', implementation: undefined };
-      }
-      if (op.implementation?.endpoint) {
-        return {
-          ...op,
-          id,
-          executionType: 'remote',
-          implementation: { ...op.implementation, type: 'remote' },
-        };
-      }
-      return { ...op, id };
-    });
-
-    // An omitted layout materializes as empty flex properties; fill the
-    // standard column so omission renders identically to the explicit form.
-    const layout =
-      shape.layout && Object.keys(shape.layout.properties ?? {}).length > 0
-        ? shape.layout
-        : {
-            type: 'flex' as const,
-            properties: { flexDirection: 'column', gap: '12px', padding: '16px' },
-          };
-
-    const now = new Date();
-    const contract: Contract = {
-      name: shape.name,
-      version: shape.version,
-      initialState: shape.initialState,
-      elements,
-      operations,
-      layout,
-      styling: shape.styling,
-      metadata: {
-        createdAt: shape.metadata?.createdAt ?? now,
-        updatedAt: now,
-        version: shape.metadata?.version ?? shape.version,
-        description: shape.metadata?.description ?? fallbackDescription,
-        tags: shape.metadata?.tags,
-        author: shape.metadata?.author,
-      },
-    };
-
-    if (warnings.length) {
-      console.warn('Contract post-processing adjustments:', warnings);
-    }
-    return normalizeContract(contract);
+    return finalizeContractShape(shape, fallbackDescription);
   }
 }
 
-const CREATE_PROMPT_SECTION = `CREATE MODE:
+/**
+ * The model-facing part catalog rendered from the registries: builtin and
+ * installed vocabulary, credentials, and proven recipes. Pure so offline
+ * tooling and conformance vectors render the exact production prompt.
+ */
+export function renderCatalogText(compact = false, customLines: string[] = []): string {
+  const elementLines = Object.values(ELEMENT_MANIFESTS).flatMap((manifest) => {
+    const lines = [`- ${manifest.type}: ${manifest.description}`];
+    if (manifest.knobs.length > 0) {
+      const knobs = manifest.knobs
+        .map((knob) =>
+          knob.type === 'enum'
+            ? `${knob.name}: ${(knob.values ?? []).join('|')} (default ${knob.default})`
+            : `${knob.name}: ${knob.type}`
+        )
+        .join('; ');
+      lines.push(`  knobs: ${knobs}`);
+    }
+    if (manifest.bindableProps?.length) {
+      lines.push(`  bindable: ${manifest.bindableProps.join(', ')}`);
+    }
+    if (!compact) {
+      lines.push(`  howto: ${manifest.howto}`);
+      if (manifest.example) {
+        lines.push(`  example: ${JSON.stringify(manifest.example)}`);
+      }
+    }
+    return lines;
+  });
+
+  const operationLines = Object.values(BUILTIN_OPERATIONS)
+    .filter((def) => !def.hidden)
+    .flatMap((def) => {
+      const inputs =
+        def.inputs
+          .map((spec) => `${spec.name}${spec.required ? '' : '?'}: ${spec.type}`)
+          .join(', ') || 'none';
+      const outputs = def.outputs.map((spec) => `${spec.name}: ${spec.type}`).join(', ') || 'none';
+      const lines = [`- ${def.name} (inputs: ${inputs}; outputs: ${outputs}): ${def.description}`];
+      if (!compact) {
+        if (def.howto) lines.push(`  howto: ${def.howto}`);
+        if (def.example) lines.push(`  example: ${JSON.stringify(def.example)}`);
+      }
+      return lines;
+    });
+
+  const uiFragmentLines = Object.values(FRAGMENT_ELEMENTS).flatMap((def) => {
+    const params = def.params
+      .map((param) => {
+        const req = param.required ? '!' : '?';
+        const dflt =
+          param.default !== undefined ? ` (default ${JSON.stringify(param.default)})` : '';
+        return `${param.name}${req}: ${param.type}${dflt}`;
+      })
+      .join('; ');
+    const usage = `{"id": "<id>", "type": "${def.name}", "properties": {${def.params
+      .filter((param) => param.required)
+      .map((param) => `"${param.name}": <${param.type}>`)
+      .join(', ')}}}`;
+    const lines = [`- ${def.name}: ${def.description}`];
+    if (params) lines.push(`  params: ${params}`);
+    lines.push(`  usage: ${usage}`);
+    if (def.operations?.length) {
+      // Self-wired packs: derive the state keys their operations write so
+      // the model can read them from outside without guessing.
+      const keys = [
+        ...new Set(
+          def.operations.flatMap((op) => {
+            const inputs = Array.isArray(op.inputs) ? op.inputs : [];
+            return inputs
+              .filter(
+                (input): input is { name: string; source: string; sourceId: string } =>
+                  !!input &&
+                  typeof input === 'object' &&
+                  (input as { name?: unknown }).name === 'key' &&
+                  (input as { source?: unknown }).source === 'constant' &&
+                  typeof (input as { sourceId?: unknown }).sourceId === 'string' &&
+                  (input as { sourceId: string }).sourceId.startsWith('{{id}}')
+              )
+              .map((input) => input.sourceId.replace('{{id}}', '<instance id>'));
+          })
+        ),
+      ];
+      lines.push(
+        `  self-wired: ships its own operations, so add NO operations and no operationId for it${
+          keys.length
+            ? `; it writes state keys ${keys.join(' and ')}, which other bindings and operation inputs may read`
+            : ''
+        }`
+      );
+    }
+    if (def.howto) lines.push(`  howto: ${def.howto}`);
+    return lines;
+  });
+
+  const credentialLines = INTEGRATION_CREDENTIALS.flatMap((cred) => {
+    const shape =
+      cred.kind === 'bearer'
+        ? 'bearer token'
+        : cred.kind === 'header'
+          ? `header "${cred.target}"`
+          : `query parameter "${cred.target}"`;
+    const lines = [
+      `- ${cred.name} (${shape})${cred.baseUrl ? `: endpoints MUST start with ${cred.baseUrl}` : ''}`,
+    ];
+    if (cred.notes) lines.push(`  service notes: ${cred.notes}`);
+    return lines;
+  });
+
+  const transformLines = Object.values(TRANSFORMS).map((def) => {
+    const params = def.parameters.map((p) => p.name).join(', ');
+    return compact
+      ? `- ${def.name}${params ? ` {${params}}` : ''}`
+      : `- ${def.name}${params ? ` {${params}}` : ''}: ${def.description}`;
+  });
+
+  // Installed recipes that still validate against the current vocabulary.
+  // Sorted by name so the cached prompt prefix stays byte-stable.
+  const recipeLines = Object.values(FRAGMENT_RECIPES)
+    .filter((def) => checkRecipe(def).ok)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((def) => {
+      const keywords = def.keywords.length ? ` (keywords: ${def.keywords.join(', ')})` : '';
+      return `- ${def.name} "${def.title}": ${def.description}${keywords}`;
+    });
+
+  const fragmentLines = Object.values(FRAGMENT_OPERATIONS).flatMap((def) => {
+    const inputs =
+      def.inputs
+        .map((spec) => `${spec.name}${spec.required ? '' : '?'}: ${spec.type}`)
+        .join(', ') || 'none';
+    const outputs = def.outputs.map((spec) => `${spec.name}: ${spec.type}`).join(', ') || 'none';
+    const lines = [`- ${def.name} (inputs: ${inputs}; outputs: ${outputs}): ${def.description}`];
+    if (!compact) {
+      if (def.howto) lines.push(`  howto: ${def.howto}`);
+      if (def.example) lines.push(`  example: ${JSON.stringify(def.example)}`);
+    }
+    return lines;
+  });
+
+  return [
+    'ELEMENT PARTS (compose these; plain HTML tag names are also accepted):',
+    ...elementLines,
+    '',
+    'BUILTIN OPERATIONS (use the exact name with executionType "builtin"):',
+    ...operationLines,
+    '',
+    'TRANSFORMS (compose into "transforms" pipelines; applied in order):',
+    ...transformLines,
+    ...(fragmentLines.length
+      ? [
+          '',
+          'INSTALLED PART OPERATIONS (use the exact name with executionType "builtin"):',
+          ...fragmentLines,
+        ]
+      : []),
+    ...(credentialLines.length
+      ? [
+          '',
+          'INTEGRATION CREDENTIALS (for remote operations: set implementation "auth" to a name below; the runtime injects the secret, which NEVER appears in the contract):',
+          ...credentialLines,
+        ]
+      : []),
+    ...(uiFragmentLines.length
+      ? [
+          '',
+          'COMPOSED UI FRAGMENTS (single elements the runtime expands; params go in "properties"). Prefer these over hand-building the same pattern from raw elements. Give every dashboard or summary number its own stat_tile in a row container instead of running them together as plain text:',
+          ...uiFragmentLines,
+        ]
+      : []),
+    ...(recipeLines.length
+      ? ['', 'INSTALLED APPS (complete proven apps already on this machine):', ...recipeLines]
+      : []),
+    ...(customLines.length ? ['', 'REGISTERED CUSTOM OPERATIONS:', ...customLines] : []),
+  ].join('\n');
+}
+
+/**
+ * Normalizes a validated model shape into a renderable contract: unique ids,
+ * unknown element types degraded to containers, execution types resolved,
+ * the default column layout filled, and metadata stamped. Pure aside from
+ * the timestamps.
+ */
+export function finalizeContractShape(
+  shape: ContractShape,
+  fallbackDescription?: string
+): Contract {
+  const warnings: string[] = [];
+
+  // Unique ids across the element tree and operations.
+  const seenIds = new Set<string>();
+  const uniqueId = (id: string): string => {
+    let candidate = id;
+    let n = 2;
+    while (seenIds.has(candidate)) {
+      candidate = `${id}-${n++}`;
+    }
+    seenIds.add(candidate);
+    return candidate;
+  };
+
+  const fixElement = (element: UIElement): UIElement => {
+    const id = uniqueId(element.id);
+    if (id !== element.id) {
+      warnings.push(`Renamed duplicate element id "${element.id}" to "${id}"`);
+    }
+    let type = element.type;
+    if (!isKnownElementType(type)) {
+      if (INTRINSIC_ELEMENT_TYPES.has(type.toLowerCase())) {
+        type = type.toLowerCase();
+      } else {
+        warnings.push(`Unknown element type "${type}" rendered as container`);
+        type = 'container';
+      }
+    }
+    return {
+      ...element,
+      id,
+      type,
+      children: element.children?.map(fixElement),
+    };
+  };
+  const elements = (shape.elements as UIElement[]).map(fixElement);
+
+  // Resolve execution types (unknown names were already repaired or errored).
+  const operations: OperationBinding[] = (shape.operations as OperationBinding[]).map((op) => {
+    const id = uniqueId(op.id);
+    if (getOperationDef(op.operationName)) {
+      return { ...op, id, executionType: 'builtin', implementation: undefined };
+    }
+    if (op.implementation?.endpoint) {
+      return {
+        ...op,
+        id,
+        executionType: 'remote',
+        implementation: { ...op.implementation, type: 'remote' },
+      };
+    }
+    return { ...op, id };
+  });
+
+  // An omitted layout materializes as empty flex properties; fill the
+  // standard column so omission renders identically to the explicit form.
+  const layout =
+    shape.layout && Object.keys(shape.layout.properties ?? {}).length > 0
+      ? shape.layout
+      : {
+          type: 'flex' as const,
+          properties: { flexDirection: 'column', gap: '12px', padding: '16px' },
+        };
+
+  const now = new Date();
+  const contract: Contract = {
+    name: shape.name,
+    version: shape.version,
+    initialState: shape.initialState,
+    elements,
+    operations,
+    layout,
+    styling: shape.styling,
+    metadata: {
+      createdAt: shape.metadata?.createdAt ?? now,
+      updatedAt: now,
+      version: shape.metadata?.version ?? shape.version,
+      description: shape.metadata?.description ?? fallbackDescription,
+      tags: shape.metadata?.tags,
+      author: shape.metadata?.author,
+    },
+  };
+
+  if (warnings.length) {
+    console.warn('Contract post-processing adjustments:', warnings);
+  }
+  return normalizeContract(contract);
+}
+
+export const CREATE_PROMPT_SECTION = `CREATE MODE:
 You are given a user's request for a new app. Respond with ONE JSON object:
 { "spec": { "goal": "one sentence stating what the app does", "assumptions": ["choice you made where the request was open"], "openQuestions": ["question whose answer would change the app"] }, "contract": <the contract> }
 When the catalog has an INSTALLED APPS section and the request asks for what one of those apps already is (same purpose, nothing the app lacks), respond { "spec": <as above>, "recipe": "<name from INSTALLED APPS>" } INSTEAD of a contract: the installed app opens instantly and is already proven to work. The value of "recipe" is the app's exact dotted catalog name, the token before the quoted title (for a line '- apps.expense_tracker "Expense Tracker": ...' it is "apps.expense_tracker"); a title or an invented name is invalid. Record the reuse as a spec assumption. If the request needs anything the installed app does not do, compose the contract yourself. Never respond with both "contract" and "recipe".
 Make reasonable choices instead of blocking on questions; record them as assumptions. Keep both lists short; they are often empty. Return the JSON only: no prose, no code fences.`;
 
-const BLUEPRINT_PROMPT_SECTION = `BLUEPRINT MODE:
+export const BLUEPRINT_PROMPT_SECTION = `BLUEPRINT MODE:
 You are given a reviewed blueprint (goal, planned elements and operations). Produce the contract that realizes it, following the blueprint's intent even where you would design differently. Return the contract JSON object only: no prose, no code fences.`;
 
-const EDIT_PROMPT_SECTION = `EDIT MODE:
+export const EDIT_PROMPT_SECTION = `EDIT MODE:
 You are updating an EXISTING app, given its current contract and a change request. Return the COMPLETE updated contract JSON only: no prose, no code fences.
 - Change only what the instruction requires; keep everything else exactly as it is.
 - Keep the ids of every element and operation you retain. State is keyed by these ids; a changed id loses the user's data. Give NEW parts new ids.
@@ -674,7 +713,7 @@ const COMPACT_EXAMPLE_SECTION = `EXAMPLE CONTRACT (click counter; everything emp
   ]
 }`;
 
-function buildBasePrompt(catalog: string, compact = false): string {
+export function buildBasePrompt(catalog: string, compact = false): string {
   return `You compose a Contract JSON from prewritten parts; a runtime renders it into a live interactive app. You configure parts; you NEVER write code.
 
 CONTRACT SHAPE (omit every field marked ?, every empty array or object, and every default):

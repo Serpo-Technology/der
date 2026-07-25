@@ -60,6 +60,15 @@ pub fn transform_names() -> Vec<&'static str> {
         .unwrap_or_default()
 }
 
+/// Plain HTML tag names the renderer accepts as element types.
+pub fn intrinsic_elements() -> Vec<&'static str> {
+    registry()
+        .get("intrinsicElements")
+        .and_then(Value::as_array)
+        .map(|names| names.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default()
+}
+
 pub fn expr_reserved(identifier: &str) -> bool {
     registry()
         .get("exprReserved")

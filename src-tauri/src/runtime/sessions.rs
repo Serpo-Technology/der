@@ -285,3 +285,106 @@ pub async fn runtime_close_session(
         Ok(())
     })
 }
+
+// ---------------------------------------------------------------------------
+// Native compose: the create pipeline with no webview involved.
+// ---------------------------------------------------------------------------
+
+/// The model transport for real composition: llm_chat with provider, model,
+/// and credentials resolved from stored settings, exactly like the webview's
+/// LLMClient.
+struct HostLlm {
+    app: tauri::AppHandle,
+}
+
+impl super::compose::ComposeLlm for HostLlm {
+    fn send(
+        &mut self,
+        messages: Vec<Value>,
+        options: super::compose::LlmSendOptions,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<super::compose::LlmReply, String>> + Send + '_>,
+    > {
+        let app = self.app.clone();
+        Box::pin(async move {
+            let chat_messages: Vec<crate::llm::ChatMessage> = messages
+                .iter()
+                .map(|message| crate::llm::ChatMessage {
+                    role: message.get("role").and_then(Value::as_str).unwrap_or("user").to_string(),
+                    content: message
+                        .get("content")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                })
+                .collect();
+            let system_blocks: Vec<crate::llm::SystemBlock> = options
+                .system_blocks
+                .iter()
+                .map(|block| crate::llm::SystemBlock { text: block.text.clone(), cache: block.cache })
+                .collect();
+            let request = crate::llm::LlmChatRequest {
+                messages: chat_messages,
+                system_blocks: Some(system_blocks),
+                stream: false,
+                provider: None,
+                model: None,
+                max_tokens: options.max_tokens,
+                temperature: None,
+                json_mode: Some(options.json_mode),
+                base_url: None,
+            };
+            let response = crate::llm::llm_chat_impl(app, request, None).await?;
+            Ok(super::compose::LlmReply {
+                content: response.content,
+                provider: Some(response.provider),
+            })
+        })
+    }
+}
+
+/// The installed vocabulary compose validates and teaches against.
+pub(crate) fn compose_vocabulary(app: &tauri::AppHandle) -> super::compose::ComposeVocabulary {
+    let installed = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|dir| crate::fragments::list_core(&dir.join("fragments")))
+        .unwrap_or_default();
+    let credentials: Vec<Value> = crate::settings::list_integration_credentials(app.clone())
+        .into_iter()
+        .filter_map(|view| serde_json::to_value(view).ok())
+        .collect();
+    super::compose::vocabulary_from_installed(&installed, credentials)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComposeResult {
+    pub contract: Value,
+    pub spec: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recipe_name: Option<String>,
+    pub warnings: Vec<Value>,
+}
+
+/// One model round trip from description to validated, finalized contract,
+/// entirely in the Rust core: prompt, repair loop, manifest checker, and
+/// finalization all run host-side.
+#[tauri::command]
+pub async fn runtime_compose(
+    app: tauri::AppHandle,
+    description: String,
+) -> Result<ComposeResult, String> {
+    let vocab = compose_vocabulary(&app);
+    let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let mut llm = HostLlm { app: app.clone() };
+    let outcome =
+        super::compose::compose_from_description(&mut llm, &description, &vocab, &now_iso).await?;
+    Ok(ComposeResult {
+        contract: outcome.contract,
+        spec: outcome.spec,
+        recipe_name: outcome.recipe_name,
+        warnings: outcome.warnings,
+    })
+}

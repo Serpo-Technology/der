@@ -511,7 +511,7 @@ pub async fn llm_chat_stream(
     llm_chat_impl(app, request, Some(on_chunk)).await
 }
 
-async fn llm_chat_impl(
+pub(crate) async fn llm_chat_impl(
     app: AppHandle,
     request: LlmChatRequest,
     on_chunk: Option<Channel<String>>,

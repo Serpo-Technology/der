@@ -35,18 +35,37 @@ import {
   extractStreamingContract,
   parsePartialJson,
 } from '../../src/services/ai-interpreter/partial-json';
-import { ContractSchema, checkAgainstManifests } from '../../src/schemas/contract';
+import {
+  ComposedResponseSchema,
+  ContractSchema,
+  LlmContractSchema,
+  checkAgainstManifests,
+  formatManifestErrors,
+} from '../../src/schemas/contract';
 import type { ContractShape } from '../../src/schemas/contract';
 import {
   ELEMENT_MANIFESTS,
   FRAGMENT_OPERATIONS,
+  FRAGMENT_RECIPES,
+  INTRINSIC_ELEMENT_TYPES,
   setIntegrationCredentials,
 } from '../../src/services/operations/registry';
-import type { IntegrationCredentialView } from '../../src/services/operations/registry';
+import type { IntegrationCredentialView, RecipeDef } from '../../src/services/operations/registry';
 import {
-  expandUiFragment,
-  expandPackOperations,
-} from '../../src/services/fragments/ui-fragments';
+  BLUEPRINT_PROMPT_SECTION,
+  CREATE_PROMPT_SECTION,
+  EDIT_PROMPT_SECTION,
+  buildBasePrompt,
+  checkComposedCandidate,
+  finalizeContractShape,
+  renderCatalogText,
+} from '../../src/services/ai-interpreter/contract-builder';
+import {
+  generateValidatedJson,
+  parseValidatedJson,
+} from '../../src/services/ai-interpreter/llm-json';
+import type { LLMClient } from '../../src/services/ai-interpreter/llm-client';
+import { expandUiFragment, expandPackOperations } from '../../src/services/fragments/ui-fragments';
 import { FRAGMENT_ELEMENTS, UiFragmentDef } from '../../src/services/operations/registry';
 import type { Contract, OperationBinding, UIElement } from '../../src/types/contract';
 
@@ -86,24 +105,74 @@ const TRANSFORM_CASES: TransformCase[] = [
   { name: 'sum field', transform: 'sum', parameters: { field: 'qty' }, input: ROWS },
   { name: 'sum string numbers', transform: 'sum', parameters: { field: 'price' }, input: ROWS },
   { name: 'sum missing field', transform: 'sum', parameters: { field: 'ghost' }, input: ROWS },
-  { name: 'sum whole entries', transform: 'sum', parameters: { field: '' }, input: [1, 2, '3', null] },
+  {
+    name: 'sum whole entries',
+    transform: 'sum',
+    parameters: { field: '' },
+    input: [1, 2, '3', null],
+  },
   { name: 'sum booleans coerce', transform: 'sum', parameters: { field: 'done' }, input: ROWS },
   { name: 'sum non-array', transform: 'sum', parameters: { field: 'qty' }, input: 7 },
 
-  { name: 'filterBy match', transform: 'filterBy', parameters: { field: 'category', value: 'hardware' }, input: ROWS },
-  { name: 'filterBy loose number', transform: 'filterBy', parameters: { field: 'qty', value: '4' }, input: ROWS },
-  { name: 'filterBy empty keeps all', transform: 'filterBy', parameters: { field: 'category', value: '' }, input: ROWS },
-  { name: 'filterBy null keeps all', transform: 'filterBy', parameters: { field: 'category', value: null }, input: ROWS },
+  {
+    name: 'filterBy match',
+    transform: 'filterBy',
+    parameters: { field: 'category', value: 'hardware' },
+    input: ROWS,
+  },
+  {
+    name: 'filterBy loose number',
+    transform: 'filterBy',
+    parameters: { field: 'qty', value: '4' },
+    input: ROWS,
+  },
+  {
+    name: 'filterBy empty keeps all',
+    transform: 'filterBy',
+    parameters: { field: 'category', value: '' },
+    input: ROWS,
+  },
+  {
+    name: 'filterBy null keeps all',
+    transform: 'filterBy',
+    parameters: { field: 'category', value: null },
+    input: ROWS,
+  },
 
-  { name: 'filterContains hit', transform: 'filterContains', parameters: { field: 'name', value: 'oL' }, input: ROWS },
-  { name: 'filterContains empty keeps all', transform: 'filterContains', parameters: { field: 'name', value: '' }, input: ROWS },
-  { name: 'filterContains missing field', transform: 'filterContains', parameters: { field: 'ghost', value: 'x' }, input: ROWS },
+  {
+    name: 'filterContains hit',
+    transform: 'filterContains',
+    parameters: { field: 'name', value: 'oL' },
+    input: ROWS,
+  },
+  {
+    name: 'filterContains empty keeps all',
+    transform: 'filterContains',
+    parameters: { field: 'name', value: '' },
+    input: ROWS,
+  },
+  {
+    name: 'filterContains missing field',
+    transform: 'filterContains',
+    parameters: { field: 'ghost', value: 'x' },
+    input: ROWS,
+  },
 
   { name: 'filterTruthy', transform: 'filterTruthy', parameters: { field: 'done' }, input: ROWS },
-  { name: 'filterFalsy counts missing', transform: 'filterFalsy', parameters: { field: 'done' }, input: ROWS },
+  {
+    name: 'filterFalsy counts missing',
+    transform: 'filterFalsy',
+    parameters: { field: 'done' },
+    input: ROWS,
+  },
 
   { name: 'sortBy numeric', transform: 'sortBy', parameters: { field: 'price' }, input: ROWS },
-  { name: 'sortBy desc', transform: 'sortBy', parameters: { field: 'qty', direction: 'desc' }, input: ROWS },
+  {
+    name: 'sortBy desc',
+    transform: 'sortBy',
+    parameters: { field: 'qty', direction: 'desc' },
+    input: ROWS,
+  },
   { name: 'sortBy strings', transform: 'sortBy', parameters: { field: 'name' }, input: ROWS },
   {
     name: 'sortBy stable on ties',
@@ -124,7 +193,12 @@ const TRANSFORM_CASES: TransformCase[] = [
 
   { name: 'pick field', transform: 'pick', parameters: { field: 'name' }, input: ROWS[0] },
   { name: 'pick from array head', transform: 'pick', parameters: { field: 'name' }, input: ROWS },
-  { name: 'pick dot path', transform: 'pick', parameters: { field: 'a.b' }, input: { a: { b: 5 } } },
+  {
+    name: 'pick dot path',
+    transform: 'pick',
+    parameters: { field: 'a.b' },
+    input: { a: { b: 5 } },
+  },
   { name: 'pick missing', transform: 'pick', parameters: { field: 'ghost' }, input: ROWS[0] },
   { name: 'pick whole value', transform: 'pick', parameters: { field: '' }, input: 42 },
 
@@ -144,21 +218,76 @@ const TRANSFORM_CASES: TransformCase[] = [
 
   { name: 'round to integer', transform: 'round', parameters: {}, input: 2.5 },
   { name: 'round negative half', transform: 'round', parameters: {}, input: -2.5 },
-  { name: 'round two decimals is a string', transform: 'round', parameters: { decimals: 2 }, input: 1.005 },
-  { name: 'round float artifact', transform: 'round', parameters: { decimals: 2 }, input: 0.1 + 0.2 },
-  { name: 'round non-numeric passes through', transform: 'round', parameters: { decimals: 2 }, input: 'abc' },
+  {
+    name: 'round two decimals is a string',
+    transform: 'round',
+    parameters: { decimals: 2 },
+    input: 1.005,
+  },
+  {
+    name: 'round float artifact',
+    transform: 'round',
+    parameters: { decimals: 2 },
+    input: 0.1 + 0.2,
+  },
+  {
+    name: 'round non-numeric passes through',
+    transform: 'round',
+    parameters: { decimals: 2 },
+    input: 'abc',
+  },
   { name: 'round string number', transform: 'round', parameters: { decimals: 1 }, input: '2.55' },
 
-  { name: 'format inserts value', transform: 'format', parameters: { template: 'Total: {{value}} items' }, input: 3 },
-  { name: 'format first placeholder only', transform: 'format', parameters: { template: '{{value}} and {{value}}' }, input: 'x' },
-  { name: 'format null becomes empty', transform: 'format', parameters: { template: '[{{value}}]' }, input: null },
-  { name: 'format float repr', transform: 'format', parameters: { template: '{{value}}' }, input: 0.1 + 0.2 },
-  { name: 'format integer valued float', transform: 'format', parameters: { template: '{{value}}' }, input: 3.0 },
+  {
+    name: 'format inserts value',
+    transform: 'format',
+    parameters: { template: 'Total: {{value}} items' },
+    input: 3,
+  },
+  {
+    name: 'format first placeholder only',
+    transform: 'format',
+    parameters: { template: '{{value}} and {{value}}' },
+    input: 'x',
+  },
+  {
+    name: 'format null becomes empty',
+    transform: 'format',
+    parameters: { template: '[{{value}}]' },
+    input: null,
+  },
+  {
+    name: 'format float repr',
+    transform: 'format',
+    parameters: { template: '{{value}}' },
+    input: 0.1 + 0.2,
+  },
+  {
+    name: 'format integer valued float',
+    transform: 'format',
+    parameters: { template: '{{value}}' },
+    input: 3.0,
+  },
   { name: 'format missing template passes through', transform: 'format', parameters: {}, input: 7 },
 
-  { name: 'map hit', transform: 'map', parameters: { mapping: { true: 'done', false: '' } }, input: true },
-  { name: 'map miss passes through', transform: 'map', parameters: { mapping: { a: 'b' } }, input: 'z' },
-  { name: 'map non-object passes through', transform: 'map', parameters: { mapping: 'nope' }, input: 'z' },
+  {
+    name: 'map hit',
+    transform: 'map',
+    parameters: { mapping: { true: 'done', false: '' } },
+    input: true,
+  },
+  {
+    name: 'map miss passes through',
+    transform: 'map',
+    parameters: { mapping: { a: 'b' } },
+    input: 'z',
+  },
+  {
+    name: 'map non-object passes through',
+    transform: 'map',
+    parameters: { mapping: 'nope' },
+    input: 'z',
+  },
 
   {
     name: 'deriveField products',
@@ -212,7 +341,10 @@ const PIPELINE_CASES: PipelineCase[] = [
   },
   {
     name: 'unknown step passes value through',
-    steps: [{ type: 'nonexistent', parameters: {} }, { type: 'count', parameters: {} }],
+    steps: [
+      { type: 'nonexistent', parameters: {} },
+      { type: 'count', parameters: {} },
+    ],
     input: [1, 2],
   },
   {
@@ -240,7 +372,11 @@ const EXPRESSION_CASES: ExpressionCase[] = [
   { name: 'float artifacts', expression: '0.1 + 0.2', row: {} },
   { name: 'case insensitive fields', expression: 'qty * price', row: { Qty: '4', PRICE: '1.5' } },
   { name: 'whitespace number field', expression: 'qty + 1', row: { qty: ' 4 ' } },
-  { name: 'functions', expression: 'round(sqrt(x) + min(a, b) + max(a, b) + pow(2, 3))', row: { x: 9, a: 1, b: 2 } },
+  {
+    name: 'functions',
+    expression: 'round(sqrt(x) + min(a, b) + max(a, b) + pow(2, 3))',
+    row: { x: 9, a: 1, b: 2 },
+  },
   { name: 'abs floor ceil', expression: 'abs(-2) + floor(2.7) + ceil(2.1)', row: {} },
   { name: 'constants', expression: 'floor(pi) + floor(e)', row: {} },
   { name: 'division', expression: 'a / b', row: { a: 1, b: 8 } },
@@ -283,15 +419,55 @@ const TODO_STATE = {
 };
 
 const OPERATION_CASES: OperationCase[] = [
-  { name: 'state.set writes and echoes', operation: 'state.set', inputs: { key: 'view', value: 'done' }, state: {} },
-  { name: 'state.set typed value', operation: 'state.set', inputs: { key: 'running', value: true }, state: { running: false } },
-  { name: 'state.set missing value stores null', operation: 'state.set', inputs: { key: 'x' }, state: {} },
+  {
+    name: 'state.set writes and echoes',
+    operation: 'state.set',
+    inputs: { key: 'view', value: 'done' },
+    state: {},
+  },
+  {
+    name: 'state.set typed value',
+    operation: 'state.set',
+    inputs: { key: 'running', value: true },
+    state: { running: false },
+  },
+  {
+    name: 'state.set missing value stores null',
+    operation: 'state.set',
+    inputs: { key: 'x' },
+    state: {},
+  },
 
-  { name: 'counter.add default amount', operation: 'counter.add', inputs: { key: 'clicks' }, state: { clicks: 2 } },
-  { name: 'counter.add unseeded key', operation: 'counter.add', inputs: { key: 'clicks' }, state: {} },
-  { name: 'counter.add negative amount', operation: 'counter.add', inputs: { key: 'n', amount: -2 }, state: { n: 5 } },
-  { name: 'counter.add junk amount is zero', operation: 'counter.add', inputs: { key: 'n', amount: 'x' }, state: { n: 5 } },
-  { name: 'counter.add string state coerces', operation: 'counter.add', inputs: { key: 'n' }, state: { n: '41' } },
+  {
+    name: 'counter.add default amount',
+    operation: 'counter.add',
+    inputs: { key: 'clicks' },
+    state: { clicks: 2 },
+  },
+  {
+    name: 'counter.add unseeded key',
+    operation: 'counter.add',
+    inputs: { key: 'clicks' },
+    state: {},
+  },
+  {
+    name: 'counter.add negative amount',
+    operation: 'counter.add',
+    inputs: { key: 'n', amount: -2 },
+    state: { n: 5 },
+  },
+  {
+    name: 'counter.add junk amount is zero',
+    operation: 'counter.add',
+    inputs: { key: 'n', amount: 'x' },
+    state: { n: 5 },
+  },
+  {
+    name: 'counter.add string state coerces',
+    operation: 'counter.add',
+    inputs: { key: 'n' },
+    state: { n: '41' },
+  },
 
   {
     name: 'list.append assembles fields and generates the id',
@@ -325,13 +501,23 @@ const OPERATION_CASES: OperationCase[] = [
     name: 'list.updateWhere merges set fields on matches',
     operation: 'list.updateWhere',
     inputs: { key: 'cards', value: 'c1', 'set.column': 'doing', 'set.owner': 'Ana' },
-    state: { cards: [{ id: 'c1', column: 'todo' }, { id: 'c2', column: 'todo' }] },
+    state: {
+      cards: [
+        { id: 'c1', column: 'todo' },
+        { id: 'c2', column: 'todo' },
+      ],
+    },
   },
   {
     name: 'list.updateWhere matches loosely on a custom field',
     operation: 'list.updateWhere',
     inputs: { key: 'rows', field: 'qty', value: '4', 'set.flag': true },
-    state: { rows: [{ id: 'a', qty: 4 }, { id: 'b', qty: 10 }] },
+    state: {
+      rows: [
+        { id: 'a', qty: 4 },
+        { id: 'b', qty: 10 },
+      ],
+    },
   },
   {
     name: 'list.updateWhere counts zero on no match',
@@ -366,7 +552,12 @@ const OPERATION_CASES: OperationCase[] = [
     state: { rows: [{ id: 'a' }] },
   },
 
-  { name: 'math.add coerces junk to zero', operation: 'math.add', inputs: { a: '2.5', b: 'x' }, state: {} },
+  {
+    name: 'math.add coerces junk to zero',
+    operation: 'math.add',
+    inputs: { a: '2.5', b: 'x' },
+    state: {},
+  },
 
   {
     name: 'time.now emits the injected instant',
@@ -397,7 +588,12 @@ const OPERATION_CASES: OperationCase[] = [
     state: {},
     env: { randoms: [0.5] },
   },
-  { name: 'random.int junk bounds error', operation: 'random.int', inputs: { min: 'x', max: 6 }, state: {} },
+  {
+    name: 'random.int junk bounds error',
+    operation: 'random.int',
+    inputs: { min: 'x', max: 6 },
+    state: {},
+  },
 
   {
     name: 'random.pick chooses by roll',
@@ -406,7 +602,12 @@ const OPERATION_CASES: OperationCase[] = [
     state: {},
     env: { randoms: [0.7] },
   },
-  { name: 'random.pick empty list errors', operation: 'random.pick', inputs: { list: [] }, state: {} },
+  {
+    name: 'random.pick empty list errors',
+    operation: 'random.pick',
+    inputs: { list: [] },
+    state: {},
+  },
 
   {
     name: 'todos.add trims and stamps',
@@ -415,9 +616,24 @@ const OPERATION_CASES: OperationCase[] = [
     state: TODO_STATE,
     env: { ids: ['t3'] },
   },
-  { name: 'todos.add blank skips', operation: 'todos.add', inputs: { title: '   ' }, state: TODO_STATE },
-  { name: 'todos.toggle flips by id', operation: 'todos.toggle', inputs: { id: 't2' }, state: TODO_STATE },
-  { name: 'todos.remove drops by id', operation: 'todos.remove', inputs: { id: 't1' }, state: TODO_STATE },
+  {
+    name: 'todos.add blank skips',
+    operation: 'todos.add',
+    inputs: { title: '   ' },
+    state: TODO_STATE,
+  },
+  {
+    name: 'todos.toggle flips by id',
+    operation: 'todos.toggle',
+    inputs: { id: 't2' },
+    state: TODO_STATE,
+  },
+  {
+    name: 'todos.remove drops by id',
+    operation: 'todos.remove',
+    inputs: { id: 't1' },
+    state: TODO_STATE,
+  },
 ];
 
 type SessionEvent =
@@ -511,7 +727,12 @@ const SESSION_CASES: SessionCase[] = [
         outputs: [],
       },
     ],
-    initialState: { rows: [{ id: 'a', title: 'x' }, { id: 'b', title: 'y' }] },
+    initialState: {
+      rows: [
+        { id: 'a', title: 'x' },
+        { id: 'b', title: 'y' },
+      ],
+    },
     events: [{ do: 'chain', operationIds: ['op-del'], item: { id: 'a', title: 'x' } }],
   },
   {
@@ -626,9 +847,7 @@ const SESSION_CASES: SessionCase[] = [
           { name: 'key', source: 'constant', sourceId: 'saved' },
           { name: 'value', source: 'constant', sourceId: 'ok' },
         ],
-        outputs: [
-          { name: 'value', target: 'ui-element', targetId: 'status', property: 'text' },
-        ],
+        outputs: [{ name: 'value', target: 'ui-element', targetId: 'status', property: 'text' }],
       },
     ],
     events: [
@@ -717,7 +936,8 @@ function runOperationCase(entry: OperationCase) {
     // inputs and the assembly is covered on both sides.
     const assembled = assembleStructured(entry.inputs, def.structuredPrefixes);
     const outputs = def.execute(assembled as never, ctx) as Record<string, unknown>;
-    if (outputs instanceof Promise) throw new Error(`${entry.name}: async builtins stay outside the kernel`);
+    if (outputs instanceof Promise)
+      throw new Error(`${entry.name}: async builtins stay outside the kernel`);
     const frozenOutputs: Record<string, unknown> = {};
     for (const [name, value] of Object.entries(outputs)) {
       if (!entry.shapeOnlyOutputs?.includes(name)) {
@@ -729,7 +949,11 @@ function runOperationCase(entry: OperationCase) {
       operation: entry.operation,
       inputs: jsonNormalize(entry.inputs),
       state: jsonNormalize(entry.state),
-      env: { ids: entry.env?.ids ?? [], randoms: entry.env?.randoms ?? [], epochMs: FIXED_EPOCH_MS },
+      env: {
+        ids: entry.env?.ids ?? [],
+        randoms: entry.env?.randoms ?? [],
+        epochMs: FIXED_EPOCH_MS,
+      },
       shapeOnlyOutputs: entry.shapeOnlyOutputs ?? [],
       error: false,
       expected: { state: jsonNormalize(state), outputs: frozenOutputs },
@@ -741,7 +965,11 @@ function runOperationCase(entry: OperationCase) {
       operation: entry.operation,
       inputs: jsonNormalize(entry.inputs),
       state: jsonNormalize(entry.state),
-      env: { ids: entry.env?.ids ?? [], randoms: entry.env?.randoms ?? [], epochMs: FIXED_EPOCH_MS },
+      env: {
+        ids: entry.env?.ids ?? [],
+        randoms: entry.env?.randoms ?? [],
+        epochMs: FIXED_EPOCH_MS,
+      },
       shapeOnlyOutputs: [],
       error: true,
       expected: { state: jsonNormalize(entry.state), outputs: {} },
@@ -752,7 +980,6 @@ function runOperationCase(entry: OperationCase) {
     (globalThis as { Date: unknown }).Date = OriginalDate;
   }
 }
-
 
 const ENTRY_ROW_DEF: UiFragmentDef = {
   name: 'basics.entry_row',
@@ -1070,7 +1297,11 @@ const STREAM_FULL = JSON.stringify({
     version: '1.0.0',
     styling: { theme: 'dark', accent: 'green' },
     elements: [
-      { id: 'title', type: 'text', properties: { content: 'Skor Takibi Üst Düzey', role: 'title' } },
+      {
+        id: 'title',
+        type: 'text',
+        properties: { content: 'Skor Takibi Üst Düzey', role: 'title' },
+      },
       {
         id: 'rows',
         type: 'list',
@@ -1087,7 +1318,11 @@ const STREAM_FULL = JSON.stringify({
           },
         ],
         children: [
-          { id: 'r-name', type: 'text', dataBindings: [{ property: 'content', source: 'item', sourceId: 'name' }] },
+          {
+            id: 'r-name',
+            type: 'text',
+            dataBindings: [{ property: 'content', source: 'item', sourceId: 'name' }],
+          },
           {
             id: 'r-pts',
             type: 'text',
@@ -1325,7 +1560,11 @@ const VALIDATION_CASES: ValidationCase[] = [
           type: 'list',
           dataBindings: [{ property: 'items', source: 'state', sourceId: 'entries' }],
         },
-        { id: 'note', type: 'text', dataBindings: [{ property: 'content', source: 'state', sourceId: 'motto' }] },
+        {
+          id: 'note',
+          type: 'text',
+          dataBindings: [{ property: 'content', source: 'state', sourceId: 'motto' }],
+        },
         COUNT_TEXT,
         ADD_BTN,
       ],
@@ -1347,8 +1586,14 @@ const VALIDATION_CASES: ValidationCase[] = [
               sourceId: 'rows',
               transforms: [
                 { type: 'reverse', parameters: {} },
-                { type: 'filterBy', parameters: { field: 'x', value: { source: 'cosmic', sourceId: 'y' } } },
-                { type: 'filterBy', parameters: { field: 'x', value: { source: 'element', sourceId: 'ghost-in' } } },
+                {
+                  type: 'filterBy',
+                  parameters: { field: 'x', value: { source: 'cosmic', sourceId: 'y' } },
+                },
+                {
+                  type: 'filterBy',
+                  parameters: { field: 'x', value: { source: 'element', sourceId: 'ghost-in' } },
+                },
                 { type: 'count', parameters: {} },
               ],
             },
@@ -1375,7 +1620,13 @@ const VALIDATION_CASES: ValidationCase[] = [
               source: 'state',
               sourceId: 'rows',
               transforms: [
-                { type: 'filterContains', parameters: { field: 'title', value: { source: 'element', sourceId: 'search-in' } } },
+                {
+                  type: 'filterContains',
+                  parameters: {
+                    field: 'title',
+                    value: { source: 'element', sourceId: 'search-in' },
+                  },
+                },
                 { type: 'count', parameters: {} },
               ],
             },
@@ -1465,7 +1716,11 @@ const VALIDATION_CASES: ValidationCase[] = [
             },
           ],
           children: [
-            { id: 'r-name', type: 'text', dataBindings: [{ property: 'content', source: 'item', sourceId: 'name' }] },
+            {
+              id: 'r-name',
+              type: 'text',
+              dataBindings: [{ property: 'content', source: 'item', sourceId: 'name' }],
+            },
           ],
         },
       ],
@@ -1504,12 +1759,22 @@ const VALIDATION_CASES: ValidationCase[] = [
               source: 'state',
               sourceId: 'entries',
               transforms: [
-                { type: 'filterContains', parameters: { field: 'title', value: { source: 'element', sourceId: 'title-in' } } },
+                {
+                  type: 'filterContains',
+                  parameters: {
+                    field: 'title',
+                    value: { source: 'element', sourceId: 'title-in' },
+                  },
+                },
               ],
             },
           ],
           children: [
-            { id: 'r-t', type: 'text', dataBindings: [{ property: 'content', source: 'item', sourceId: 'title' }] },
+            {
+              id: 'r-t',
+              type: 'text',
+              dataBindings: [{ property: 'content', source: 'item', sourceId: 'title' }],
+            },
           ],
         },
       ],
@@ -1546,11 +1811,17 @@ const VALIDATION_CASES: ValidationCase[] = [
               property: 'items',
               source: 'state',
               sourceId: 'entries',
-              transforms: [{ type: 'deriveField', parameters: { field: 'value', expression: 'qty * price' } }],
+              transforms: [
+                { type: 'deriveField', parameters: { field: 'value', expression: 'qty * price' } },
+              ],
             },
           ],
           children: [
-            { id: 'r-v', type: 'text', dataBindings: [{ property: 'content', source: 'item', sourceId: 'value' }] },
+            {
+              id: 'r-v',
+              type: 'text',
+              dataBindings: [{ property: 'content', source: 'item', sourceId: 'value' }],
+            },
           ],
         },
         {
@@ -1693,7 +1964,11 @@ const VALIDATION_CASES: ValidationCase[] = [
           properties: { text: 'Go' },
           eventBindings: [{ event: 'click', operationId: 'op-calc' }],
         },
-        { id: 'result', type: 'text', dataBindings: [{ property: 'content', source: 'state', sourceId: 'answer' }] },
+        {
+          id: 'result',
+          type: 'text',
+          dataBindings: [{ property: 'content', source: 'state', sourceId: 'answer' }],
+        },
       ],
       operations: [
         {
@@ -1728,17 +2003,28 @@ const VALIDATION_CASES: ValidationCase[] = [
           id: 'add2-btn',
           type: 'button',
           properties: { text: 'Add' },
-          eventBindings: [{ event: 'click', operationId: 'op-add-row' }, { event: 'click', operationId: 'op-stats' }],
+          eventBindings: [
+            { event: 'click', operationId: 'op-add-row' },
+            { event: 'click', operationId: 'op-stats' },
+          ],
         },
         {
           id: 'rows',
           type: 'list',
           dataBindings: [{ property: 'items', source: 'state', sourceId: 'entries' }],
           children: [
-            { id: 'r-t', type: 'text', dataBindings: [{ property: 'content', source: 'item', sourceId: 'title' }] },
+            {
+              id: 'r-t',
+              type: 'text',
+              dataBindings: [{ property: 'content', source: 'item', sourceId: 'title' }],
+            },
           ],
         },
-        { id: 'mean', type: 'text', dataBindings: [{ property: 'content', source: 'state', sourceId: 'mean' }] },
+        {
+          id: 'mean',
+          type: 'text',
+          dataBindings: [{ property: 'content', source: 'state', sourceId: 'mean' }],
+        },
       ],
       operations: [
         {
@@ -1760,8 +2046,16 @@ const VALIDATION_CASES: ValidationCase[] = [
     },
     partOperations: {
       'stats.summary': {
-        inputs: [{ name: 'values', type: 'array', required: true, description: 'Numbers to summarize' }],
-        outputs: [{ name: 'count' }, { name: 'sum' }, { name: 'mean' }, { name: 'min' }, { name: 'max' }],
+        inputs: [
+          { name: 'values', type: 'array', required: true, description: 'Numbers to summarize' },
+        ],
+        outputs: [
+          { name: 'count' },
+          { name: 'sum' },
+          { name: 'mean' },
+          { name: 'min' },
+          { name: 'max' },
+        ],
       },
     },
   },
@@ -1793,21 +2087,34 @@ const VALIDATION_CASES: ValidationCase[] = [
         {
           id: 'op-bad-auth',
           operationName: 'other.fetch',
-          implementation: { type: 'remote', endpoint: 'https://real.service.dev/x', auth: 'ghostkey' },
+          implementation: {
+            type: 'remote',
+            endpoint: 'https://real.service.dev/x',
+            auth: 'ghostkey',
+          },
           inputs: [],
           outputs: [],
         },
         {
           id: 'op-escaped',
           operationName: 'third.fetch',
-          implementation: { type: 'remote', endpoint: 'https://elsewhere.dev/x', auth: 'weatherkey' },
+          implementation: {
+            type: 'remote',
+            endpoint: 'https://elsewhere.dev/x',
+            auth: 'weatherkey',
+          },
           inputs: [],
           outputs: [],
         },
       ],
     },
     credentials: [
-      { name: 'weatherkey', kind: 'query', target: 'appid', baseUrl: 'https://api.openweathermap.org' },
+      {
+        name: 'weatherkey',
+        kind: 'query',
+        target: 'appid',
+        baseUrl: 'https://api.openweathermap.org',
+      },
     ],
   },
   {
@@ -1822,7 +2129,11 @@ const VALIDATION_CASES: ValidationCase[] = [
           type: 'list',
           dataBindings: [{ property: 'items', source: 'state', sourceId: 'tasks' }],
           children: [
-            { id: 'r-t', type: 'text', dataBindings: [{ property: 'content', source: 'item', sourceId: 'title' }] },
+            {
+              id: 'r-t',
+              type: 'text',
+              dataBindings: [{ property: 'content', source: 'item', sourceId: 'title' }],
+            },
           ],
         },
       ],
@@ -1871,7 +2182,11 @@ const VALIDATION_CASES: ValidationCase[] = [
             },
           ],
         },
-        { id: 'note', type: 'text', dataBindings: [{ property: 'content', source: 'state', sourceId: 'note' }] },
+        {
+          id: 'note',
+          type: 'text',
+          dataBindings: [{ property: 'content', source: 'state', sourceId: 'note' }],
+        },
       ],
       operations: [
         {
@@ -1888,20 +2203,26 @@ const VALIDATION_CASES: ValidationCase[] = [
   },
 ];
 
-/** The registry snapshot the Rust checker embeds: knob tables, builtin
- * operation shapes, transform output kinds, style vocabulary. Generated
- * from the live TS registry so there is one source of truth. */
+/** The registry snapshot the Rust core embeds: knob tables, builtin
+ * operation shapes, transform kinds, style vocabulary, and the full
+ * model-facing manifest text (descriptions, howtos, examples) the prompt
+ * catalog renders from. Generated from the live TS registry so there is
+ * one source of truth. */
 function buildRegistrySnapshot() {
   const elements = Object.fromEntries(
     Object.entries(ELEMENT_MANIFESTS).map(([type, manifest]) => [
       type,
       {
+        description: manifest.description,
         knobs: manifest.knobs.map((knob) => ({
           name: knob.name,
           type: knob.type,
           ...(knob.values ? { values: knob.values } : {}),
           ...(knob.default !== undefined ? { default: knob.default } : {}),
         })),
+        ...(manifest.bindableProps?.length ? { bindableProps: manifest.bindableProps } : {}),
+        howto: manifest.howto,
+        ...(manifest.example !== undefined ? { example: manifest.example } : {}),
       },
     ])
   );
@@ -1909,20 +2230,26 @@ function buildRegistrySnapshot() {
     Object.entries(BUILTIN_OPERATIONS).map(([name, def]) => [
       name,
       {
+        description: def.description,
         inputs: def.inputs.map((input) => ({
           name: input.name,
           type: input.type,
           ...(input.required !== undefined ? { required: input.required } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
         })),
-        outputs: def.outputs.map((output) => ({ name: output.name })),
+        outputs: def.outputs.map((output) => ({ name: output.name, type: output.type })),
         ...(def.structuredPrefixes ? { structuredPrefixes: def.structuredPrefixes } : {}),
+        ...(def.howto !== undefined ? { howto: def.howto } : {}),
+        ...(def.example !== undefined ? { example: def.example } : {}),
+        ...(def.hidden ? { hidden: true } : {}),
       },
     ])
   );
   const transforms = Object.entries(TRANSFORMS).map(([name, def]) => ({
     name,
     output: def.output,
+    description: def.description,
+    parameters: def.parameters.map((param) => param.name),
   }));
   return {
     formatVersion: 1,
@@ -1932,6 +2259,7 @@ function buildRegistrySnapshot() {
     styleThemes: ['default', 'dark', 'paper', 'terminal'],
     styleAccents: ['blue', 'green', 'violet', 'rose', 'amber'],
     exprReserved: ['sqrt', 'abs', 'floor', 'ceil', 'round', 'min', 'max', 'pow', 'pi', 'e'],
+    intrinsicElements: [...INTRINSIC_ELEMENT_TYPES],
   };
 }
 
@@ -1975,6 +2303,635 @@ function runValidationCase(entry: ValidationCase) {
       delete FRAGMENT_OPERATIONS[name];
     }
     setIntegrationCredentials([]);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Compose orchestration vectors: prompt text, response acceptance, contract
+// finalization, and the repair loop over a scripted model.
+// ---------------------------------------------------------------------------
+
+interface ComposePartOperationDef {
+  description: string;
+  inputs: Array<{ name: string; type: string; required?: boolean; description?: string }>;
+  outputs: Array<{ name: string; type: string }>;
+  structuredPrefixes?: string[];
+  howto?: string;
+  example?: Record<string, unknown>;
+}
+
+interface ComposeVocabulary {
+  fragmentDefs?: Record<string, UiFragmentDef>;
+  partOperations?: Record<string, ComposePartOperationDef>;
+  credentials?: IntegrationCredentialView[];
+  recipes?: Record<string, RecipeDef>;
+}
+
+/** Publishes a fixture's installed vocabulary; returns the cleanup. */
+function publishVocabulary(vocab: ComposeVocabulary): () => void {
+  for (const [name, def] of Object.entries(vocab.fragmentDefs ?? {})) {
+    FRAGMENT_ELEMENTS[name] = def;
+  }
+  for (const [name, def] of Object.entries(vocab.partOperations ?? {})) {
+    FRAGMENT_OPERATIONS[name] = {
+      name,
+      description: def.description,
+      inputs: def.inputs,
+      outputs: def.outputs,
+      structuredPrefixes: def.structuredPrefixes,
+      howto: def.howto,
+      example: def.example as never,
+      execute: async () => ({}),
+    };
+  }
+  setIntegrationCredentials(vocab.credentials ?? []);
+  for (const [name, def] of Object.entries(vocab.recipes ?? {})) {
+    FRAGMENT_RECIPES[name] = def;
+  }
+  return () => {
+    for (const name of Object.keys(vocab.fragmentDefs ?? {})) {
+      delete FRAGMENT_ELEMENTS[name];
+    }
+    for (const name of Object.keys(vocab.partOperations ?? {})) {
+      delete FRAGMENT_OPERATIONS[name];
+    }
+    setIntegrationCredentials([]);
+    for (const name of Object.keys(vocab.recipes ?? {})) {
+      delete FRAGMENT_RECIPES[name];
+    }
+  };
+}
+
+function vocabularyEcho(vocab: ComposeVocabulary) {
+  return {
+    fragmentDefs: jsonNormalize(vocab.fragmentDefs ?? {}),
+    partOperations: jsonNormalize(vocab.partOperations ?? {}),
+    credentials: jsonNormalize(vocab.credentials ?? []),
+    recipes: jsonNormalize(vocab.recipes ?? {}),
+  };
+}
+
+const RECIPE_COUNTER_CONTRACT = {
+  name: 'proven-counter',
+  elements: [
+    {
+      id: 'count-text',
+      type: 'text',
+      dataBindings: [{ property: 'content', source: 'state', sourceId: 'clicks' }],
+    },
+    {
+      id: 'add-btn',
+      type: 'button',
+      properties: { text: 'Add' },
+      eventBindings: [{ event: 'click', operationId: 'op-add' }],
+    },
+  ],
+  operations: [
+    {
+      id: 'op-add',
+      operationName: 'counter.add',
+      inputs: [{ name: 'key', source: 'constant', sourceId: 'clicks' }],
+    },
+  ],
+};
+
+const GOOD_RECIPE: RecipeDef = {
+  name: 'apps.proven_counter',
+  title: 'Proven Counter',
+  description: 'A counter that is already proven to work',
+  keywords: ['counter', 'clicks'],
+  spec: { goal: 'Count clicks' },
+  contract: RECIPE_COUNTER_CONTRACT,
+  partId: 'der-labs.starter-apps',
+  publisher: 'der-labs',
+};
+
+const BROKEN_RECIPE: RecipeDef = {
+  name: 'apps.broken_notes',
+  title: 'Broken Notes',
+  description: 'References vocabulary that is not installed',
+  keywords: ['notes'],
+  contract: {
+    name: 'broken-notes',
+    elements: [
+      {
+        id: 'note-btn',
+        type: 'button',
+        properties: { text: 'Note' },
+        eventBindings: [{ event: 'click', operationId: 'op-note' }],
+      },
+    ],
+    operations: [
+      {
+        id: 'op-note',
+        operationName: 'chrono.advance',
+        inputs: [],
+      },
+    ],
+  },
+  partId: 'der-labs.starter-apps',
+  publisher: 'der-labs',
+};
+
+const COMPOSE_PART_OPERATIONS: Record<string, ComposePartOperationDef> = {
+  'expr.evaluate': {
+    description: 'Evaluates an arithmetic expression over bound variables',
+    inputs: [
+      { name: 'expression', type: 'string', required: true },
+      { name: 'var.<name>', type: 'number', required: false },
+    ],
+    outputs: [{ name: 'value', type: 'number' }],
+    structuredPrefixes: ['var'],
+    howto: 'Bind each identifier with a var.<name> input.',
+    example: {
+      id: 'op-total',
+      operationName: 'expr.evaluate',
+      inputs: [
+        { name: 'expression', source: 'constant', sourceId: 'a + b' },
+        { name: 'var.a', source: 'state', sourceId: 'first' },
+        { name: 'var.b', source: 'state', sourceId: 'second' },
+      ],
+    },
+  },
+  'stats.summary': {
+    description: 'Summarizes a list of numbers',
+    inputs: [
+      { name: 'values', type: 'array', required: true, description: 'numbers to summarize' },
+    ],
+    outputs: [
+      { name: 'mean', type: 'number' },
+      { name: 'max', type: 'number' },
+    ],
+  },
+};
+
+const COMPOSE_CREDENTIALS: IntegrationCredentialView[] = [
+  {
+    name: 'openweather',
+    kind: 'query',
+    target: 'appid',
+    baseUrl: 'https://api.openweathermap.org/',
+    notes: 'Current weather at /data/2.5/weather?q={city}',
+  },
+  { name: 'github', kind: 'bearer', baseUrl: 'https://api.github.com/' },
+  { name: 'newsdesk', kind: 'header', target: 'X-Api-Key' },
+];
+
+interface ComposePromptCase extends ComposeVocabulary {
+  name: string;
+  compact?: boolean;
+}
+
+const COMPOSE_PROMPT_CASES: ComposePromptCase[] = [
+  { name: 'builtin vocabulary renders the base prompt', compact: true },
+  {
+    name: 'installed vocabulary renders every catalog section',
+    fragmentDefs: { 'basics.entry_row': ENTRY_ROW_DEF, 'basics.ticker': MINI_PACK_DEF },
+    partOperations: COMPOSE_PART_OPERATIONS,
+    credentials: COMPOSE_CREDENTIALS,
+    recipes: { 'apps.proven_counter': GOOD_RECIPE, 'apps.broken_notes': BROKEN_RECIPE },
+  },
+];
+
+function runComposePromptCase(entry: ComposePromptCase) {
+  const cleanup = publishVocabulary(entry);
+  try {
+    const expected: Record<string, unknown> = {
+      base: buildBasePrompt(renderCatalogText()),
+    };
+    if (entry.compact) {
+      expected.compactCreateSystem = `${buildBasePrompt(renderCatalogText(true), true)}\n\n${CREATE_PROMPT_SECTION}`;
+    }
+    return {
+      name: entry.name,
+      compact: entry.compact ?? false,
+      ...vocabularyEcho(entry),
+      expected,
+    };
+  } finally {
+    cleanup();
+  }
+}
+
+function contractSemanticProblems(candidate: unknown): string[] {
+  const result = checkAgainstManifests(candidate as ContractShape);
+  return result.errors.length > 0 ? [formatManifestErrors(result.errors)] : [];
+}
+
+interface ComposeResponseCase extends ComposeVocabulary {
+  name: string;
+  schema: 'composed' | 'contract';
+  raw: string;
+  /** Engine-authored JSON.parse detail: freeze only our stable prefix. */
+  problemPrefixOnly?: boolean;
+}
+
+const VALID_COMPOSED_RAW = JSON.stringify({
+  spec: { goal: 'Count clicks', assumptions: ['Starts at zero'] },
+  contract: RECIPE_COUNTER_CONTRACT,
+});
+
+const COMPOSE_RESPONSE_CASES: ComposeResponseCase[] = [
+  {
+    name: 'fenced response with prose parses and fills defaults',
+    schema: 'composed',
+    raw: `Here is the app you asked for:\n\`\`\`json\n${VALID_COMPOSED_RAW}\n\`\`\`\nEnjoy!`,
+  },
+  {
+    name: 'prose without an object fails extraction',
+    schema: 'composed',
+    raw: 'Sorry, I cannot build that app.',
+  },
+  {
+    name: 'an unbalanced object fails extraction',
+    schema: 'composed',
+    raw: '{"spec": {"goal": "x"',
+  },
+  {
+    name: 'engine parse errors freeze as a prefix',
+    schema: 'composed',
+    raw: '{"spec": }',
+    problemPrefixOnly: true,
+  },
+  {
+    name: 'schema violations point at the offending fragment',
+    schema: 'composed',
+    raw: JSON.stringify({
+      spec: { goal: 'Bad shapes' },
+      contract: {
+        name: 'bad',
+        elements: [{ type: 'text' }],
+        operations: [
+          {
+            id: 'op-x',
+            operationName: 'state.set',
+            implementation: { type: 'local', code: 'return 1' },
+          },
+        ],
+      },
+    }),
+  },
+  {
+    name: 'the response must pick contract or recipe',
+    schema: 'composed',
+    raw: JSON.stringify({ spec: { goal: 'Neither' } }),
+  },
+  {
+    name: 'the issue list caps at five',
+    schema: 'composed',
+    raw: JSON.stringify({
+      spec: { goal: 'Too many problems' },
+      contract: {
+        name: 'bad',
+        elements: [
+          { type: 'text' },
+          { type: 'text' },
+          { type: 'text' },
+          { type: 'text' },
+          { type: 'text' },
+          { type: 'text' },
+        ],
+      },
+    }),
+  },
+  {
+    name: 'semantic violations carry the checker messages',
+    schema: 'composed',
+    raw: JSON.stringify({
+      spec: { goal: 'Ghost operation' },
+      contract: {
+        name: 'ghost',
+        elements: [{ id: 'label', type: 'text', properties: { content: 'hi' } }],
+        operations: [{ id: 'op-ghost', operationName: 'chrono.advance' }],
+      },
+    }),
+  },
+  {
+    name: 'a recipe answer resolves against installed recipes',
+    schema: 'composed',
+    raw: JSON.stringify({
+      spec: { goal: 'Count clicks', assumptions: ['Reusing the installed counter'] },
+      recipe: 'apps.proven_counter',
+    }),
+    recipes: { 'apps.proven_counter': GOOD_RECIPE, 'apps.broken_notes': BROKEN_RECIPE },
+  },
+  {
+    name: 'an unknown recipe repairs toward composing',
+    schema: 'composed',
+    raw: JSON.stringify({ spec: { goal: 'Count' }, recipe: 'apps.nope' }),
+    recipes: { 'apps.proven_counter': GOOD_RECIPE, 'apps.broken_notes': BROKEN_RECIPE },
+  },
+  {
+    name: 'a broken recipe cannot open and repairs toward composing',
+    schema: 'composed',
+    raw: JSON.stringify({ spec: { goal: 'Notes' }, recipe: 'apps.broken_notes' }),
+    recipes: { 'apps.proven_counter': GOOD_RECIPE, 'apps.broken_notes': BROKEN_RECIPE },
+  },
+  {
+    name: 'the contract schema accepts a plain contract',
+    schema: 'contract',
+    raw: JSON.stringify(RECIPE_COUNTER_CONTRACT),
+  },
+];
+
+function runComposeResponseCase(entry: ComposeResponseCase) {
+  const cleanup = publishVocabulary(entry);
+  try {
+    const semantic =
+      entry.schema === 'composed'
+        ? (candidate: unknown) =>
+            checkComposedCandidate(candidate as { recipe?: string; contract?: unknown }).problems
+        : contractSemanticProblems;
+    const verdict =
+      entry.schema === 'composed'
+        ? parseValidatedJson(entry.raw, ComposedResponseSchema, semantic)
+        : parseValidatedJson(entry.raw, LlmContractSchema, semantic);
+    const expected = verdict.ok
+      ? { ok: true, value: jsonNormalize(verdict.value) }
+      : entry.problemPrefixOnly
+        ? { ok: false, problemPrefix: 'The response was not parseable JSON:' }
+        : { ok: false, problem: verdict.problem };
+    return {
+      name: entry.name,
+      schema: entry.schema,
+      raw: entry.raw,
+      ...vocabularyEcho(entry),
+      expected,
+    };
+  } finally {
+    cleanup();
+  }
+}
+
+interface ComposeFinalizeCase extends ComposeVocabulary {
+  name: string;
+  shape: Record<string, unknown>;
+  description?: string;
+}
+
+const COMPOSE_FINALIZE_CASES: ComposeFinalizeCase[] = [
+  {
+    name: 'duplicate ids rename across the tree and operations',
+    shape: {
+      name: 'dupes',
+      elements: [
+        { id: 'x', type: 'text', properties: { content: 'a' } },
+        {
+          id: 'row',
+          type: 'container',
+          children: [{ id: 'x', type: 'text', properties: { content: 'b' } }],
+        },
+      ],
+      operations: [
+        {
+          id: 'x',
+          operationName: 'counter.add',
+          inputs: [{ name: 'key', source: 'constant', sourceId: 'n' }],
+          triggers: [{ type: 'event', parameters: { elementId: 'row', eventType: 'click' } }],
+        },
+      ],
+    },
+  },
+  {
+    name: 'unknown types degrade and intrinsics keep their tag',
+    fragmentDefs: { 'basics.entry_row': ENTRY_ROW_DEF },
+    shape: {
+      name: 'types',
+      elements: [
+        { id: 'a', type: 'Widget', properties: { content: 'x' } },
+        { id: 'b', type: 'DIV' },
+        {
+          id: 'c',
+          type: 'basics.entry_row',
+          properties: { label: 'What', operationId: 'op-set' },
+        },
+      ],
+      operations: [
+        {
+          id: 'op-set',
+          operationName: 'state.set',
+          inputs: [
+            { name: 'key', source: 'constant', sourceId: 'note' },
+            { name: 'value', source: 'constant', sourceId: 'hi' },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    name: 'execution types resolve from names and endpoints',
+    shape: {
+      name: 'exec',
+      elements: [
+        {
+          id: 'go',
+          type: 'button',
+          properties: { text: 'Go' },
+          eventBindings: [
+            { event: 'click', operationId: 'op-builtin' },
+            { event: 'click', operationId: 'op-remote' },
+          ],
+        },
+      ],
+      operations: [
+        {
+          id: 'op-builtin',
+          operationName: 'counter.add',
+          inputs: [{ name: 'key', source: 'constant', sourceId: 'n' }],
+          implementation: { type: 'remote', endpoint: 'https://ignored.example' },
+        },
+        {
+          id: 'op-remote',
+          operationName: 'fetch.thing',
+          implementation: { type: 'remote', endpoint: 'https://api.zippopotam.us/us/90210' },
+        },
+      ],
+    },
+  },
+  {
+    name: 'an explicit layout survives finalization',
+    shape: {
+      name: 'laid-out',
+      layout: { type: 'flex', properties: { flexDirection: 'row', gap: '8px' } },
+      elements: [{ id: 'a', type: 'text', properties: { content: 'x' } }],
+    },
+  },
+  {
+    name: 'metadata stamps when absent and preserves what exists',
+    description: 'a fallback description',
+    shape: {
+      name: 'stamped',
+      elements: [{ id: 'a', type: 'text', properties: { content: 'x' } }],
+    },
+  },
+  {
+    name: 'provided metadata keeps its creation date and description',
+    description: 'ignored fallback',
+    shape: {
+      name: 'kept',
+      metadata: {
+        createdAt: '2026-07-01T10:00:00.000Z',
+        updatedAt: '2026-07-01T10:00:00.000Z',
+        description: 'the original description',
+        version: '2.0.0',
+      },
+      elements: [{ id: 'a', type: 'text', properties: { content: 'x' } }],
+    },
+  },
+];
+
+function runComposeFinalizeCase(entry: ComposeFinalizeCase) {
+  const cleanup = publishVocabulary(entry);
+  try {
+    const parsed = JSON.parse(
+      JSON.stringify(LlmContractSchema.parse(entry.shape))
+    ) as ContractShape;
+    const shape = jsonNormalize(parsed);
+    const hadCreatedAt =
+      (entry.shape.metadata as Record<string, unknown> | undefined)?.createdAt !== undefined;
+    const contract = finalizeContractShape(
+      JSON.parse(JSON.stringify(parsed)) as ContractShape,
+      entry.description
+    );
+    const expected = jsonNormalize(contract) as Record<string, unknown>;
+    const metadata = expected.metadata as Record<string, unknown> | undefined;
+    if (metadata) {
+      metadata.updatedAt = '<stamped>';
+      if (!hadCreatedAt) {
+        metadata.createdAt = '<stamped>';
+      }
+    }
+    return {
+      name: entry.name,
+      shape,
+      ...(entry.description !== undefined ? { description: entry.description } : {}),
+      ...vocabularyEcho(entry),
+      expected,
+    };
+  } finally {
+    cleanup();
+  }
+}
+
+interface ComposeLoopCase {
+  name: string;
+  provider: string;
+  schema: 'composed' | 'contract';
+  responses: string[];
+}
+
+const COMPOSE_LOOP_CASES: ComposeLoopCase[] = [
+  {
+    name: 'a clean first attempt returns immediately',
+    provider: 'anthropic',
+    schema: 'composed',
+    responses: [VALID_COMPOSED_RAW],
+  },
+  {
+    name: 'one repair round corrects the shape',
+    provider: 'anthropic',
+    schema: 'composed',
+    responses: [
+      JSON.stringify({
+        spec: { goal: 'Fixable' },
+        contract: { name: 'bad', elements: [{ type: 'text' }] },
+      }),
+      VALID_COMPOSED_RAW,
+    ],
+  },
+  {
+    name: 'default providers stop after one repair',
+    provider: 'anthropic',
+    schema: 'composed',
+    responses: [
+      JSON.stringify({
+        spec: { goal: 'Broken' },
+        contract: { name: 'bad', elements: [{ type: 'text' }] },
+      }),
+      JSON.stringify({
+        spec: { goal: 'Broken' },
+        contract: { name: 'bad', elements: [{ type: 'text' }] },
+      }),
+    ],
+  },
+  {
+    name: 'cheap fast providers get a second repair',
+    provider: 'mercury',
+    schema: 'composed',
+    responses: ['Not JSON at all.', 'Still not JSON.', VALID_COMPOSED_RAW],
+  },
+  {
+    name: 'local failures point at context truncation',
+    provider: 'local',
+    schema: 'composed',
+    responses: ['I ran out of context.', 'Same again.', 'And again.'],
+  },
+];
+
+async function runComposeLoopCase(entry: ComposeLoopCase) {
+  const calls: unknown[] = [];
+  let index = 0;
+  const stub = {
+    sendMessage: async (
+      messages: Array<{ role: string; content: string }>,
+      options: {
+        systemBlocks?: Array<{ text: string; cache?: boolean }>;
+        jsonMode?: boolean;
+        maxTokens?: number;
+      } = {}
+    ) => {
+      calls.push(
+        jsonNormalize({
+          messages,
+          systemBlocks: options.systemBlocks,
+          jsonMode: options.jsonMode ?? false,
+          maxTokens: options.maxTokens,
+        })
+      );
+      const content = entry.responses[Math.min(index, entry.responses.length - 1)];
+      index += 1;
+      return { content, provider: entry.provider };
+    },
+  } as unknown as LLMClient;
+
+  const semantic =
+    entry.schema === 'composed'
+      ? (candidate: unknown) =>
+          checkComposedCandidate(candidate as { recipe?: string; contract?: unknown }).problems
+      : contractSemanticProblems;
+  const messages = [
+    { role: 'user' as const, content: 'Build an app for this request:\n\ntest request' },
+  ];
+  const options = {
+    label: 'Contract',
+    maxTokens: 16000,
+    systemBlocks: [{ text: 'BASE', cache: true }, { text: 'MODE' }],
+    semanticCheck: semantic as never,
+  };
+  try {
+    const value =
+      entry.schema === 'composed'
+        ? await generateValidatedJson(stub, messages, ComposedResponseSchema, options)
+        : await generateValidatedJson(stub, messages, LlmContractSchema, options);
+    return {
+      name: entry.name,
+      provider: entry.provider,
+      schema: entry.schema,
+      responses: entry.responses,
+      expected: { ok: true, value: jsonNormalize(value), calls },
+    };
+  } catch (error) {
+    return {
+      name: entry.name,
+      provider: entry.provider,
+      schema: entry.schema,
+      responses: entry.responses,
+      expected: {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        calls,
+      },
+    };
   }
 }
 
@@ -2140,7 +3097,11 @@ async function runSessionCase(entry: SessionCase) {
       operations: entry.operations,
       initialState: jsonNormalize(entry.initialState ?? {}),
       elements: entry.elements ?? [],
-      env: { ids: entry.env?.ids ?? [], randoms: entry.env?.randoms ?? [], epochMs: FIXED_EPOCH_MS },
+      env: {
+        ids: entry.env?.ids ?? [],
+        randoms: entry.env?.randoms ?? [],
+        epochMs: FIXED_EPOCH_MS,
+      },
       events: entry.events,
       expected: { data: jsonNormalize(manager.getState().data), failed },
     };
@@ -2262,12 +3223,41 @@ async function main(): Promise<void> {
     resolve(outDir, 'registry.json'),
     JSON.stringify(buildRegistrySnapshot(), null, 2) + '\n'
   );
+
+  const composePrompts = COMPOSE_PROMPT_CASES.map(runComposePromptCase);
+  const composeResponses = COMPOSE_RESPONSE_CASES.map(runComposeResponseCase);
+  const composeFinalize = COMPOSE_FINALIZE_CASES.map(runComposeFinalizeCase);
+  const composeLoop = [];
+  for (const entry of COMPOSE_LOOP_CASES) {
+    composeLoop.push(await runComposeLoopCase(entry));
+  }
+  writeFileSync(
+    resolve(outDir, 'compose.json'),
+    JSON.stringify(
+      {
+        formatVersion: 1,
+        promptSections: {
+          create: CREATE_PROMPT_SECTION,
+          blueprint: BLUEPRINT_PROMPT_SECTION,
+          edit: EDIT_PROMPT_SECTION,
+        },
+        prompts: composePrompts,
+        responses: composeResponses,
+        finalize: composeFinalize,
+        loop: composeLoop,
+      },
+      null,
+      2
+    ) + '\n'
+  );
   process.stdout.write(
-    `wrote ${transforms.length} transform, ${pipelines.length} pipeline, ${expressions.length} expression, ${operations.length} operation, ${sessions.length} session, ${templates.length} template, ${views.length} view, ${streaming.length} streaming, ${validation.length} validation vectors\n`
+    `wrote ${transforms.length} transform, ${pipelines.length} pipeline, ${expressions.length} expression, ${operations.length} operation, ${sessions.length} session, ${templates.length} template, ${views.length} view, ${streaming.length} streaming, ${validation.length} validation, ${composePrompts.length + composeResponses.length + composeFinalize.length + composeLoop.length} compose vectors\n`
   );
 }
 
 main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+  process.stderr.write(
+    `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`
+  );
   process.exit(1);
 });

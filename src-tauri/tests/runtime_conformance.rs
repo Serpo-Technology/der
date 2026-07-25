@@ -510,3 +510,307 @@ fn expression_vectors_match() {
     }
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));
 }
+
+// ---------------------------------------------------------------------------
+// Compose orchestration vectors
+// ---------------------------------------------------------------------------
+
+fn compose_vocabulary(vector: &Value) -> dynamic_experience_runtime_lib::runtime::compose::ComposeVocabulary {
+    use dynamic_experience_runtime_lib::runtime::compose::ComposeVocabulary;
+    ComposeVocabulary {
+        fragment_defs: vector["fragmentDefs"].as_object().cloned().unwrap_or_default(),
+        part_operations: vector["partOperations"].as_object().cloned().unwrap_or_default(),
+        credentials: vector["credentials"].as_array().cloned().unwrap_or_default(),
+        recipes: vector["recipes"].as_object().cloned().unwrap_or_default(),
+    }
+}
+
+#[test]
+fn compose_prompt_vectors_match() {
+    use dynamic_experience_runtime_lib::runtime::prompt::{
+        build_base_prompt, render_catalog_text, BLUEPRINT_PROMPT_SECTION, CREATE_PROMPT_SECTION,
+        EDIT_PROMPT_SECTION,
+    };
+    let fixtures = fixture("compose.json");
+    assert_eq!(
+        fixtures["promptSections"]["create"].as_str().unwrap(),
+        CREATE_PROMPT_SECTION
+    );
+    assert_eq!(
+        fixtures["promptSections"]["blueprint"].as_str().unwrap(),
+        BLUEPRINT_PROMPT_SECTION
+    );
+    assert_eq!(fixtures["promptSections"]["edit"].as_str().unwrap(), EDIT_PROMPT_SECTION);
+
+    let mut failures = Vec::new();
+    for vector in fixtures["prompts"].as_array().expect("prompt vectors") {
+        let name = vector["name"].as_str().unwrap_or("?");
+        let vocab = compose_vocabulary(vector);
+        let base = build_base_prompt(&render_catalog_text(&vocab, false), false);
+        let expected = vector["expected"]["base"].as_str().unwrap_or("");
+        if base != expected {
+            let mismatch = base
+                .lines()
+                .zip(expected.lines())
+                .enumerate()
+                .find(|(_, (actual, wanted))| actual != wanted);
+            failures.push(format!(
+                "{}: base prompt mismatch at {:?}",
+                name,
+                mismatch.map(|(index, (actual, wanted))| format!(
+                    "line {}: actual {:?} expected {:?}",
+                    index, actual, wanted
+                ))
+            ));
+        }
+        if let Some(expected_compact) = vector["expected"]["compactCreateSystem"].as_str() {
+            let compact = format!(
+                "{}\n\n{}",
+                build_base_prompt(&render_catalog_text(&vocab, true), true),
+                CREATE_PROMPT_SECTION
+            );
+            if compact != expected_compact {
+                failures.push(format!("{}: compact create prompt mismatch", name));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
+fn compose_semantic<'a>(
+    schema: &'a str,
+    vocab: &'a dynamic_experience_runtime_lib::runtime::compose::ComposeVocabulary,
+) -> impl FnMut(&mut Value) -> Vec<String> + 'a {
+    use dynamic_experience_runtime_lib::runtime::compose::{
+        check_composed_candidate, format_manifest_errors,
+    };
+    use dynamic_experience_runtime_lib::runtime::validation::check_against_manifests;
+    move |value: &mut Value| {
+        if schema == "composed" {
+            check_composed_candidate(value, vocab).0
+        } else {
+            let outcome = check_against_manifests(
+                value,
+                &vocab.fragment_defs,
+                &vocab.part_operations,
+                &vocab.credentials,
+            );
+            if outcome.errors.is_empty() {
+                Vec::new()
+            } else {
+                vec![format_manifest_errors(&outcome.errors)]
+            }
+        }
+    }
+}
+
+#[test]
+fn compose_response_vectors_match() {
+    use dynamic_experience_runtime_lib::runtime::llm_schema::{
+        parse_validated_json, ParseVerdict, SchemaKind,
+    };
+    let fixtures = fixture("compose.json");
+    let mut failures = Vec::new();
+    for vector in fixtures["responses"].as_array().expect("response vectors") {
+        let name = vector["name"].as_str().unwrap_or("?");
+        let vocab = compose_vocabulary(vector);
+        let schema_name = vector["schema"].as_str().unwrap_or("composed");
+        let schema = if schema_name == "composed" { SchemaKind::Composed } else { SchemaKind::Contract };
+        let raw = vector["raw"].as_str().unwrap_or("");
+        let mut semantic = compose_semantic(schema_name, &vocab);
+        let verdict = parse_validated_json(raw, &schema, &mut semantic);
+        let expected = &vector["expected"];
+        match verdict {
+            ParseVerdict::Ok(value) => {
+                if expected["ok"] != Value::Bool(true) {
+                    failures.push(format!("{}: expected failure, got ok", name));
+                } else if !semantically_equal(&value, &expected["value"]) {
+                    failures.push(format!(
+                        "{}: value mismatch\n  actual: {}\n  expected: {}",
+                        name, value, expected["value"]
+                    ));
+                }
+            }
+            ParseVerdict::Problem(problem) => {
+                if expected["ok"] != Value::Bool(false) {
+                    failures.push(format!("{}: expected ok, got problem {}", name, problem));
+                } else if let Some(prefix) = expected["problemPrefix"].as_str() {
+                    if !problem.starts_with(prefix) {
+                        failures.push(format!("{}: problem lacks prefix: {}", name, problem));
+                    }
+                } else if Some(problem.as_str()) != expected["problem"].as_str() {
+                    failures.push(format!(
+                        "{}: problem mismatch\n  actual: {}\n  expected: {}",
+                        name, problem, expected["problem"]
+                    ));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
+#[test]
+fn compose_finalize_vectors_match() {
+    use dynamic_experience_runtime_lib::runtime::compose::finalize_contract_shape;
+    let fixtures = fixture("compose.json");
+    let mut failures = Vec::new();
+    for vector in fixtures["finalize"].as_array().expect("finalize vectors") {
+        let name = vector["name"].as_str().unwrap_or("?");
+        let vocab = compose_vocabulary(vector);
+        let description = vector["description"].as_str();
+        let had_created_at = vector["shape"]["metadata"]["createdAt"].is_string();
+        let mut contract = finalize_contract_shape(
+            &vector["shape"],
+            description,
+            "2026-01-01T00:00:00.000Z",
+            &vocab,
+        );
+        if let Some(metadata) = contract.get_mut("metadata").and_then(Value::as_object_mut) {
+            metadata.insert("updatedAt".to_string(), Value::String("<stamped>".to_string()));
+            if !had_created_at {
+                metadata.insert("createdAt".to_string(), Value::String("<stamped>".to_string()));
+            }
+        }
+        if !semantically_equal(&contract, &vector["expected"]) {
+            failures.push(format!(
+                "{}: contract mismatch\n  actual: {}\n  expected: {}",
+                name, contract, vector["expected"]
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
+struct ScriptedLlm {
+    provider: String,
+    responses: Vec<String>,
+    index: usize,
+    calls: Vec<Value>,
+}
+
+impl dynamic_experience_runtime_lib::runtime::compose::ComposeLlm for ScriptedLlm {
+    fn send(
+        &mut self,
+        messages: Vec<Value>,
+        options: dynamic_experience_runtime_lib::runtime::compose::LlmSendOptions,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<dynamic_experience_runtime_lib::runtime::compose::LlmReply, String>> + Send + '_>>
+    {
+        let blocks: Vec<Value> = options
+            .system_blocks
+            .iter()
+            .map(|block| {
+                if block.cache {
+                    serde_json::json!({ "text": block.text, "cache": true })
+                } else {
+                    serde_json::json!({ "text": block.text })
+                }
+            })
+            .collect();
+        self.calls.push(serde_json::json!({
+            "messages": messages,
+            "systemBlocks": blocks,
+            "jsonMode": options.json_mode,
+            "maxTokens": options.max_tokens,
+        }));
+        let content = self.responses[self.index.min(self.responses.len() - 1)].clone();
+        self.index += 1;
+        let provider = Some(self.provider.clone());
+        Box::pin(async move {
+            Ok(dynamic_experience_runtime_lib::runtime::compose::LlmReply { content, provider })
+        })
+    }
+}
+
+fn block_on<F: std::future::Future>(future: F) -> F::Output {
+    use std::task::{Context, Poll, Waker};
+    let mut future = Box::pin(future);
+    let waker = Waker::noop();
+    let mut cx = Context::from_waker(waker);
+    loop {
+        match future.as_mut().poll(&mut cx) {
+            Poll::Ready(output) => return output,
+            Poll::Pending => std::thread::yield_now(),
+        }
+    }
+}
+
+#[test]
+fn compose_loop_vectors_match() {
+    use dynamic_experience_runtime_lib::runtime::compose::{
+        generate_validated_json, GenerateOptions, SystemBlockSpec,
+    };
+    use dynamic_experience_runtime_lib::runtime::llm_schema::SchemaKind;
+    let fixtures = fixture("compose.json");
+    let mut failures = Vec::new();
+    for vector in fixtures["loop"].as_array().expect("loop vectors") {
+        let name = vector["name"].as_str().unwrap_or("?");
+        let vocab = compose_vocabulary(vector);
+        let schema_name = vector["schema"].as_str().unwrap_or("composed");
+        let schema = if schema_name == "composed" { SchemaKind::Composed } else { SchemaKind::Contract };
+        let responses: Vec<String> = vector["responses"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|r| r.as_str().map(str::to_string))
+            .collect();
+        let mut llm = ScriptedLlm {
+            provider: vector["provider"].as_str().unwrap_or("").to_string(),
+            responses,
+            index: 0,
+            calls: Vec::new(),
+        };
+        let messages = vec![serde_json::json!({
+            "role": "user",
+            "content": "Build an app for this request:\n\ntest request",
+        })];
+        let options = GenerateOptions {
+            label: "Contract".to_string(),
+            max_tokens: Some(16000),
+            system_blocks: vec![
+                SystemBlockSpec { text: "BASE".to_string(), cache: true },
+                SystemBlockSpec { text: "MODE".to_string(), cache: false },
+            ],
+        };
+        let mut semantic = compose_semantic(schema_name, &vocab);
+        let outcome = block_on(generate_validated_json(
+            &mut llm,
+            messages,
+            schema,
+            options,
+            &mut semantic,
+        ));
+        let expected = &vector["expected"];
+        match outcome {
+            Ok(value) => {
+                if expected["ok"] != Value::Bool(true) {
+                    failures.push(format!("{}: expected failure, got ok", name));
+                } else if !semantically_equal(&value, &expected["value"]) {
+                    failures.push(format!(
+                        "{}: value mismatch\n  actual: {}\n  expected: {}",
+                        name, value, expected["value"]
+                    ));
+                }
+            }
+            Err(error) => {
+                if expected["ok"] != Value::Bool(false) {
+                    failures.push(format!("{}: expected ok, got error {}", name, error));
+                } else if Some(error.as_str()) != expected["error"].as_str() {
+                    failures.push(format!(
+                        "{}: error mismatch\n  actual: {}\n  expected: {}",
+                        name, error, expected["error"]
+                    ));
+                }
+            }
+        }
+        let calls = Value::Array(llm.calls.clone());
+        if !semantically_equal(&calls, &expected["calls"]) {
+            failures.push(format!(
+                "{}: calls mismatch\n  actual: {}\n  expected: {}",
+                name, calls, expected["calls"]
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}

@@ -2,6 +2,7 @@
   "formatVersion": 1,
   "elements": {
     "text": {
+      "description": "Text content.",
       "knobs": [
         {
           "name": "role",
@@ -15,9 +16,48 @@
           ],
           "default": "body"
         }
-      ]
+      ],
+      "bindableProps": [
+        "content"
+      ],
+      "howto": "Bind \"content\" from state or item; use transform pipelines for derived text (filterBy then count, sum then round then format).",
+      "example": {
+        "id": "items-left",
+        "type": "text",
+        "properties": {
+          "role": "caption"
+        },
+        "dataBindings": [
+          {
+            "property": "content",
+            "source": "state",
+            "sourceId": "todos",
+            "transforms": [
+              {
+                "type": "filterBy",
+                "parameters": {
+                  "field": "completed",
+                  "value": "false"
+                }
+              },
+              {
+                "type": "count",
+                "parameters": {}
+              },
+              {
+                "type": "format",
+                "parameters": {
+                  "template": "{{value}} items left"
+                }
+              }
+            ]
+          }
+        ],
+        "eventBindings": []
+      }
     },
     "button": {
+      "description": "Clickable button.",
       "knobs": [
         {
           "name": "variant",
@@ -40,17 +80,21 @@
           ],
           "default": "md"
         }
-      ]
+      ],
+      "howto": "Label via the \"text\" property; wire clicks with eventBindings. One primary button per view."
     },
     "input": {
+      "description": "Text input, auto-controlled by the runtime.",
       "knobs": [
         {
           "name": "label",
           "type": "string"
         }
-      ]
+      ],
+      "howto": "Give it an id and NEVER bind its value; operations read it with an InputBinding {source: \"ui-element\", sourceId: \"<id>\"}. For dates use properties {\"type\": \"date\"}: the value is YYYY-MM-DD and ISO dates sort and compare correctly as strings. Not allowed inside list children."
     },
     "textarea": {
+      "description": "Multi-line text input, auto-controlled by the runtime.",
       "knobs": [
         {
           "name": "label",
@@ -61,18 +105,22 @@
           "type": "number",
           "default": 4
         }
-      ]
+      ],
+      "howto": "Notes, descriptions, anything multi-line; same rules as input: give it an id, never bind its value, read it with {source: \"ui-element\", sourceId: \"<id>\"}. Not allowed inside list children."
     },
     "timer": {
+      "description": "Invisible interval clock: fires its \"tick\" event while rendered.",
       "knobs": [
         {
           "name": "seconds",
           "type": "number",
           "default": 1
         }
-      ]
+      ],
+      "howto": "Renders nothing. Wire eventBindings [{\"event\": \"tick\", \"operationId\": \"<op id>\"}] to run an operation on every tick, e.g. counter.add on an \"elapsed\" key. Gate it with visibleWhen on a state flag and flip the flag with Start/Stop buttons (state.set): a hidden timer does not tick."
     },
     "container": {
+      "description": "Layout container for children.",
       "knobs": [
         {
           "name": "direction",
@@ -131,26 +179,42 @@
           ],
           "default": "0"
         }
-      ]
+      ],
+      "howto": "Group related elements; use direction \"column\" for stacked sections and \"row\" for toolbars."
     },
     "list": {
+      "description": "Repeats its children once per entry of the bound \"items\" array.",
       "knobs": [
         {
           "name": "emptyText",
           "type": "string"
         }
-      ]
+      ],
+      "bindableProps": [
+        "items"
+      ],
+      "howto": "Bind \"items\" from state (filterBy/sortBy pipelines allowed). Children are the row template; read entry fields with source \"item\". No input elements inside."
     },
     "form": {
-      "knobs": []
+      "description": "Form wrapper; submit events get preventDefault.",
+      "knobs": [],
+      "howto": "Wrap an entry row to make Enter submit; wire {\"event\": \"submit\"} to the same operation as the button."
     },
     "image": {
-      "knobs": []
+      "description": "Image.",
+      "knobs": [],
+      "bindableProps": [
+        "src"
+      ],
+      "howto": "Set \"src\" and \"alt\"."
     },
     "link": {
-      "knobs": []
+      "description": "Hyperlink.",
+      "knobs": [],
+      "howto": "Set \"href\" and \"text\"."
     },
     "select": {
+      "description": "Dropdown, auto-controlled by the runtime.",
       "knobs": [
         {
           "name": "label",
@@ -160,31 +224,48 @@
           "name": "placeholder",
           "type": "string"
         }
-      ]
+      ],
+      "bindableProps": [
+        "options"
+      ],
+      "howto": "Fixed choices go in properties as a REAL array: \"properties\": {\"options\": [{\"value\": \"food\", \"label\": \"Food\"}, ...]} (a bare [\"a\",\"b\"] also works). Only bind options when they come from state. Operations read the selection via {source: \"ui-element\", sourceId: \"<id>\"}."
     },
     "checkbox": {
+      "description": "Checkbox.",
       "knobs": [
         {
           "name": "label",
           "type": "string"
         }
-      ]
+      ],
+      "bindableProps": [
+        "checked"
+      ],
+      "howto": "Standalone: auto-controlled, read via {source: \"ui-element\"}. Inside list rows: bind \"checked\" from {source: \"item\"} and wire {\"event\": \"change\"} to list.toggleField."
     },
     "progress": {
+      "description": "Progress bar.",
       "knobs": [
         {
           "name": "max",
           "type": "number",
           "default": 100
         }
-      ]
+      ],
+      "bindableProps": [
+        "value"
+      ],
+      "howto": "Bind \"value\" from state (sum/count pipelines work well)."
     },
     "divider": {
-      "knobs": []
+      "description": "Horizontal separator.",
+      "knobs": [],
+      "howto": "Use between sections."
     }
   },
   "operations": {
     "state.set": {
+      "description": "Writes a value to a state key.",
       "inputs": [
         {
           "name": "key",
@@ -201,11 +282,34 @@
       ],
       "outputs": [
         {
-          "name": "value"
+          "name": "value",
+          "type": "any"
         }
-      ]
+      ],
+      "howto": "Use for toggles and view switching: bind \"key\" and \"value\" as constants (use the typed \"value\" field for booleans and numbers), then show panels with visibleWhen equals on that key.",
+      "example": {
+        "id": "op-show-done",
+        "operationName": "state.set",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "key",
+            "source": "constant",
+            "sourceId": "view"
+          },
+          {
+            "name": "value",
+            "source": "constant",
+            "sourceId": "done",
+            "value": "done"
+          }
+        ],
+        "outputs": [],
+        "triggers": []
+      }
     },
     "counter.add": {
+      "description": "Adds an amount (default 1) to a numeric state key.",
       "inputs": [
         {
           "name": "key",
@@ -222,11 +326,14 @@
       ],
       "outputs": [
         {
-          "name": "value"
+          "name": "value",
+          "type": "number"
         }
-      ]
+      ],
+      "howto": "Seed the key in initialState. Negative amounts subtract."
     },
     "list.append": {
+      "description": "Appends an item to an array state key. Item fields come from inputs named item.<field>; the part generates the id itself.",
       "inputs": [
         {
           "name": "key",
@@ -243,20 +350,66 @@
       ],
       "outputs": [
         {
-          "name": "list"
+          "name": "list",
+          "type": "array"
         },
         {
-          "name": "item"
+          "name": "item",
+          "type": "object"
         },
         {
-          "name": "reset"
+          "name": "reset",
+          "type": "string"
         }
       ],
       "structuredPrefixes": [
         "item"
-      ]
+      ],
+      "howto": "Never supply item.id; it is generated. Skips silently when every item field is blank. Use the parseNumber transform on numeric fields fed from text inputs.",
+      "example": {
+        "id": "op-add",
+        "operationName": "list.append",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "key",
+            "source": "constant",
+            "sourceId": "expenses"
+          },
+          {
+            "name": "item.description",
+            "source": "ui-element",
+            "sourceId": "desc-in"
+          },
+          {
+            "name": "item.amount",
+            "source": "ui-element",
+            "sourceId": "amount-in",
+            "transforms": [
+              {
+                "type": "parseNumber",
+                "parameters": {}
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "reset",
+            "target": "ui-element",
+            "targetId": "desc-in"
+          },
+          {
+            "name": "reset",
+            "target": "ui-element",
+            "targetId": "amount-in"
+          }
+        ],
+        "triggers": []
+      }
     },
     "list.updateWhere": {
+      "description": "Updates matching items in an array state key. Fields to write come from inputs named set.<field>.",
       "inputs": [
         {
           "name": "key",
@@ -285,17 +438,21 @@
       ],
       "outputs": [
         {
-          "name": "list"
+          "name": "list",
+          "type": "array"
         },
         {
-          "name": "count"
+          "name": "count",
+          "type": "number"
         }
       ],
       "structuredPrefixes": [
         "set"
-      ]
+      ],
+      "howto": "Typical row edit: value from {source: 'item', sourceId: 'id'}."
     },
     "list.removeWhere": {
+      "description": "Removes matching items from an array state key.",
       "inputs": [
         {
           "name": "key",
@@ -318,11 +475,33 @@
       ],
       "outputs": [
         {
-          "name": "list"
+          "name": "list",
+          "type": "array"
         }
-      ]
+      ],
+      "howto": "Typical row delete: value from {source: 'item', sourceId: 'id'}.",
+      "example": {
+        "id": "op-delete",
+        "operationName": "list.removeWhere",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "key",
+            "source": "constant",
+            "sourceId": "expenses"
+          },
+          {
+            "name": "value",
+            "source": "item",
+            "sourceId": "id"
+          }
+        ],
+        "outputs": [],
+        "triggers": []
+      }
     },
     "list.toggleField": {
+      "description": "Flips a boolean field on the matching item of an array state key.",
       "inputs": [
         {
           "name": "key",
@@ -345,11 +524,14 @@
       ],
       "outputs": [
         {
-          "name": "list"
+          "name": "list",
+          "type": "array"
         }
-      ]
+      ],
+      "howto": "Typical row toggle: id from {source: 'item', sourceId: 'id'}. Show the flag: bind the row text's className from it (map {'true': 'done'}) and count remaining rows with filterFalsy."
     },
     "math.add": {
+      "description": "Adds two numbers. Returns {result}. Route the result with an OutputBinding.",
       "inputs": [
         {
           "name": "a",
@@ -364,28 +546,37 @@
       ],
       "outputs": [
         {
-          "name": "result"
+          "name": "result",
+          "type": "number"
         }
-      ]
+      ],
+      "howto": "Pure calculation; write the result to state with an OutputBinding when it should display."
     },
     "time.now": {
+      "description": "The current date and time. Route the outputs you need into state.",
       "inputs": [],
       "outputs": [
         {
-          "name": "iso"
+          "name": "iso",
+          "type": "string"
         },
         {
-          "name": "date"
+          "name": "date",
+          "type": "string"
         },
         {
-          "name": "time"
+          "name": "time",
+          "type": "string"
         },
         {
-          "name": "epoch"
+          "name": "epoch",
+          "type": "number"
         }
-      ]
+      ],
+      "howto": "To stamp new list entries, run this FIRST on the same click (bindings run in order): first binding writes date to a state key, the second binding is the list.append whose \"item.date\" input reads that key {source: \"state\", sourceId: \"<key>\"}. Display stamps with the formatDate transform."
     },
     "random.int": {
+      "description": "A uniform random whole number between min and max, both included.",
       "inputs": [
         {
           "name": "min",
@@ -402,11 +593,41 @@
       ],
       "outputs": [
         {
-          "name": "value"
+          "name": "value",
+          "type": "number"
         }
-      ]
+      ],
+      "howto": "Dice and roll patterns: bind min and max as typed constants, run on a click, route value into a state key shown by a text element. Numeric strings coerce.",
+      "example": {
+        "id": "op-roll",
+        "operationName": "random.int",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "min",
+            "source": "constant",
+            "sourceId": "1",
+            "value": 1
+          },
+          {
+            "name": "max",
+            "source": "constant",
+            "sourceId": "6",
+            "value": 6
+          }
+        ],
+        "outputs": [
+          {
+            "name": "value",
+            "target": "state",
+            "targetId": "roll"
+          }
+        ],
+        "triggers": []
+      }
     },
     "random.pick": {
+      "description": "Picks one entry of an array at random.",
       "inputs": [
         {
           "name": "list",
@@ -417,14 +638,46 @@
       ],
       "outputs": [
         {
-          "name": "value"
+          "name": "value",
+          "type": "any"
         },
         {
-          "name": "index"
+          "name": "index",
+          "type": "number"
         }
-      ]
+      ],
+      "howto": "Random picker pattern: collect options with list.append, bind list from that state key, run on a click, and route value into a state key. When entries are objects from list.append, show a field by adding a pick transform on the value output, e.g. transforms [{\"type\": \"pick\", \"parameters\": {\"field\": \"title\"}}].",
+      "example": {
+        "id": "op-pick",
+        "operationName": "random.pick",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "list",
+            "source": "state",
+            "sourceId": "options"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "value",
+            "target": "state",
+            "targetId": "chosen",
+            "transforms": [
+              {
+                "type": "pick",
+                "parameters": {
+                  "field": "title"
+                }
+              }
+            ]
+          }
+        ],
+        "triggers": []
+      }
     },
     "http.get": {
+      "description": "Fetches JSON from an http(s) URL. Returns {response}. Route the response with an OutputBinding into state.",
       "inputs": [
         {
           "name": "url",
@@ -435,11 +688,14 @@
       ],
       "outputs": [
         {
-          "name": "response"
+          "name": "response",
+          "type": "object"
         }
-      ]
+      ],
+      "howto": "Fetching real remote data ONLY; never for math on existing state (use expr.evaluate, stats, or transforms for that). A computed URL is a url input bound from an element or state with a format transform, e.g. transforms [{\"type\": \"format\", \"parameters\": {\"template\": \"https://host/search?q={{value}}\"}}]. Route the response into a state key and display it with pick/format."
     },
     "todos.add": {
+      "description": "Appends a todo {id, title, completed:false} to the 'todos' state array.",
       "inputs": [
         {
           "name": "title",
@@ -450,17 +706,22 @@
       ],
       "outputs": [
         {
-          "name": "todos"
+          "name": "todos",
+          "type": "array"
         },
         {
-          "name": "todo"
+          "name": "todo",
+          "type": "object"
         },
         {
-          "name": "reset"
+          "name": "reset",
+          "type": "string"
         }
-      ]
+      ],
+      "hidden": true
     },
     "todos.toggle": {
+      "description": "Flips 'completed' on the todo with the given id in the 'todos' state array.",
       "inputs": [
         {
           "name": "id",
@@ -471,11 +732,14 @@
       ],
       "outputs": [
         {
-          "name": "todos"
+          "name": "todos",
+          "type": "array"
         }
-      ]
+      ],
+      "hidden": true
     },
     "todos.remove": {
+      "description": "Removes the todo with the given id from the 'todos' state array.",
       "inputs": [
         {
           "name": "id",
@@ -486,83 +750,157 @@
       ],
       "outputs": [
         {
-          "name": "todos"
+          "name": "todos",
+          "type": "array"
         }
-      ]
+      ],
+      "hidden": true
     }
   },
   "transforms": [
     {
       "name": "count",
-      "output": "scalar"
+      "output": "scalar",
+      "description": "Number of entries in an array (0 for anything else).",
+      "parameters": []
     },
     {
       "name": "sum",
-      "output": "scalar"
+      "output": "scalar",
+      "description": "Sum of a numeric field across an array of objects.",
+      "parameters": [
+        "field"
+      ]
     },
     {
       "name": "filterBy",
-      "output": "array"
+      "output": "array",
+      "description": "Keeps array entries whose field equals the given value; an empty value keeps everything, so an \"All\" dropdown option can use value \"\".",
+      "parameters": [
+        "field",
+        "value"
+      ]
     },
     {
       "name": "filterContains",
-      "output": "array"
+      "output": "array",
+      "description": "Keeps array entries whose field contains the given text, case-insensitive; empty text keeps everything. Bind value dynamically for live search.",
+      "parameters": [
+        "field",
+        "value"
+      ]
     },
     {
       "name": "filterTruthy",
-      "output": "array"
+      "output": "array",
+      "description": "Keeps array entries whose field is truthy (set flags, checked rows).",
+      "parameters": [
+        "field"
+      ]
     },
     {
       "name": "filterFalsy",
-      "output": "array"
+      "output": "array",
+      "description": "Keeps array entries whose field is falsy or missing (e.g. not-completed rows; a row that never got the flag counts).",
+      "parameters": [
+        "field"
+      ]
     },
     {
       "name": "sortBy",
-      "output": "array"
+      "output": "array",
+      "description": "Sorts an array by a field; numeric when both values are numbers.",
+      "parameters": [
+        "field",
+        "direction"
+      ]
     },
     {
       "name": "deriveField",
-      "output": "array"
+      "output": "array",
+      "description": "Adds a computed field to every row of an array: an arithmetic expression over that row's numeric fields (e.g. field \"value\", expression \"qty * price\"). Rows keep their other fields; read the new field like any row field, sum it for totals, or sortBy it.",
+      "parameters": [
+        "field",
+        "expression"
+      ]
     },
     {
       "name": "pick",
-      "output": "any"
+      "output": "any",
+      "description": "Reads a field (dot path allowed) from an object; an array reads from its first entry, so filterBy then pick gives the matched entry's field.",
+      "parameters": [
+        "field"
+      ]
     },
     {
       "name": "pluck",
-      "output": "array"
+      "output": "array",
+      "description": "Field values across an array of objects (turns [{value: 5}, ...] into [5, ...]; use before count/sum or numeric part inputs).",
+      "parameters": [
+        "field"
+      ]
     },
     {
       "name": "equals",
-      "output": "scalar"
+      "output": "scalar",
+      "description": "True when the value equals the given value.",
+      "parameters": [
+        "value"
+      ]
     },
     {
       "name": "not",
-      "output": "scalar"
+      "output": "scalar",
+      "description": "Boolean negation of the value.",
+      "parameters": []
     },
     {
       "name": "parseNumber",
-      "output": "scalar"
+      "output": "scalar",
+      "description": "Converts input text to a number (0 when not numeric).",
+      "parameters": []
     },
     {
       "name": "round",
-      "output": "scalar"
+      "output": "scalar",
+      "description": "Rounds a number to the given decimals.",
+      "parameters": [
+        "decimals"
+      ]
     },
     {
       "name": "format",
-      "output": "scalar"
+      "output": "scalar",
+      "description": "Inserts the value into a template at {{value}}.",
+      "parameters": [
+        "template"
+      ]
     },
     {
       "name": "formatNumber",
-      "output": "scalar"
+      "output": "scalar",
+      "description": "Formats a number with thousands separators and fixed decimals, optional prefix/suffix (e.g. \"$ \", \" EUR\").",
+      "parameters": [
+        "decimals",
+        "prefix",
+        "suffix"
+      ]
     },
     {
       "name": "formatDate",
-      "output": "scalar"
+      "output": "scalar",
+      "description": "Formats a date (ISO string or epoch milliseconds) for display; style date|time|datetime|weekday.",
+      "parameters": [
+        "style"
+      ]
     },
     {
       "name": "map",
-      "output": "any"
+      "output": "any",
+      "description": "Maps the value through a lookup table (mapping[String(value)]).",
+      "parameters": [
+        "mapping"
+      ]
     }
   ],
   "styleThemes": [
@@ -589,5 +927,29 @@
     "pow",
     "pi",
     "e"
+  ],
+  "intrinsicElements": [
+    "div",
+    "span",
+    "p",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "ul",
+    "ol",
+    "li",
+    "section",
+    "header",
+    "footer",
+    "label",
+    "strong",
+    "em",
+    "table",
+    "thead",
+    "tbody",
+    "tr",
+    "td",
+    "th"
   ]
 }

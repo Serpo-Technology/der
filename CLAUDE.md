@@ -356,6 +356,23 @@ part operations, credentials) is passed per check; serde_json runs with `preserv
 object iteration matches JS insertion order in message text. Validation vectors freeze
 {errors, warnings, mutated contract} per fixture, with each fixture's installed vocabulary
 carried alongside and published into the registries by both harnesses.
+The compose orchestration is implemented twice the same way: `runtime/prompt.rs` renders
+the byte-identical base prompt and catalog (the registry snapshot carries the full
+model-facing manifest text; installed vocabulary, credentials, and validated recipes arrive
+per call), `runtime/llm_schema.rs` twins the zod schemas (issue paths, zod-v4 message text,
+default filling, snippet context, and the five-issue cap all frozen), and
+`runtime/compose.rs` twins composeFromDescription: the semantic gate (recipe resolution or
+the checker), finalization (id dedup, type degradation, executionType resolution, layout
+fill, metadata stamping, trigger normalization), and the repair loop over a `ComposeLlm`
+transport trait (one repair round, two on local/mercury, the exact repair-message and
+failure text). Compose vectors freeze prompt text, response verdicts, finalized contracts
+(stamps masked), and the loop's full conversation protocol over scripted responses; the TS
+side runs them through the same exported pure functions (`renderCatalogText`,
+`parseValidatedJson`, `checkComposedCandidate`, `finalizeContractShape`). The
+`runtime_compose` command is the native entry: vocabulary from the installed manifests on
+disk, the real transport backed by `llm_chat`, one call from description to finalized
+contract with no webview involved (`tests/runtime_compose_native.rs` proves compose ->
+session -> resolved tree end to end, recipe reuse and the repair round included).
 The committed vectors in `runtime-conformance/` are
 the semantic contract: both test suites run every vector (vitest
 `runtime-conformance.test.ts`, cargo `runtime_conformance.rs`), covering the

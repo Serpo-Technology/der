@@ -10,28 +10,38 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import {
-  TRANSFORMS,
-  applyBindingTransforms,
-  applyTransformPipeline,
-} from '../transforms';
+import { TRANSFORMS, applyBindingTransforms, applyTransformPipeline } from '../transforms';
 import { parseRowExpression } from '../row-expression';
 import {
   BUILTIN_OPERATIONS,
   FRAGMENT_ELEMENTS,
   FRAGMENT_OPERATIONS,
+  FRAGMENT_RECIPES,
   assembleStructured,
   setIntegrationCredentials,
 } from '../registry';
-import type { IntegrationCredentialView } from '../registry';
+import type { IntegrationCredentialView, RecipeDef } from '../registry';
 import type { UiFragmentDef } from '../registry';
+import {
+  BLUEPRINT_PROMPT_SECTION,
+  CREATE_PROMPT_SECTION,
+  EDIT_PROMPT_SECTION,
+  buildBasePrompt,
+  checkComposedCandidate,
+  finalizeContractShape,
+  renderCatalogText,
+} from '../../ai-interpreter/contract-builder';
+import { generateValidatedJson, parseValidatedJson } from '../../ai-interpreter/llm-json';
+import type { LLMClient } from '../../ai-interpreter/llm-client';
+import {
+  ComposedResponseSchema,
+  LlmContractSchema,
+  formatManifestErrors,
+} from '../../../schemas/contract';
 import { ExperienceStateManager } from '../../../components/runtime/ExperienceStateManager';
 import { OperationExecutor } from '../../../components/runtime/OperationExecutor';
 import { resolveViewTree } from '../../runtime-view/resolve-view';
-import {
-  extractStreamingContract,
-  parsePartialJson,
-} from '../../ai-interpreter/partial-json';
+import { extractStreamingContract, parsePartialJson } from '../../ai-interpreter/partial-json';
 import { checkAgainstManifests } from '../../../schemas/contract';
 import type { ContractShape } from '../../../schemas/contract';
 import { expandPackOperations, expandUiFragment } from '../../fragments/ui-fragments';
@@ -188,9 +198,7 @@ describe('runtime conformance: operations', () => {
   }
 });
 
-const sessionFixtures = JSON.parse(
-  readFileSync(resolve(fixtureDir, 'sessions.json'), 'utf8')
-) as {
+const sessionFixtures = JSON.parse(readFileSync(resolve(fixtureDir, 'sessions.json'), 'utf8')) as {
   sessions: Array<{
     name: string;
     operations: Array<Record<string, unknown>>;
@@ -438,6 +446,224 @@ describe('runtime conformance: expressions', () => {
         return;
       }
       expect(parsed.evaluate(vector.row)).toBe(vector.value);
+    });
+  }
+});
+
+interface ComposeVocabularyFields {
+  fragmentDefs: Record<string, UiFragmentDef>;
+  partOperations: Record<
+    string,
+    {
+      description: string;
+      inputs: Array<{ name: string; type: string; required?: boolean; description?: string }>;
+      outputs: Array<{ name: string; type: string }>;
+      structuredPrefixes?: string[];
+      howto?: string;
+      example?: Record<string, unknown>;
+    }
+  >;
+  credentials: IntegrationCredentialView[];
+  recipes: Record<string, RecipeDef>;
+}
+
+const composeFixtures = JSON.parse(readFileSync(resolve(fixtureDir, 'compose.json'), 'utf8')) as {
+  promptSections: { create: string; blueprint: string; edit: string };
+  prompts: Array<
+    ComposeVocabularyFields & {
+      name: string;
+      compact: boolean;
+      expected: { base: string; compactCreateSystem?: string };
+    }
+  >;
+  responses: Array<
+    ComposeVocabularyFields & {
+      name: string;
+      schema: 'composed' | 'contract';
+      raw: string;
+      expected: { ok: boolean; value?: unknown; problem?: string; problemPrefix?: string };
+    }
+  >;
+  finalize: Array<
+    ComposeVocabularyFields & {
+      name: string;
+      shape: Record<string, unknown>;
+      description?: string;
+      expected: Record<string, unknown>;
+    }
+  >;
+  loop: Array<{
+    name: string;
+    provider: string;
+    schema: 'composed' | 'contract';
+    responses: string[];
+    expected: { ok: boolean; value?: unknown; error?: string; calls: unknown[] };
+  }>;
+};
+
+function withComposeVocabulary(vocab: ComposeVocabularyFields, run: () => void): void {
+  for (const [name, def] of Object.entries(vocab.fragmentDefs ?? {})) {
+    FRAGMENT_ELEMENTS[name] = def;
+  }
+  for (const [name, def] of Object.entries(vocab.partOperations ?? {})) {
+    FRAGMENT_OPERATIONS[name] = {
+      name,
+      description: def.description,
+      inputs: def.inputs,
+      outputs: def.outputs,
+      structuredPrefixes: def.structuredPrefixes,
+      howto: def.howto,
+      example: def.example as never,
+      execute: async () => ({}),
+    };
+  }
+  setIntegrationCredentials(vocab.credentials ?? []);
+  for (const [name, def] of Object.entries(vocab.recipes ?? {})) {
+    FRAGMENT_RECIPES[name] = def;
+  }
+  try {
+    run();
+  } finally {
+    for (const name of Object.keys(vocab.fragmentDefs ?? {})) {
+      delete FRAGMENT_ELEMENTS[name];
+    }
+    for (const name of Object.keys(vocab.partOperations ?? {})) {
+      delete FRAGMENT_OPERATIONS[name];
+    }
+    setIntegrationCredentials([]);
+    for (const name of Object.keys(vocab.recipes ?? {})) {
+      delete FRAGMENT_RECIPES[name];
+    }
+  }
+}
+
+const composeContractSemantic = (candidate: unknown): string[] => {
+  const result = checkAgainstManifests(candidate as ContractShape);
+  return result.errors.length > 0 ? [formatManifestErrors(result.errors)] : [];
+};
+
+describe('runtime conformance: compose prompts', () => {
+  it('mode sections match the frozen text', () => {
+    expect(CREATE_PROMPT_SECTION).toBe(composeFixtures.promptSections.create);
+    expect(BLUEPRINT_PROMPT_SECTION).toBe(composeFixtures.promptSections.blueprint);
+    expect(EDIT_PROMPT_SECTION).toBe(composeFixtures.promptSections.edit);
+  });
+  for (const vector of composeFixtures.prompts) {
+    it(vector.name, () => {
+      withComposeVocabulary(vector, () => {
+        expect(buildBasePrompt(renderCatalogText())).toBe(vector.expected.base);
+        if (vector.expected.compactCreateSystem !== undefined) {
+          expect(
+            `${buildBasePrompt(renderCatalogText(true), true)}\n\n${CREATE_PROMPT_SECTION}`
+          ).toBe(vector.expected.compactCreateSystem);
+        }
+      });
+    });
+  }
+});
+
+describe('runtime conformance: compose responses', () => {
+  for (const vector of composeFixtures.responses) {
+    it(vector.name, () => {
+      withComposeVocabulary(vector, () => {
+        const semantic =
+          vector.schema === 'composed'
+            ? (candidate: unknown) =>
+                checkComposedCandidate(candidate as { recipe?: string; contract?: unknown })
+                  .problems
+            : composeContractSemantic;
+        const verdict =
+          vector.schema === 'composed'
+            ? parseValidatedJson(vector.raw, ComposedResponseSchema, semantic)
+            : parseValidatedJson(vector.raw, LlmContractSchema, semantic);
+        expect(verdict.ok).toBe(vector.expected.ok);
+        if (verdict.ok) {
+          expect(jsonNormalize(verdict.value)).toEqual(vector.expected.value);
+        } else if (vector.expected.problemPrefix !== undefined) {
+          expect(verdict.problem.startsWith(vector.expected.problemPrefix)).toBe(true);
+        } else {
+          expect(verdict.problem).toBe(vector.expected.problem);
+        }
+      });
+    });
+  }
+});
+
+describe('runtime conformance: compose finalize', () => {
+  for (const vector of composeFixtures.finalize) {
+    it(vector.name, () => {
+      withComposeVocabulary(vector, () => {
+        const contract = finalizeContractShape(
+          JSON.parse(JSON.stringify(vector.shape)) as ContractShape,
+          vector.description
+        );
+        const actual = jsonNormalize(contract) as Record<string, unknown>;
+        const metadata = actual.metadata as Record<string, unknown> | undefined;
+        const hadCreatedAt =
+          (vector.shape.metadata as Record<string, unknown> | undefined)?.createdAt !== undefined;
+        if (metadata) {
+          metadata.updatedAt = '<stamped>';
+          if (!hadCreatedAt) metadata.createdAt = '<stamped>';
+        }
+        expect(actual).toEqual(vector.expected);
+      });
+    });
+  }
+});
+
+describe('runtime conformance: compose loop', () => {
+  for (const vector of composeFixtures.loop) {
+    it(vector.name, async () => {
+      const calls: unknown[] = [];
+      let index = 0;
+      const stub = {
+        sendMessage: async (
+          messages: Array<{ role: string; content: string }>,
+          options: {
+            systemBlocks?: Array<{ text: string; cache?: boolean }>;
+            jsonMode?: boolean;
+            maxTokens?: number;
+          } = {}
+        ) => {
+          calls.push(
+            jsonNormalize({
+              messages,
+              systemBlocks: options.systemBlocks,
+              jsonMode: options.jsonMode ?? false,
+              maxTokens: options.maxTokens,
+            })
+          );
+          const content = vector.responses[Math.min(index, vector.responses.length - 1)];
+          index += 1;
+          return { content, provider: vector.provider };
+        },
+      } as unknown as LLMClient;
+      const semantic =
+        vector.schema === 'composed'
+          ? (candidate: unknown) =>
+              checkComposedCandidate(candidate as { recipe?: string; contract?: unknown }).problems
+          : composeContractSemantic;
+      const messages = [
+        { role: 'user' as const, content: 'Build an app for this request:\n\ntest request' },
+      ];
+      const options = {
+        label: 'Contract',
+        maxTokens: 16000,
+        systemBlocks: [{ text: 'BASE', cache: true }, { text: 'MODE' }],
+        semanticCheck: semantic as never,
+      };
+      try {
+        const value =
+          vector.schema === 'composed'
+            ? await generateValidatedJson(stub, messages, ComposedResponseSchema, options)
+            : await generateValidatedJson(stub, messages, LlmContractSchema, options);
+        expect(vector.expected.ok).toBe(true);
+        expect(jsonNormalize(value)).toEqual(vector.expected.value);
+      } catch (error) {
+        expect(vector.expected.ok).toBe(false);
+        expect(error instanceof Error ? error.message : String(error)).toBe(vector.expected.error);
+      }
+      expect(calls).toEqual(vector.expected.calls);
     });
   }
 });
