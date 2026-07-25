@@ -135,6 +135,31 @@
   --der-accent-soft: rgba(8, 145, 178, 0.15);
 }
 
+/* --- Surface and tone knobs (semantic styling the model composes) --- */
+
+.container-surface-card {
+  background: var(--der-surface-2);
+  border: 1px solid var(--der-border);
+  border-radius: var(--der-radius-lg);
+  padding: 12px;
+}
+.container-surface-accent {
+  background: var(--der-accent-soft);
+  border: 1px solid var(--der-accent);
+  border-radius: var(--der-radius-lg);
+  padding: 12px;
+}
+.text-tone-muted {
+  color: var(--der-text);
+  opacity: 0.62;
+}
+.text-tone-accent {
+  color: var(--der-accent);
+}
+.text-tone-danger {
+  color: var(--der-danger);
+}
+
 /* --- Base experience styles --- */
 
 .dynamic-experience-container {

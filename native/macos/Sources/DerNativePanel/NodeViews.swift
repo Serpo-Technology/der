@@ -50,6 +50,25 @@ final class TreeModel: ObservableObject {
         }
     }
 
+    /// Raised panel color for card surfaces.
+    var surfaceColor: Color {
+        switch theme {
+        case "paper": return Color(red: 0.955, green: 0.925, blue: 0.85)
+        case "terminal": return Color(red: 0.07, green: 0.11, blue: 0.08)
+        case "dark": return Color(red: 0.15, green: 0.155, blue: 0.175)
+        default: return Color(nsColor: .controlBackgroundColor).opacity(0.6)
+        }
+    }
+
+    var borderColor: Color {
+        switch theme {
+        case "paper": return Color(red: 0.85, green: 0.80, blue: 0.70)
+        case "terminal": return Color(red: 0.17, green: 0.28, blue: 0.19)
+        case "dark": return Color(white: 0.28)
+        default: return Color(nsColor: .separatorColor)
+        }
+    }
+
     func sendEdit() {
         let instruction = editInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !instruction.isEmpty, !editBusy else { return }
@@ -235,15 +254,33 @@ private func contentText(_ node: ResolvedNode) -> String {
 
 struct TextNode: View {
     let node: ResolvedNode
+    @EnvironmentObject var model: TreeModel
 
     var body: some View {
-        let text = Text(contentText(node))
         let done = (node.prop("className")?.display ?? "").split(separator: " ").contains("done")
+        styledByRole(Text(contentText(node)))
+            .strikethrough(done)
+            .foregroundStyle(toneStyle)
+    }
+
+    private func styledByRole(_ text: Text) -> Text {
         switch node.knob("role", fallback: "body") {
-        case "title": text.font(.title2).bold().strikethrough(done)
-        case "subtitle": text.font(.title3).strikethrough(done)
-        case "caption": text.font(.caption).foregroundStyle(.secondary).strikethrough(done)
-        default: text.strikethrough(done)
+        case "title": return text.font(.title2).bold()
+        case "subtitle": return text.font(.title3)
+        case "caption": return text.font(.caption)
+        default: return text
+        }
+    }
+
+    private var toneStyle: AnyShapeStyle {
+        switch node.knob("tone", fallback: "default") {
+        case "accent": return AnyShapeStyle(model.accentColor ?? .accentColor)
+        case "muted": return AnyShapeStyle(.secondary)
+        case "danger": return AnyShapeStyle(.red)
+        default:
+            return node.knob("role", fallback: "body") == "caption"
+                ? AnyShapeStyle(.secondary)
+                : AnyShapeStyle(.primary)
         }
     }
 }
@@ -384,6 +421,7 @@ struct SelectNode: View {
 
 struct ContainerNode: View {
     let node: ResolvedNode
+    @EnvironmentObject var model: TreeModel
 
     var body: some View {
         let gap = Double(node.knob("gap", fallback: "8")) ?? 8
@@ -396,6 +434,7 @@ struct ContainerNode: View {
             }
         }
         .padding(padding)
+        .modifier(SurfaceModifier(kind: node.knob("surface", fallback: "plain"), model: model))
     }
 
     private var childViews: some View {
@@ -413,8 +452,42 @@ struct ContainerNode: View {
     }
 }
 
+/// The surface knob: cards raise a group on the theme's panel color; accent
+/// panels tint it with the app accent, both faces alike.
+struct SurfaceModifier: ViewModifier {
+    let kind: String
+    let model: TreeModel
+
+    func body(content: Content) -> some View {
+        switch kind {
+        case "card":
+            content
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(model.surfaceColor)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8).stroke(model.borderColor)
+                        )
+                )
+        case "accent":
+            let accent = model.accentColor ?? .accentColor
+            content
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(accent.opacity(0.14))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(accent.opacity(0.6)))
+                )
+        default:
+            content
+        }
+    }
+}
+
 struct ListNode: View {
     let node: ResolvedNode
+    @EnvironmentObject var model: TreeModel
 
     var body: some View {
         let rows = node.rows ?? []
@@ -423,15 +496,20 @@ struct ListNode: View {
                 .foregroundStyle(.secondary)
                 .italic()
         } else {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(rows, id: \.key) { row in
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.element.key) { index, row in
                     HStack(spacing: 8) {
                         ForEach(row.children) { child in
                             NodeView(node: child)
                         }
                         Spacer(minLength: 0)
                     }
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 6)
+                    if index < rows.count - 1 {
+                        Rectangle()
+                            .fill(model.borderColor.opacity(0.6))
+                            .frame(height: 1)
+                    }
                 }
             }
         }

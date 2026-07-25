@@ -15,6 +15,17 @@
             "label"
           ],
           "default": "body"
+        },
+        {
+          "name": "tone",
+          "type": "enum",
+          "values": [
+            "default",
+            "muted",
+            "accent",
+            "danger"
+          ],
+          "default": "default"
         }
       ],
       "bindableProps": [
@@ -178,6 +189,16 @@
             "24"
           ],
           "default": "0"
+        },
+        {
+          "name": "surface",
+          "type": "enum",
+          "values": [
+            "plain",
+            "card",
+            "accent"
+          ],
+          "default": "plain"
         }
       ],
       "howto": "Group related elements; use direction \"column\" for stacked sections and \"row\" for toolbars."

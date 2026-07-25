@@ -532,6 +532,14 @@ export const ELEMENT_MANIFESTS: Record<string, ElementManifest> = {
         default: 'body',
         description: 'Typographic role',
       },
+      {
+        name: 'tone',
+        type: 'enum',
+        values: ['default', 'muted', 'accent', 'danger'],
+        default: 'default',
+        description:
+          "Text color from the theme: 'muted' for secondary lines, 'accent' to highlight a value in the app accent, 'danger' for warnings",
+      },
     ],
     passthroughProps: ['content', 'className'],
     bindableProps: ['content'],
@@ -631,6 +639,14 @@ export const ELEMENT_MANIFESTS: Record<string, ElementManifest> = {
         description: 'Main-axis distribution',
       },
       { name: 'padding', type: 'enum', values: SPACING_VALUES, default: '0', description: 'Inner padding (px)' },
+      {
+        name: 'surface',
+        type: 'enum',
+        values: ['plain', 'card', 'accent'],
+        default: 'plain',
+        description:
+          "Panel look: 'card' raises the group on the theme's surface with a border, 'accent' tints it with the app accent. Use them to give sections and summaries visible structure",
+      },
     ],
     passthroughProps: ['className'],
     allowsChildren: true,
