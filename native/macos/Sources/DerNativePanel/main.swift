@@ -10,6 +10,10 @@ final class PanelWindows: NSObject, NSWindowDelegate {
     private var windows: [String: (window: NSWindow, model: TreeModel)] = [:]
     private var homeWindow: NSWindow?
     private let homeModel = HomeModel()
+    private var settingsWindow: NSWindow?
+    private let settingsModel = SettingsModel()
+    private var partsWindow: NSWindow?
+    private let partsModel = PartsModel()
 
     func apply(_ message: InboundMessage) {
         switch message.cmd {
@@ -34,11 +38,63 @@ final class PanelWindows: NSObject, NSWindowDelegate {
             showHome()
         case "generationStatus":
             homeModel.applyGenerationStatus(message.status ?? "", message: message.message)
+        case "settings":
+            settingsModel.apply(message)
+            showSettings()
+        case "parts":
+            partsModel.apply(message)
+            showParts()
+        case "editStatus":
+            guard let windowId = message.windowId else { return }
+            windows[windowId]?.model.applyEditStatus(message.status ?? "", note: message.message)
         case "operationFailed":
             NSSound.beep()
         default:
             Outbound.shared.send(["event": "log", "message": "unknown cmd \(message.cmd)"])
         }
+    }
+
+    private func showAuxiliary(
+        window: inout NSWindow?,
+        title: String,
+        size: NSSize,
+        content: some View
+    ) {
+        if let existing = window {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+        let created = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: size.width, height: size.height),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        created.title = title
+        created.isReleasedWhenClosed = false
+        created.contentView = NSHostingView(rootView: content)
+        created.center()
+        window = created
+        created.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func showSettings() {
+        showAuxiliary(
+            window: &settingsWindow,
+            title: "DER Settings",
+            size: NSSize(width: 520, height: 560),
+            content: SettingsView(model: settingsModel)
+        )
+    }
+
+    private func showParts() {
+        showAuxiliary(
+            window: &partsWindow,
+            title: "DER Parts",
+            size: NSSize(width: 560, height: 600),
+            content: PartsView(model: partsModel)
+        )
     }
 
     private func showHome() {

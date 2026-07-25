@@ -144,6 +144,104 @@ public struct HomeRecent: Decodable, Sendable, Identifiable {
     public let description: String?
 }
 
+public struct LlmSettingsShape: Decodable, Sendable {
+    public let provider: String
+    public let model: String
+    public let baseUrl: String?
+    public let temperature: Double?
+    public let maxTokens: Double?
+}
+
+public struct ClaudeOauthShape: Decodable, Sendable {
+    public let signedIn: Bool
+    public let hasRefreshToken: Bool
+    public let tokenPreview: String
+}
+
+public struct SettingsViewShape: Decodable, Sendable {
+    public let settings: LlmSettingsShape
+    public let providers: [String]
+    public let apiKeys: [String: String]
+    public let claudeOauth: ClaudeOauthShape?
+}
+
+public struct IntegrationShape: Decodable, Sendable, Identifiable {
+    public let name: String
+    public let kind: String
+    public let target: String?
+    public let baseUrl: String?
+    public let notes: String?
+    public var id: String { name }
+}
+
+public struct PartOperationShape: Decodable, Sendable, Identifiable {
+    public let name: String?
+    public let description: String?
+    public var id: String { name ?? "" }
+}
+
+public struct PartRecipeShape: Decodable, Sendable, Identifiable {
+    public let name: String
+    public let title: String?
+    public let description: String?
+    public let available: Bool?
+    public var id: String { name }
+}
+
+public struct PartServiceCredentialShape: Decodable, Sendable, Identifiable {
+    public let name: String
+    public let kind: String?
+    public let label: String?
+    public var id: String { name }
+}
+
+public struct PartServiceShape: Decodable, Sendable {
+    public let baseUrl: String?
+    public let credentials: [PartServiceCredentialShape]?
+    public let saved: [String]?
+}
+
+public struct InstalledPartShape: Decodable, Sendable, Identifiable {
+    public let id: String
+    public let name: String?
+    public let version: String?
+    public let publisher: String?
+    public let description: String?
+    public let operations: [PartOperationShape]?
+    public let fragments: [String]?
+    public let recipes: [PartRecipeShape]?
+    public let fingerprintGrouped: String?
+    public let service: PartServiceShape?
+}
+
+public struct RegistryEntryShape: Decodable, Sendable, Identifiable {
+    public let id: String
+    public let name: String?
+    public let version: String?
+    public let publisher: String?
+    public let description: String?
+    public let bundleUrl: String?
+    public let installedVersion: String?
+    public let updateAvailable: Bool?
+}
+
+public struct StageReviewShape: Decodable, Sendable {
+    public let stagingToken: String
+    public let id: String
+    public let name: String
+    public let version: String
+    public let publisher: String
+    public let description: String
+    public let namespace: String
+    public let capabilities: [String]?
+    public let operations: [PartOperationShape]?
+    public let recipes: [PartRecipeShape]?
+    public let fingerprint: String
+    public let fingerprintGrouped: String
+    public let publisherStatus: String
+    public let isDowngrade: Bool
+}
+
 /// One inbound line from the runtime core.
 public struct InboundMessage: Decodable, Sendable {
     public let cmd: String
@@ -159,4 +257,14 @@ public struct InboundMessage: Decodable, Sendable {
     public let message: String?
     /// Streaming assembly: the tree is a growing draft; interaction waits.
     public let assembling: Bool?
+    // Management snapshots.
+    public let view: SettingsViewShape?
+    public let integrations: [IntegrationShape]?
+    public let authorizeUrl: String?
+    public let note: String?
+    public let noteKind: String?
+    public let installed: [InstalledPartShape]?
+    public let registryUrl: String?
+    public let registry: [RegistryEntryShape]?
+    public let review: StageReviewShape?
 }

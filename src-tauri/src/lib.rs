@@ -1349,8 +1349,17 @@ pub fn run() {
         .manage(runtime::sessions::RuntimeSessionsState::default())
         .manage(runtime::sidecar::NativeRendererState::default())
         .setup(|app| {
+            // The two faces are peers: native mode never creates a webview
+            // window, and webview mode builds its main window here.
             if native_mode() {
                 runtime::sidecar::show_native_home(app.handle());
+            } else {
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    .title("Dynamic Experience Runtime")
+                    .inner_size(1200.0, 800.0)
+                    .visible(false)
+                    .skip_taskbar(true)
+                    .build()?;
             }
 
             // Create tray menu
@@ -1369,12 +1378,7 @@ pub fn run() {
                     .tooltip("Dynamic Experience Runtime")
                     .build(app)?;
             }
-            
-            // Hide the window on startup - it will be shown via system tray
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.hide();
-            }
-            
+
             Ok(())
         })
         // rely on native tray menu behavior; no custom tray click handler

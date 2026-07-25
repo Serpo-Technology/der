@@ -28,6 +28,8 @@ pub struct WindowSession {
     entry: SessionEntry,
     elements: Vec<Value>,
     experience_id: String,
+    /// The contract the window currently renders; edits start from it.
+    contract: Value,
     /// Streaming assembly: the window shows a growing display-only draft;
     /// interactions are inert and state never persists.
     assembling: bool,
@@ -60,6 +62,7 @@ impl SidecarBridge {
         self.on_change = Some(on_change);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn open_window(
         &mut self,
         window_id: &str,
@@ -68,6 +71,7 @@ impl SidecarBridge {
         theme: Option<&str>,
         entry: SessionEntry,
         elements: Vec<Value>,
+        contract: Value,
         assembling: bool,
     ) -> Result<(), String> {
         let tree = resolve_entry_view(&entry, &elements);
@@ -85,10 +89,24 @@ impl SidecarBridge {
                 entry,
                 elements,
                 experience_id: experience_id.to_string(),
+                contract,
                 assembling,
             },
         );
         Ok(())
+    }
+
+    /// The experience and contract behind a panel window, for edits and
+    /// bookmarks initiated from the window itself.
+    pub fn window_info(&self, window_id: &str) -> Option<(String, Value)> {
+        self.windows
+            .get(window_id)
+            .map(|window| (window.experience_id.clone(), window.contract.clone()))
+    }
+
+    /// Sends any prebuilt message to the panel (management snapshots).
+    pub fn send_raw(&mut self, message: &Value) -> Result<(), String> {
+        self.transport.send(message)
     }
 
     pub fn assembly_dismissed(&self, experience_id: &str) -> bool {
@@ -132,6 +150,7 @@ impl SidecarBridge {
         experience_id: &str,
         entry: SessionEntry,
         elements: Vec<Value>,
+        contract: Value,
         assembling: bool,
     ) -> Result<(), String> {
         let window_id = self
@@ -140,6 +159,7 @@ impl SidecarBridge {
         if let Some(window) = self.windows.get_mut(&window_id) {
             window.entry = entry;
             window.elements = elements;
+            window.contract = contract;
             window.assembling = assembling;
         }
         self.send_update(&window_id)
@@ -259,9 +279,9 @@ impl SidecarBridge {
                 }
                 Ok(None)
             }
-            "create" | "openBookmark" | "openManage" | "openRecipe" | "openRecent" => {
-                Ok(Some(message.clone()))
-            }
+            "create" | "openBookmark" | "openRecipe" | "openRecent" | "editExperience"
+            | "bookmarkAdd" | "bookmarkRemove" => Ok(Some(message.clone())),
+            name if super::manage::is_management_event(name) => Ok(Some(message.clone())),
             "log" => Ok(None),
             other => Err(format!("Unknown panel event \"{}\"", other)),
         }
@@ -375,15 +395,43 @@ fn relay_home_event(app: &tauri::AppHandle, event: &Value) {
                 }
             });
         }
-        Some("openManage") => {
-            // The deliberate bridge to the webview management console:
-            // settings, parts, and the contract editors live there.
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-                use tauri::Emitter;
-                let _ = window.emit("show-settings", ());
+        Some("editExperience") => {
+            let window_id = event.get("windowId").and_then(Value::as_str).unwrap_or("");
+            let instruction = event
+                .get("instruction")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if window_id.is_empty() || instruction.is_empty() {
+                return;
             }
+            native_edit(app, window_id.to_string(), instruction);
+        }
+        Some("bookmarkAdd") => {
+            let window_id = event.get("windowId").and_then(Value::as_str).unwrap_or("");
+            if window_id.is_empty() {
+                return;
+            }
+            native_bookmark_window(app, window_id.to_string());
+        }
+        Some("bookmarkRemove") => {
+            let Some(bookmark_id) = event.get("id").and_then(Value::as_str) else {
+                return;
+            };
+            let app = app.clone();
+            let bookmark_id = bookmark_id.to_string();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) =
+                    crate::delete_bookmarked_experience(app.clone(), bookmark_id.clone()).await
+                {
+                    eprintln!("Failed to remove bookmark {}: {}", bookmark_id, error);
+                }
+                refresh_native_home(&app);
+            });
+        }
+        Some(name) if super::manage::is_management_event(name) => {
+            super::manage::dispatch(app, event.clone());
         }
         Some("openBookmark") => {
             let Some(bookmark_id) = event.get("id").and_then(Value::as_str) else {
@@ -542,7 +590,7 @@ pub fn open_native_for_experience(
     let theme = contract_theme(&contract);
     let mut bridge = bridge.lock().unwrap();
     if bridge.window_for_experience(experience_id).is_some() {
-        return bridge.replace_session(experience_id, entry, elements, false);
+        return bridge.replace_session(experience_id, entry, elements, contract, false);
     }
     let window_id = format!("nw-{}", uuid::Uuid::new_v4());
     bridge.open_window(
@@ -552,8 +600,178 @@ pub fn open_native_for_experience(
         theme.as_deref(),
         entry,
         elements,
+        contract,
         false,
     )
+}
+
+/// Sends a prebuilt message to the panel when it is running; management
+/// snapshots use this.
+pub fn send_panel_message(app: &tauri::AppHandle, message: &Value) {
+    let state = app.state::<NativeRendererState>();
+    let bridge = {
+        let guard = state.0.lock().unwrap();
+        match guard.as_ref() {
+            Some(running) => running.bridge.clone(),
+            None => match ensure_running(app) {
+                Ok(bridge) => bridge,
+                Err(error) => {
+                    eprintln!("{}", error);
+                    return;
+                }
+            },
+        }
+    };
+    let outcome = bridge.lock().unwrap().send_raw(message);
+    if let Err(error) = outcome {
+        eprintln!("Panel message failed: {}", error);
+    }
+}
+
+fn send_edit_status(app: &tauri::AppHandle, window_id: &str, status: &str, message: Option<&str>) {
+    send_panel_message(
+        app,
+        &json!({
+            "cmd": "editStatus",
+            "windowId": window_id,
+            "status": status,
+            "message": message,
+        }),
+    );
+}
+
+/// A conversational edit from a native window: the Rust edit pipeline
+/// rewrites the contract, the record updates, and the window's session
+/// rebuilds with its state preserved.
+pub fn native_edit(app: &tauri::AppHandle, window_id: String, instruction: String) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<NativeRendererState>();
+        let bridge = {
+            let guard = state.0.lock().unwrap();
+            match guard.as_ref() {
+                Some(running) => running.bridge.clone(),
+                None => return,
+            }
+        };
+        let info = bridge.lock().unwrap().window_info(&window_id);
+        let Some((experience_id, current)) = info else {
+            return;
+        };
+        send_edit_status(&app, &window_id, "started", None);
+        let vocab = super::sessions::compose_vocabulary(&app);
+        let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        let mut llm = super::sessions::HostLlm { app: app.clone() };
+        let outcome = super::compose::edit_contract(
+            &mut llm,
+            &current,
+            &instruction,
+            &vocab,
+            &now_iso,
+            None,
+        )
+        .await;
+        match outcome {
+            Ok(outcome) => {
+                let description = outcome
+                    .contract
+                    .get("metadata")
+                    .and_then(|m| m.get("description"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                persist_created_experience(
+                    &app,
+                    &experience_id,
+                    &outcome.contract,
+                    &description,
+                    &now_iso,
+                    None,
+                )
+                .await;
+                let preserved = bridge.lock().unwrap().state_of_experience(&experience_id);
+                let rebuilt = build_entry(
+                    &app,
+                    &outcome.contract,
+                    preserved.unwrap_or_default(),
+                );
+                match rebuilt {
+                    Ok((entry, elements)) => {
+                        let replaced = bridge.lock().unwrap().replace_session(
+                            &experience_id,
+                            entry,
+                            elements,
+                            outcome.contract,
+                            false,
+                        );
+                        match replaced {
+                            Ok(()) => {
+                                let note = if outcome.warnings.is_empty() {
+                                    "Edit applied".to_string()
+                                } else {
+                                    format!(
+                                        "Edit applied ({} adjustment{})",
+                                        outcome.warnings.len(),
+                                        if outcome.warnings.len() == 1 { "" } else { "s" }
+                                    )
+                                };
+                                send_edit_status(&app, &window_id, "done", Some(&note));
+                                refresh_native_home(&app);
+                            }
+                            Err(error) => {
+                                send_edit_status(&app, &window_id, "failed", Some(&error));
+                            }
+                        }
+                    }
+                    Err(error) => send_edit_status(&app, &window_id, "failed", Some(&error)),
+                }
+            }
+            Err(error) => send_edit_status(&app, &window_id, "failed", Some(&error)),
+        }
+    });
+}
+
+/// Keeps an app: the window's experience joins the bookmarks, the tray
+/// rebuilds, and the home refreshes.
+pub fn native_bookmark_window(app: &tauri::AppHandle, window_id: String) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<NativeRendererState>();
+        let bridge = {
+            let guard = state.0.lock().unwrap();
+            match guard.as_ref() {
+                Some(running) => running.bridge.clone(),
+                None => return,
+            }
+        };
+        let info = bridge.lock().unwrap().window_info(&window_id);
+        let Some((experience_id, contract)) = info else {
+            return;
+        };
+        let name = contract
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("Untitled app")
+            .to_string();
+        let description = contract
+            .get("metadata")
+            .and_then(|m| m.get("description"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        if let Err(error) = crate::bookmark_experience(
+            app.clone(),
+            experience_id,
+            name,
+            description,
+            contract,
+            None,
+        )
+        .await
+        {
+            eprintln!("Failed to bookmark: {}", error);
+        }
+        refresh_native_home(&app);
+    });
 }
 
 /// A streaming assembly draft lands in its native window: the display-only
@@ -591,7 +809,7 @@ pub fn show_assembly_preview(
     let theme = contract_theme(&contract);
     let mut bridge = bridge.lock().unwrap();
     if bridge.window_for_experience(experience_id).is_some() {
-        return bridge.replace_session(experience_id, entry, elements, true);
+        return bridge.replace_session(experience_id, entry, elements, contract, true);
     }
     let window_id = format!("nw-{}", uuid::Uuid::new_v4());
     bridge.open_window(
@@ -601,6 +819,7 @@ pub fn show_assembly_preview(
         theme.as_deref(),
         entry,
         elements,
+        contract,
         true,
     )
 }
@@ -983,7 +1202,7 @@ pub async fn native_update_experience_contract(
         let (entry, elements) = build_entry(&app, &contract, preserved)?;
         let outcome = {
             let mut guard = bridge.lock().unwrap();
-            guard.replace_session(&experience_id, entry, elements, false)
+            guard.replace_session(&experience_id, entry, elements, contract, false)
         };
         outcome
     })

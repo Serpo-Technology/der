@@ -9,6 +9,7 @@ pub mod env;
 pub mod expression;
 pub mod host;
 pub mod llm_schema;
+pub mod manage;
 pub mod manifests;
 pub mod prompt;
 pub mod operations;

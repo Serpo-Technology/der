@@ -55,8 +55,16 @@ final class HomeModel: ObservableObject {
         Outbound.shared.send(["event": "openRecent", "id": recent.id])
     }
 
-    func openManage() {
-        Outbound.shared.send(["event": "openManage"])
+    func removeBookmark(_ bookmark: HomeBookmark) {
+        Outbound.shared.send(["event": "bookmarkRemove", "id": bookmark.id])
+    }
+
+    func openSettings() {
+        Outbound.shared.send(["event": "openSettings"])
+    }
+
+    func openParts() {
+        Outbound.shared.send(["event": "openParts"])
     }
 }
 
@@ -75,6 +83,11 @@ struct HomeView: View {
                             ForEach(model.bookmarks) { bookmark in
                                 HomeRow(title: bookmark.name, subtitle: nil) {
                                     model.open(bookmark)
+                                }
+                                .contextMenu {
+                                    Button("Remove from Your apps") {
+                                        model.removeBookmark(bookmark)
+                                    }
                                 }
                             }
                         }
@@ -160,11 +173,12 @@ struct HomeView: View {
 
     private var footer: some View {
         HStack {
-            Text("Model settings, parts, and editors")
+            Text("Model, credentials, and installed parts")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("Manage") { model.openManage() }
+            Button("Settings") { model.openSettings() }
+            Button("Parts") { model.openParts() }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

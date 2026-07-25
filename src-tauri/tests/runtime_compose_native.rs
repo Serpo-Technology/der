@@ -256,3 +256,75 @@ fn a_repair_round_fixes_a_rejected_composition() {
     assert_eq!(llm.calls, 2);
     assert_eq!(outcome.contract["operations"][0]["executionType"], json!("builtin"));
 }
+
+#[test]
+fn edits_keep_ids_and_surface_removals() {
+    use dynamic_experience_runtime_lib::runtime::compose::edit_contract;
+    let vocab = installed_vocabulary();
+    let current = json!({
+        "name": "counter",
+        "version": "1.0.0",
+        "metadata": { "createdAt": "2026-07-01T09:00:00.000Z", "description": "counts clicks" },
+        "elements": [
+            { "id": "count", "type": "text",
+              "dataBindings": [{ "property": "content", "source": "state", "sourceId": "n" }] },
+            { "id": "b", "type": "button", "properties": { "text": "Go" },
+              "eventBindings": [{ "event": "click", "operationId": "op-add" }] },
+            { "id": "note", "type": "text", "properties": { "content": "obsolete" } }
+        ],
+        "operations": [
+            { "id": "op-add", "operationName": "counter.add",
+              "inputs": [{ "name": "key", "source": "constant", "sourceId": "n" }] }
+        ]
+    });
+    // First answer renames a kept id's kind; the repair keeps kinds and
+    // drops the obsolete note element.
+    let bad = json!({
+        "name": "counter",
+        "elements": [
+            { "id": "count", "type": "button", "properties": { "text": "?" },
+              "eventBindings": [{ "event": "click", "operationId": "op-add" }] },
+            { "id": "b", "type": "button", "properties": { "text": "Go" },
+              "eventBindings": [{ "event": "click", "operationId": "op-add" }] }
+        ],
+        "operations": [
+            { "id": "op-add", "operationName": "counter.add",
+              "inputs": [{ "name": "key", "source": "constant", "sourceId": "n" }] }
+        ]
+    });
+    let good = json!({
+        "name": "counter",
+        "elements": [
+            { "id": "count", "type": "text",
+              "dataBindings": [{ "property": "content", "source": "state", "sourceId": "n" }] },
+            { "id": "b", "type": "button", "properties": { "text": "Go" },
+              "eventBindings": [{ "event": "click", "operationId": "op-add" }] }
+        ],
+        "operations": [
+            { "id": "op-add", "operationName": "counter.add",
+              "inputs": [{ "name": "key", "source": "constant", "sourceId": "n" }] }
+        ]
+    });
+    let mut llm = ScriptedLlm {
+        responses: VecDeque::from([bad.to_string(), good.to_string()]),
+        calls: 0,
+    };
+    let outcome = block_on(edit_contract(
+        &mut llm,
+        &current,
+        "remove the obsolete note",
+        &vocab,
+        "2026-07-25T12:00:00.000Z",
+        None,
+    ))
+    .expect("edit succeeds after repair");
+    assert_eq!(llm.calls, 2, "the kind change forced a repair round");
+    assert_eq!(outcome.contract["metadata"]["createdAt"], json!("2026-07-01T09:00:00.000Z"));
+    assert_eq!(outcome.contract["metadata"]["description"], json!("counts clicks"));
+    let removal = outcome
+        .warnings
+        .iter()
+        .find(|warning| warning["code"] == json!("EDIT_REMOVED_PART"))
+        .expect("removal noted");
+    assert_eq!(removal["message"], json!("Edit removed element \"note\""));
+}

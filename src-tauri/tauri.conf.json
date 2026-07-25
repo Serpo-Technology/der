@@ -10,15 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Dynamic Experience Runtime",
-        "width": 1200,
-        "height": 800,
-        "visible": false,
-        "skipTaskbar": true
-      }
-    ],
+    "windows": [],
     "trayIcon": {
       "iconPath": "icons/32x32.png",
       "iconAsTemplate": true,

@@ -9,11 +9,60 @@ final class TreeModel: ObservableObject {
     let windowId: String
     @Published var tree: [ResolvedNode]
     @Published var assembling: Bool
+    @Published var editInstruction = ""
+    @Published var editBusy = false
+    @Published var editNote: String?
+    @Published var editFailed = false
+    @Published var bookmarked = false
 
     init(windowId: String, tree: [ResolvedNode], assembling: Bool = false) {
         self.windowId = windowId
         self.tree = tree
         self.assembling = assembling
+    }
+
+    func sendEdit() {
+        let instruction = editInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !instruction.isEmpty, !editBusy else { return }
+        Outbound.shared.send([
+            "event": "editExperience",
+            "windowId": windowId,
+            "instruction": instruction,
+        ])
+        editInstruction = ""
+        editBusy = true
+        editFailed = false
+        editNote = "Applying your change"
+    }
+
+    func applyEditStatus(_ status: String, note: String?) {
+        switch status {
+        case "started":
+            editBusy = true
+            editFailed = false
+            editNote = "Applying your change"
+        case "done":
+            editBusy = false
+            editFailed = false
+            editNote = note ?? "Edit applied"
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                if self?.editBusy == false, self?.editFailed == false {
+                    self?.editNote = nil
+                }
+            }
+        case "failed":
+            editBusy = false
+            editFailed = true
+            editNote = note ?? "The change could not be applied"
+        default:
+            break
+        }
+    }
+
+    func bookmark() {
+        Outbound.shared.send(["event": "bookmarkAdd", "windowId": windowId])
+        bookmarked = true
     }
 
     func dispatch(_ operationIds: [String], item: JSONValue?) {
@@ -54,6 +103,46 @@ struct RootView: View {
             }
             // Drafts are display-only until the finished app takes over.
             .allowsHitTesting(!model.assembling)
+            if !model.assembling {
+                Divider()
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        TextField("Change this app...", text: $model.editInstruction)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { model.sendEdit() }
+                            .disabled(model.editBusy)
+                        Button("Apply") { model.sendEdit() }
+                            .disabled(
+                                model.editBusy
+                                    || model.editInstruction
+                                        .trimmingCharacters(in: .whitespaces).isEmpty
+                            )
+                        Button {
+                            model.bookmark()
+                        } label: {
+                            Image(systemName: model.bookmarked ? "star.fill" : "star")
+                        }
+                        .help("Keep in Your apps")
+                        .disabled(model.bookmarked)
+                    }
+                    if let note = model.editNote {
+                        HStack(spacing: 6) {
+                            if model.editBusy {
+                                ProgressView().controlSize(.small)
+                            }
+                            Text(note)
+                                .font(.caption)
+                                .foregroundStyle(
+                                    model.editFailed
+                                        ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary)
+                                )
+                                .lineLimit(2)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
         }
         .environmentObject(model)
         .animation(.easeOut(duration: 0.2), value: model.assembling)

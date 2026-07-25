@@ -597,6 +597,212 @@ pub struct ComposeOutcome {
     pub warnings: Vec<Value>,
 }
 
+pub struct EditOutcome {
+    pub contract: Value,
+    pub warnings: Vec<Value>,
+}
+
+fn collect_stable_kinds(current: &Value, kinds: &mut Vec<(String, String)>) {
+    fn walk_elements(elements: &[Value], kinds: &mut Vec<(String, String)>) {
+        for element in elements {
+            let id = element.get("id").and_then(Value::as_str).unwrap_or("");
+            let element_type = element.get("type").and_then(Value::as_str).unwrap_or("");
+            kinds.push((format!("element:{}", id), element_type.to_string()));
+            if let Some(children) = element.get("children").and_then(Value::as_array) {
+                walk_elements(children, kinds);
+            }
+        }
+    }
+    walk_elements(
+        current.get("elements").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]),
+        kinds,
+    );
+    for op in current.get("operations").and_then(Value::as_array).into_iter().flatten() {
+        let id = op.get("id").and_then(Value::as_str).unwrap_or("");
+        let name = op.get("operationName").and_then(Value::as_str).unwrap_or("");
+        kinds.push((format!("operation:{}", id), name.to_string()));
+    }
+}
+
+/// An id kept across the edit must keep its kind of part; the problems feed
+/// the repair round like every other rule.
+fn check_id_stability(candidate: &Value, stable_kinds: &[(String, String)]) -> Vec<String> {
+    let mut problems = Vec::new();
+    fn known<'a>(kinds: &'a [(String, String)], key: &str) -> Option<&'a str> {
+        kinds.iter().find(|(k, _)| k == key).map(|(_, kind)| kind.as_str())
+    }
+    fn check_element(
+        element: &Value,
+        path: &str,
+        kinds: &[(String, String)],
+        problems: &mut Vec<String>,
+    ) {
+        let id = element.get("id").and_then(Value::as_str).unwrap_or("");
+        let element_type = element.get("type").and_then(Value::as_str).unwrap_or("");
+        if let Some(kind) = known(kinds, &format!("element:{}", id)) {
+            if kind != element_type {
+                problems.push(format!(
+                    "{}: element id \"{}\" was type \"{}\" and must keep it (use a new id for a different part; reused ids preserve user state)",
+                    path, id, kind
+                ));
+            }
+        }
+        for (index, child) in element
+            .get("children")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
+            check_element(child, &format!("{}.children.{}", path, index), kinds, problems);
+        }
+    }
+    for (index, element) in candidate
+        .get("elements")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        check_element(element, &format!("elements.{}", index), stable_kinds, &mut problems);
+    }
+    for (index, op) in candidate
+        .get("operations")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        let id = op.get("id").and_then(Value::as_str).unwrap_or("");
+        let name = op.get("operationName").and_then(Value::as_str).unwrap_or("");
+        if let Some(kind) = known(stable_kinds, &format!("operation:{}", id)) {
+            if kind != name {
+                problems.push(format!(
+                    "operations.{}: operation id \"{}\" was \"{}\" and must keep it (use a new id for a different operation)",
+                    index, id, kind
+                ));
+            }
+        }
+    }
+    problems
+}
+
+/// Applies a natural-language edit to an existing contract. Preservation is
+/// a property of id stability: kept elements and operations keep their ids
+/// and kinds, removals surface as warnings, and the creation metadata rides
+/// through finalization.
+pub async fn edit_contract(
+    llm: &mut dyn ComposeLlm,
+    current: &Value,
+    instruction: &str,
+    vocab: &ComposeVocabulary,
+    now_iso: &str,
+    on_partial: Option<PartialCallback<'_>>,
+) -> Result<EditOutcome, String> {
+    let catalog = render_catalog_text(vocab, false);
+    let current_pretty =
+        serde_json::to_string_pretty(current).map_err(|error| error.to_string())?;
+    let messages = vec![json!({
+        "role": "user",
+        "content": format!(
+            "Current contract:\n{}\n\nApply this change and return the complete updated contract:\n{}",
+            current_pretty, instruction
+        ),
+    })];
+
+    let mut stable_kinds: Vec<(String, String)> = Vec::new();
+    collect_stable_kinds(current, &mut stable_kinds);
+
+    let mut warnings: Vec<Value> = Vec::new();
+    let mut semantic = |candidate: &mut Value| {
+        let outcome = check_against_manifests(
+            candidate,
+            &vocab.fragment_defs,
+            &vocab.part_operations,
+            &vocab.credentials,
+        );
+        warnings = outcome.warnings;
+        let mut problems = if outcome.errors.is_empty() {
+            Vec::new()
+        } else {
+            vec![format_manifest_errors(&outcome.errors)]
+        };
+        problems.extend(check_id_stability(candidate, &stable_kinds));
+        problems
+    };
+    let shape = generate_validated_json(
+        llm,
+        messages,
+        SchemaKind::Contract,
+        GenerateOptions {
+            label: "Contract".to_string(),
+            max_tokens: Some(16000),
+            system_blocks: vec![
+                SystemBlockSpec { text: build_base_prompt(&catalog, false), cache: true },
+                SystemBlockSpec {
+                    text: super::prompt::EDIT_PROMPT_SECTION.to_string(),
+                    cache: false,
+                },
+            ],
+        },
+        &mut semantic,
+        on_partial,
+    )
+    .await?;
+
+    // Ids that disappeared are legitimate removals; note them for the caller.
+    let mut remaining: Vec<(String, String)> = Vec::new();
+    collect_stable_kinds(&shape, &mut remaining);
+    for (key, _) in &stable_kinds {
+        if !remaining.iter().any(|(kept, _)| kept == key) {
+            let (kind, id) = key.split_once(':').unwrap_or(("element", key));
+            let path = if kind == "element" { "elements" } else { "operations" };
+            warnings.push(json!({
+                "path": path,
+                "message": format!("Edit removed {} \"{}\"", kind, id),
+                "code": "EDIT_REMOVED_PART",
+            }));
+        }
+    }
+
+    // Preserve creation metadata; finalization stamps updatedAt.
+    let mut merged = shape;
+    if merged.get("metadata").is_none() {
+        let current_metadata = current.get("metadata");
+        let mut metadata = Map::new();
+        metadata.insert(
+            "createdAt".to_string(),
+            current_metadata
+                .and_then(|m| m.get("createdAt"))
+                .cloned()
+                .unwrap_or_else(|| Value::String(now_iso.to_string())),
+        );
+        metadata.insert("updatedAt".to_string(), Value::String(now_iso.to_string()));
+        metadata.insert(
+            "version".to_string(),
+            current_metadata
+                .and_then(|m| m.get("version"))
+                .cloned()
+                .unwrap_or_else(|| merged.get("version").cloned().unwrap_or(Value::Null)),
+        );
+        for key in ["description", "tags", "author"] {
+            if let Some(value) = current_metadata.and_then(|m| m.get(key)) {
+                metadata.insert(key.to_string(), value.clone());
+            }
+        }
+        if let Some(map) = merged.as_object_mut() {
+            map.insert("metadata".to_string(), Value::Object(metadata));
+        }
+    }
+    let fallback = current
+        .get("metadata")
+        .and_then(|m| m.get("description"))
+        .and_then(Value::as_str)
+        .or_else(|| current.get("name").and_then(Value::as_str));
+    let contract = finalize_contract_shape(&merged, fallback, now_iso, vocab);
+    Ok(EditOutcome { contract, warnings })
+}
+
 /// Single-call creation against the installed vocabulary: the spec header
 /// plus either a composed contract or an installed recipe reference, both
 /// finalized into a renderable contract.

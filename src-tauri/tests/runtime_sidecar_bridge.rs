@@ -68,7 +68,7 @@ fn open_bridge() -> (SidecarBridge, Recorder) {
     .expect("session opens");
     let elements = contract["elements"].as_array().cloned().unwrap();
     bridge
-        .open_window("w1", "exp-counter", "Counter", None, entry, elements, false)
+        .open_window("w1", "exp-counter", "Counter", None, entry, elements, contract.clone(), false)
         .expect("window opens");
     (bridge, recorder)
 }
@@ -206,7 +206,7 @@ fn replacing_a_session_preserves_state_and_updates_the_view() {
     .expect("rebuilt session");
     let elements = contract["elements"].as_array().cloned().unwrap();
     bridge
-        .replace_session("exp-counter", entry, elements, false)
+        .replace_session("exp-counter", entry, elements, contract.clone(), false)
         .expect("session replaced");
 
     let sent = recorder.0.lock().unwrap();
@@ -265,16 +265,17 @@ fn assembly_windows_flag_their_trees_and_finish_live() {
             None,
             display_entry(&contract),
             elements.clone(),
+            contract.clone(),
             true,
         )
         .expect("assembly window opens");
     // The next draft replaces the tree, still assembling.
     bridge
-        .replace_session("exp-live", display_entry(&contract), elements.clone(), true)
+        .replace_session("exp-live", display_entry(&contract), elements.clone(), contract.clone(), true)
         .expect("draft replaces");
     // The finished app takes the window over.
     bridge
-        .replace_session("exp-live", display_entry(&contract), elements, false)
+        .replace_session("exp-live", display_entry(&contract), elements, contract.clone(), false)
         .expect("final replaces");
 
     let sent = recorder.0.lock().unwrap();
@@ -300,6 +301,7 @@ fn assembling_windows_never_persist_and_close_on_failure() {
             None,
             display_entry(&contract),
             elements,
+            contract.clone(),
             true,
         )
         .expect("assembly window opens");
@@ -336,6 +338,7 @@ fn a_dismissed_assembly_stays_dismissed() {
             None,
             display_entry(&contract),
             elements,
+            contract.clone(),
             true,
         )
         .expect("assembly window opens");

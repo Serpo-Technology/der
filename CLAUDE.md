@@ -343,8 +343,21 @@ finished app still opens), and the finished contract takes the window over live,
 experience record saved for the home's Recent list. Ready-made apps open through
 `native_open_recipe` the same way, and webview-initiated creates in native mode stream into
 the same assembly windows through per-tick assembling opens. The panel's home is DER's
-front door: branding, the create field with lifecycle status, bookmarked apps, recent
-creations, installed ready-made apps, and the Manage bridge into the webview console. `scripts/package-macos.sh` builds the installable app:
+front door: branding, the create field with lifecycle status, bookmarked apps (context-menu
+removable), recent creations, installed ready-made apps, and Settings/Parts buttons.
+The two faces are peers: native mode never creates a webview window (the main window is
+built programmatically in setup only outside native mode; `tauri.conf.json` declares no
+windows), and everything the native face needs is native. `runtime/manage.rs` serves the
+management surfaces over the panel protocol as snapshot messages and action events, pure
+plumbing over the existing cores: LLM settings and redacted credentials, the Claude PKCE
+sign-in, integration credentials, the parts registry (saved URL under
+`settings/registry.json`, update badges), the two-phase install review (stage summary with
+publisher fingerprint pinning and downgrade consent, then commit), part removal, part
+secrets, and recipe opens. Native app windows carry a bottom edit bar
+(`editExperience` runs the Rust edit pipeline: `compose::edit_contract` ports the edit
+mode with the id-stability rules and EDIT_REMOVED_PART warnings, the record updates, and
+the session rebuilds with state preserved under an `editStatus` lifecycle) plus a bookmark
+star wired to the tray and home. `scripts/package-macos.sh` builds the installable app:
 the panel compiles in release mode, stages under `src-tauri/binaries/` (gitignored), and
 `tauri build --config src-tauri/tauri.macos-app.conf.json` bundles it as an externalBin in
 DER.app; a packaged build with the bundled panel runs native-first by default

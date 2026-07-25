@@ -111,11 +111,6 @@ export const MainInterface: React.FC = () => {
         setState(prev => ({ ...prev, currentMode: 'bookmarks' }));
       });
 
-      // The native home's management bridge lands on the settings view.
-      await listen('show-settings', () => {
-        setState(prev => ({ ...prev, currentMode: 'settings' }));
-      });
-
     };
 
     setupEventListeners();
