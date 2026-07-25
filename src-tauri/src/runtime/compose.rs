@@ -602,6 +602,202 @@ pub struct EditOutcome {
     pub warnings: Vec<Value>,
 }
 
+/// The reviewable blueprint projected from a contract: what the model
+/// planned, in the shape blueprint-mode regeneration consumes.
+pub fn derive_blueprint(contract: &Value, description: &str) -> Value {
+    let mut ui_elements: Vec<Value> = Vec::new();
+    fn walk(elements: &[Value], out: &mut Vec<Value>) {
+        for element in elements {
+            let props = element.get("properties").cloned().unwrap_or(Value::Null);
+            let label = ["text", "content", "label", "placeholder"]
+                .iter()
+                .find_map(|key| props.get(*key).filter(|value| !value.is_null()))
+                .cloned()
+                .unwrap_or_else(|| element.get("id").cloned().unwrap_or(Value::Null));
+            out.push(json!({
+                "type": element.get("type").cloned().unwrap_or(Value::Null),
+                "purpose": js_to_string(&label),
+                "capabilities": [],
+            }));
+            if let Some(children) = element.get("children").and_then(Value::as_array) {
+                walk(children, out);
+            }
+        }
+    }
+    walk(
+        contract.get("elements").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]),
+        &mut ui_elements,
+    );
+
+    let operations: Vec<Value> = contract
+        .get("operations")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|op| {
+            let names = |key: &str| -> Vec<Value> {
+                op.get(key)
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|binding| binding.get("name").cloned())
+                    .collect()
+            };
+            json!({
+                "name": op.get("operationName").cloned().unwrap_or(Value::Null),
+                "purpose": op.get("operationName").cloned().unwrap_or(Value::Null),
+                "inputs": names("inputs"),
+                "outputs": names("outputs"),
+                "executionType": op.get("executionType").cloned().unwrap_or(json!("builtin")),
+            })
+        })
+        .collect();
+
+    let mut capabilities: Vec<String> = Vec::new();
+    for element in &ui_elements {
+        if let Some(kind) = element.get("type").and_then(Value::as_str) {
+            push_unique_string(&mut capabilities, kind);
+        }
+    }
+    for op in &operations {
+        if let Some(name) = op.get("name").and_then(Value::as_str) {
+            push_unique_string(&mut capabilities, name);
+        }
+    }
+
+    json!({
+        "description": description,
+        "goal": description,
+        "requiredCapabilities": capabilities,
+        "uiElements": ui_elements,
+        "operations": operations,
+    })
+}
+
+fn push_unique_string(list: &mut Vec<String>, value: &str) {
+    if !list.iter().any(|existing| existing == value) {
+        list.push(value.to_string());
+    }
+}
+
+/// Blueprint-mode generation: the reviewed plan becomes a contract through
+/// the same loop, checker, and finalization as every other mode.
+pub async fn generate_from_blueprint(
+    llm: &mut dyn ComposeLlm,
+    blueprint: &Value,
+    vocab: &ComposeVocabulary,
+    now_iso: &str,
+    on_partial: Option<PartialCallback<'_>>,
+) -> Result<EditOutcome, String> {
+    let catalog = render_catalog_text(vocab, false);
+    let mut summary = Map::new();
+    for key in ["description", "goal", "requiredCapabilities", "uiElements", "operations"] {
+        summary.insert(
+            key.to_string(),
+            blueprint.get(key).cloned().unwrap_or(Value::Null),
+        );
+    }
+    let pretty = serde_json::to_string_pretty(&Value::Object(summary))
+        .map_err(|error| error.to_string())?;
+    let messages = vec![json!({
+        "role": "user",
+        "content": format!("Generate the contract for this blueprint:\n\n{}", pretty),
+    })];
+
+    let mut warnings: Vec<Value> = Vec::new();
+    let mut semantic = |candidate: &mut Value| {
+        let outcome = check_against_manifests(
+            candidate,
+            &vocab.fragment_defs,
+            &vocab.part_operations,
+            &vocab.credentials,
+        );
+        warnings = outcome.warnings;
+        if outcome.errors.is_empty() {
+            Vec::new()
+        } else {
+            vec![format_manifest_errors(&outcome.errors)]
+        }
+    };
+    let shape = generate_validated_json(
+        llm,
+        messages,
+        SchemaKind::Contract,
+        GenerateOptions {
+            label: "Contract".to_string(),
+            max_tokens: Some(16000),
+            system_blocks: vec![
+                SystemBlockSpec { text: build_base_prompt(&catalog, false), cache: true },
+                SystemBlockSpec {
+                    text: super::prompt::BLUEPRINT_PROMPT_SECTION.to_string(),
+                    cache: false,
+                },
+            ],
+        },
+        &mut semantic,
+        on_partial,
+    )
+    .await?;
+    let fallback = blueprint.get("goal").and_then(Value::as_str);
+    let contract = finalize_contract_shape(&shape, fallback, now_iso, vocab);
+    Ok(EditOutcome { contract, warnings })
+}
+
+pub struct HumanContractVerdict {
+    /// The validated, checker-mutated shape when everything passed.
+    pub shape: Option<Value>,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+/// A hand-edited contract runs the same gates the model faces: structural
+/// schema, then the manifest checker.
+pub fn check_contract_json(raw: &str, vocab: &ComposeVocabulary) -> HumanContractVerdict {
+    let candidate: Value = match serde_json::from_str(raw) {
+        Ok(value) => value,
+        Err(error) => {
+            return HumanContractVerdict {
+                shape: None,
+                errors: vec![format!("The contract is not parseable JSON: {}", error)],
+                warnings: Vec::new(),
+            };
+        }
+    };
+    let mut shape = match super::llm_schema::validate_llm_contract(&candidate) {
+        Ok(shape) => shape,
+        Err(issues) => {
+            return HumanContractVerdict {
+                shape: None,
+                errors: issues
+                    .iter()
+                    .map(|issue| format!("{}: {}", issue.dotted_path(), issue.message))
+                    .collect(),
+                warnings: Vec::new(),
+            };
+        }
+    };
+    let outcome = check_against_manifests(
+        &mut shape,
+        &vocab.fragment_defs,
+        &vocab.part_operations,
+        &vocab.credentials,
+    );
+    let describe = |entry: &Value| {
+        format!(
+            "{}: {}",
+            entry.get("path").and_then(Value::as_str).unwrap_or(""),
+            entry.get("message").and_then(Value::as_str).unwrap_or("")
+        )
+    };
+    let errors: Vec<String> = outcome.errors.iter().map(describe).collect();
+    let warnings: Vec<String> = outcome.warnings.iter().map(describe).collect();
+    HumanContractVerdict {
+        shape: if errors.is_empty() { Some(shape) } else { None },
+        errors,
+        warnings,
+    }
+}
+
 fn collect_stable_kinds(current: &Value, kinds: &mut Vec<(String, String)>) {
     fn walk_elements(elements: &[Value], kinds: &mut Vec<(String, String)>) {
         for element in elements {

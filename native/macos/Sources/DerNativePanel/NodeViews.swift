@@ -124,6 +124,14 @@ struct RootView: View {
                         }
                         .help("Keep in Your apps")
                         .disabled(model.bookmarked)
+                        Button {
+                            Outbound.shared.send([
+                                "event": "openEditor", "windowId": model.windowId,
+                            ])
+                        } label: {
+                            Image(systemName: "curlybraces.square")
+                        }
+                        .help("Contract and blueprint editors")
                     }
                     if let note = model.editNote {
                         HStack(spacing: 6) {

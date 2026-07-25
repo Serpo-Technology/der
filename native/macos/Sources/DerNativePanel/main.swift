@@ -14,6 +14,7 @@ final class PanelWindows: NSObject, NSWindowDelegate {
     private let settingsModel = SettingsModel()
     private var partsWindow: NSWindow?
     private let partsModel = PartsModel()
+    private var editorWindows: [String: (window: NSWindow, model: EditorModel)] = [:]
 
     func apply(_ message: InboundMessage) {
         switch message.cmd {
@@ -35,7 +36,10 @@ final class PanelWindows: NSObject, NSWindowDelegate {
             homeModel.bookmarks = message.bookmarks ?? []
             homeModel.recipes = message.recipes ?? []
             homeModel.recents = message.recents ?? []
-            showHome()
+            // Refreshes update in place; only explicit opens front the home.
+            if message.raise ?? true {
+                showHome()
+            }
         case "generationStatus":
             homeModel.applyGenerationStatus(message.status ?? "", message: message.message)
         case "settings":
@@ -47,6 +51,15 @@ final class PanelWindows: NSObject, NSWindowDelegate {
         case "editStatus":
             guard let windowId = message.windowId else { return }
             windows[windowId]?.model.applyEditStatus(message.status ?? "", note: message.message)
+        case "editor":
+            guard let windowId = message.windowId else { return }
+            showEditor(windowId: windowId, message: message)
+        case "editorVerdict":
+            guard let windowId = message.windowId else { return }
+            editorWindows[windowId]?.model.applyVerdict(message)
+        case "editorStatus":
+            guard let windowId = message.windowId else { return }
+            editorWindows[windowId]?.model.applyStatus(message.status ?? "", message: message.message)
         case "operationFailed":
             NSSound.beep()
         default:
@@ -95,6 +108,29 @@ final class PanelWindows: NSObject, NSWindowDelegate {
             size: NSSize(width: 560, height: 600),
             content: PartsView(model: partsModel)
         )
+    }
+
+    private func showEditor(windowId: String, message: InboundMessage) {
+        if let existing = editorWindows[windowId] {
+            existing.model.apply(message)
+            existing.window.makeKeyAndOrderFront(nil)
+            return
+        }
+        let model = EditorModel(windowId: windowId)
+        model.apply(message)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 520),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Editor: \(message.name ?? "App")"
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: EditorView(model: model))
+        window.center()
+        editorWindows[windowId] = (window, model)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func showHome() {

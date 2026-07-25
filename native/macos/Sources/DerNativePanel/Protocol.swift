@@ -257,6 +257,15 @@ public struct InboundMessage: Decodable, Sendable {
     public let message: String?
     /// Streaming assembly: the tree is a growing draft; interaction waits.
     public let assembling: Bool?
+    /// Home refreshes leave focus alone; explicit opens raise the window.
+    public let raise: Bool?
+    // Editor snapshots.
+    public let experienceId: String?
+    public let name: String?
+    public let contractJson: String?
+    public let blueprintJson: String?
+    public let errors: [String]?
+    public let warnings: [String]?
     // Management snapshots.
     public let view: SettingsViewShape?
     public let integrations: [IntegrationShape]?

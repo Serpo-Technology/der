@@ -166,18 +166,21 @@ impl SidecarBridge {
     }
 
     /// DER's own native surface: a prompt, the kept apps, recent creations,
-    /// and the ready-made apps installed parts ship.
+    /// and the ready-made apps installed parts ship. `raise` fronts the home
+    /// window; refreshes leave whatever the user is looking at alone.
     pub fn send_home(
         &mut self,
         bookmarks: &[Value],
         recipes: &[Value],
         recents: &[Value],
+        raise: bool,
     ) -> Result<(), String> {
         self.transport.send(&json!({
             "cmd": "home",
             "bookmarks": bookmarks,
             "recipes": recipes,
             "recents": recents,
+            "raise": raise,
         }))
     }
 
@@ -280,7 +283,8 @@ impl SidecarBridge {
                 Ok(None)
             }
             "create" | "openBookmark" | "openRecipe" | "openRecent" | "editExperience"
-            | "bookmarkAdd" | "bookmarkRemove" => Ok(Some(message.clone())),
+            | "bookmarkAdd" | "bookmarkRemove" | "openEditor" | "editorValidate" | "editorApply"
+            | "editorRegenerate" => Ok(Some(message.clone())),
             name if super::manage::is_management_event(name) => Ok(Some(message.clone())),
             "log" => Ok(None),
             other => Err(format!("Unknown panel event \"{}\"", other)),
@@ -414,6 +418,57 @@ fn relay_home_event(app: &tauri::AppHandle, event: &Value) {
                 return;
             }
             native_bookmark_window(app, window_id.to_string());
+        }
+        Some("openEditor") => {
+            let window_id = event.get("windowId").and_then(Value::as_str).unwrap_or("");
+            if window_id.is_empty() {
+                return;
+            }
+            send_editor_snapshot(app, window_id, None);
+        }
+        Some("editorValidate") => {
+            let window_id = event
+                .get("windowId")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let raw = event.get("json").and_then(Value::as_str).unwrap_or("").to_string();
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let vocab = super::sessions::compose_vocabulary(&app);
+                let verdict = super::compose::check_contract_json(&raw, &vocab);
+                send_panel_message(
+                    &app,
+                    &json!({
+                        "cmd": "editorVerdict",
+                        "windowId": window_id,
+                        "errors": verdict.errors,
+                        "warnings": verdict.warnings,
+                    }),
+                );
+            });
+        }
+        Some("editorApply") => {
+            let window_id = event
+                .get("windowId")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let raw = event.get("json").and_then(Value::as_str).unwrap_or("").to_string();
+            native_editor_apply(app, window_id, raw);
+        }
+        Some("editorRegenerate") => {
+            let window_id = event
+                .get("windowId")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let raw = event
+                .get("blueprint")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            native_editor_regenerate(app, window_id, raw);
         }
         Some("bookmarkRemove") => {
             let Some(bookmark_id) = event.get("id").and_then(Value::as_str) else {
@@ -731,6 +786,173 @@ pub fn native_edit(app: &tauri::AppHandle, window_id: String, instruction: Strin
     });
 }
 
+/// The editor snapshot for a window: the current contract pretty-printed
+/// and the blueprint projected from it.
+fn send_editor_snapshot(app: &tauri::AppHandle, window_id: &str, note: Option<(&str, &str)>) {
+    let state = app.state::<NativeRendererState>();
+    let bridge = {
+        let guard = state.0.lock().unwrap();
+        match guard.as_ref() {
+            Some(running) => running.bridge.clone(),
+            None => return,
+        }
+    };
+    let Some((experience_id, contract)) = bridge.lock().unwrap().window_info(window_id) else {
+        return;
+    };
+    let description = contract
+        .get("metadata")
+        .and_then(|m| m.get("description"))
+        .and_then(Value::as_str)
+        .or_else(|| contract.get("name").and_then(Value::as_str))
+        .unwrap_or("")
+        .to_string();
+    let blueprint = super::compose::derive_blueprint(&contract, &description);
+    let mut message = json!({
+        "cmd": "editor",
+        "windowId": window_id,
+        "experienceId": experience_id,
+        "name": contract.get("name").cloned().unwrap_or(Value::Null),
+        "contractJson": serde_json::to_string_pretty(&contract).unwrap_or_default(),
+        "blueprintJson": serde_json::to_string_pretty(&blueprint).unwrap_or_default(),
+    });
+    if let Some((kind, text)) = note {
+        message["noteKind"] = json!(kind);
+        message["note"] = json!(text);
+    }
+    send_panel_message(app, &message);
+}
+
+fn send_editor_status(app: &tauri::AppHandle, window_id: &str, status: &str, message: Option<&str>) {
+    send_panel_message(
+        app,
+        &json!({
+            "cmd": "editorStatus",
+            "windowId": window_id,
+            "status": status,
+            "message": message,
+        }),
+    );
+}
+
+/// Applies the finished contract of an editor action to the app: record
+/// persisted, session rebuilt with preserved state, editor refreshed.
+async fn land_edited_contract(
+    app: &tauri::AppHandle,
+    window_id: &str,
+    contract: Value,
+    now_iso: &str,
+) -> Result<(), String> {
+    let state = app.state::<NativeRendererState>();
+    let bridge = {
+        let guard = state.0.lock().unwrap();
+        match guard.as_ref() {
+            Some(running) => running.bridge.clone(),
+            None => return Err("The panel is not running".to_string()),
+        }
+    };
+    let Some((experience_id, _)) = bridge.lock().unwrap().window_info(window_id) else {
+        return Err("The window is gone".to_string());
+    };
+    let description = contract
+        .get("metadata")
+        .and_then(|m| m.get("description"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    persist_created_experience(app, &experience_id, &contract, &description, now_iso, None).await;
+    let preserved = bridge.lock().unwrap().state_of_experience(&experience_id);
+    let (entry, elements) = build_entry(app, &contract, preserved.unwrap_or_default())?;
+    let outcome = {
+        let mut guard = bridge.lock().unwrap();
+        guard.replace_session(&experience_id, entry, elements, contract, false)
+    };
+    outcome?;
+    refresh_native_home(app);
+    Ok(())
+}
+
+/// A hand-edited contract applies only when it passes the same gates the
+/// model faces; the verdict shows every problem otherwise.
+pub fn native_editor_apply(app: &tauri::AppHandle, window_id: String, raw: String) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let vocab = super::sessions::compose_vocabulary(&app);
+        let verdict = super::compose::check_contract_json(&raw, &vocab);
+        if verdict.shape.is_none() {
+            send_panel_message(
+                &app,
+                &json!({
+                    "cmd": "editorVerdict",
+                    "windowId": window_id,
+                    "errors": verdict.errors,
+                    "warnings": verdict.warnings,
+                }),
+            );
+            send_editor_status(&app, &window_id, "failed", Some("The contract has problems"));
+            return;
+        }
+        let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        let contract = super::compose::finalize_contract_shape(
+            &verdict.shape.expect("checked above"),
+            None,
+            &now_iso,
+            &vocab,
+        );
+        match land_edited_contract(&app, &window_id, contract, &now_iso).await {
+            Ok(()) => {
+                send_editor_snapshot(&app, &window_id, Some(("info", "Contract applied")));
+                send_editor_status(&app, &window_id, "done", Some("Contract applied"));
+            }
+            Err(error) => send_editor_status(&app, &window_id, "failed", Some(&error)),
+        }
+    });
+}
+
+/// Regenerates the contract from an edited blueprint through the model,
+/// then lands it like any edit.
+pub fn native_editor_regenerate(app: &tauri::AppHandle, window_id: String, raw: String) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let blueprint: Value = match serde_json::from_str(&raw) {
+            Ok(value) => value,
+            Err(error) => {
+                send_editor_status(
+                    &app,
+                    &window_id,
+                    "failed",
+                    Some(&format!("The blueprint is not parseable JSON: {}", error)),
+                );
+                return;
+            }
+        };
+        send_editor_status(&app, &window_id, "started", Some("Regenerating from the blueprint"));
+        let vocab = super::sessions::compose_vocabulary(&app);
+        let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        let mut llm = super::sessions::HostLlm { app: app.clone() };
+        let outcome = super::compose::generate_from_blueprint(
+            &mut llm,
+            &blueprint,
+            &vocab,
+            &now_iso,
+            None,
+        )
+        .await;
+        match outcome {
+            Ok(outcome) => match land_edited_contract(&app, &window_id, outcome.contract, &now_iso)
+                .await
+            {
+                Ok(()) => {
+                    send_editor_snapshot(&app, &window_id, Some(("info", "Regenerated")));
+                    send_editor_status(&app, &window_id, "done", Some("Regenerated"));
+                }
+                Err(error) => send_editor_status(&app, &window_id, "failed", Some(&error)),
+            },
+            Err(error) => send_editor_status(&app, &window_id, "failed", Some(&error)),
+        }
+    });
+}
+
 /// Keeps an app: the window's experience joins the bookmarks, the tray
 /// rebuilds, and the home refreshes.
 pub fn native_bookmark_window(app: &tauri::AppHandle, window_id: String) {
@@ -895,17 +1117,29 @@ fn recent_experiences(app: &tauri::AppHandle) -> Vec<Value> {
 /// Shows DER's native home: the prompt, every bookmarked app, recently
 /// created apps, and the installed ready-made apps.
 pub fn show_native_home(app: &tauri::AppHandle) {
+    send_native_home(app, true);
+}
+
+fn send_native_home(app: &tauri::AppHandle, raise: bool) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let bookmarks = crate::list_bookmarked_experiences(app.clone())
+        let bookmarks: Vec<Value> = crate::list_bookmarked_experiences_detailed(app.clone())
             .await
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .into_iter()
+            .map(|bookmark| {
+                json!({
+                    "id": bookmark.get("id").cloned().unwrap_or(Value::Null),
+                    "name": bookmark.get("name").cloned().unwrap_or(Value::Null),
+                })
+            })
+            .collect();
         let recipes = installed_recipes(&app);
         let recents = recent_experiences(&app);
         match ensure_running(&app) {
             Ok(bridge) => {
                 if let Err(error) =
-                    bridge.lock().unwrap().send_home(&bookmarks, &recipes, &recents)
+                    bridge.lock().unwrap().send_home(&bookmarks, &recipes, &recents, raise)
                 {
                     eprintln!("Failed to show the native home: {}", error);
                 }
@@ -928,8 +1162,8 @@ pub async fn native_generation_status(
     Ok(())
 }
 
-/// Keeps an already-shown native home current; silent outside native mode
-/// or before the panel started.
+/// Keeps an already-shown native home current without fronting it; silent
+/// outside native mode or before the panel started.
 pub fn refresh_native_home(app: &tauri::AppHandle) {
     if !crate::native_mode() {
         return;
@@ -937,7 +1171,7 @@ pub fn refresh_native_home(app: &tauri::AppHandle) {
     let state = app.state::<NativeRendererState>();
     let running = state.0.lock().unwrap().is_some();
     if running {
-        show_native_home(app);
+        send_native_home(app, false);
     }
 }
 

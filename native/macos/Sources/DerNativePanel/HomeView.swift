@@ -66,6 +66,13 @@ final class HomeModel: ObservableObject {
     func openParts() {
         Outbound.shared.send(["event": "openParts"])
     }
+
+    static let suggestions = [
+        "A grocery list with quantities, a running total, and a bought checkbox per item",
+        "An expense tracker with categories, a filter dropdown, and a monthly total",
+        "A workout log: exercise, sets, reps, and a summary of total sets today",
+        "A reading tracker with a timer, pages read, and pace per session",
+    ]
 }
 
 struct HomeView: View {
@@ -166,6 +173,10 @@ struct HomeView: View {
                         )
                         .lineLimit(3)
                 }
+            } else if model.prompt.isEmpty {
+                FlowChips(suggestions: HomeModel.suggestions) { suggestion in
+                    model.prompt = suggestion
+                }
             }
         }
         .padding(20)
@@ -191,6 +202,33 @@ struct HomeView: View {
                 .font(.headline)
             VStack(spacing: 6) {
                 content()
+            }
+        }
+    }
+}
+
+/// Clickable example prompts under the create field.
+private struct FlowChips: View {
+    let suggestions: [String]
+    let pick: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Try one of these")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(suggestions, id: \.self) { suggestion in
+                Button {
+                    pick(suggestion)
+                } label: {
+                    Text(suggestion)
+                        .font(.caption)
+                        .lineLimit(1)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(.quaternary.opacity(0.5)))
+                }
+                .buttonStyle(.plain)
             }
         }
     }
