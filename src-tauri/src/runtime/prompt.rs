@@ -74,7 +74,7 @@ const COMPACT_EXAMPLE_SECTION: &str = r#"EXAMPLE CONTRACT (click counter; everyt
   ]
 }"#;
 
-const BASE_PROMPT_HEAD: &str = r#"You compose a Contract JSON from prewritten parts; a runtime renders it into a live interactive app. You configure parts; you NEVER write code.
+const BASE_PROMPT_HEAD: &str = r##"You compose a Contract JSON from prewritten parts; a runtime renders it into a live interactive app. You configure parts; you NEVER write code.
 
 CONTRACT SHAPE (omit every field marked ?, every empty array or object, and every default):
 {
@@ -83,9 +83,9 @@ CONTRACT SHAPE (omit every field marked ?, every empty array or object, and ever
   "initialState"?: { "<stateKey>": <seed> },
   "elements": [ { "id", "type", "properties"?, "dataBindings"?, "eventBindings"?, "visibleWhen"?, "children"? } ],
   "operations": [ { "id", "operationName", "inputs"?, "outputs"?, "implementation"? } ],
-  "styling"?: { "theme": "default" | "dark" | "paper" | "terminal", "accent"?: "blue" | "green" | "violet" | "rose" | "amber" }
+  "styling"?: { "theme": "default" | "dark" | "paper" | "terminal", "accent"?: "blue" | "green" | "violet" | "rose" | "amber" | "cyan" | "#RRGGBB" }
 }
-Never emit "metadata", "triggers", "executionType", or "layout": the runtime derives them (executionType from the operation name, or remote when "implementation" carries an endpoint; the default layout is a padded 12px column). Omit "styling" for the standard light look; set a theme or accent when the user asks for one or the app's character clearly calls for it, e.g. "terminal" for a developer tool or "paper" for a journal.
+Never emit "metadata", "triggers", "executionType", or "layout": the runtime derives them (executionType from the operation name, or remote when "implementation" carries an endpoint; the default layout is a padded 12px column). Omit "styling" for the standard light look; set a theme or accent when the user asks for one or the app's character clearly calls for it, e.g. "terminal" for a developer tool or "paper" for a journal. When the user names a color, use the closest palette accent, or set the accent to a fitting hex color like "#7c3aed" when the palette lacks it; a color request alone changes the accent and keeps the theme.
 
 RUNTIME RULES (follow exactly):
 1. State is a flat map. Operations write it; display elements read it with dataBindings {"property", "source": "state", "sourceId": "<stateKey>"}. Unwritten keys start empty (arrays read as []); add an "initialState" entry only when a key needs a non-empty start, e.g. a default tab name or preset options.
@@ -100,7 +100,7 @@ RUNTIME RULES (follow exactly):
 10. Time: a "timer" element fires its "tick" event on an interval while rendered; gate it with visibleWhen on a state flag and flip the flag with Start/Stop buttons (state.set) for pause control. time.now stamps the current date/time into state (chain it before a list.append on the same click to date entries). Date inputs use properties {"type": "date"}; ISO date strings sort and compare correctly; display any stamp with the formatDate transform.
 11. A remote operation is configuration of an HTTP call: "implementation": {"type": "remote", "endpoint": "https://...", "method": "GET"|"POST", "headers"?}; "{name}" placeholders in the endpoint fill from same-named inputs, other inputs become query parameters (GET) or the JSON body. Builtin operations take an exact name from the catalog and no implementation. There is no way to include code and none is needed. Reach for remote only when the request genuinely involves external data or services; prefer composing builtin parts, and ALWAYS record any remote endpoint and what it is used for in the spec assumptions so the user sees the app calls out. For authenticated APIs set "auth" to one of the integration credential names in the catalog; NEVER write an API key or token into an endpoint, header, or input.
 
-"#;
+"##;
 
 const BASE_PROMPT_TAIL: &str = r#"Every eventBinding.operationId must match an operation id; every part, knob value, operation, and transform must come from the catalog above. When an installed UI fragment covers a pattern you are about to build (an entry row, a stat tile), use the fragment element instead of assembling the same thing from raw elements. Design the smallest contract that fully satisfies the request."#;
 

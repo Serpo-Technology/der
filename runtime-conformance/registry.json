@@ -914,7 +914,8 @@
     "green",
     "violet",
     "rose",
-    "amber"
+    "amber",
+    "cyan"
   ],
   "exprReserved": [
     "sqrt",

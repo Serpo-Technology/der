@@ -1472,6 +1472,15 @@ const VALIDATION_CASES: ValidationCase[] = [
     },
   },
   {
+    name: 'a hex accent is vocabulary and survives untouched',
+    contract: {
+      name: 'styled-hex',
+      styling: { theme: 'dark', accent: '#7c3aed' },
+      elements: [COUNT_TEXT, ADD_BTN],
+      operations: [WIRED_COUNTER],
+    },
+  },
+  {
     name: 'an event referencing a missing operation fails with the id list',
     contract: {
       name: 'missing-ref',
@@ -2257,7 +2266,7 @@ function buildRegistrySnapshot() {
     operations,
     transforms,
     styleThemes: ['default', 'dark', 'paper', 'terminal'],
-    styleAccents: ['blue', 'green', 'violet', 'rose', 'amber'],
+    styleAccents: ['blue', 'green', 'violet', 'rose', 'amber', 'cyan'],
     exprReserved: ['sqrt', 'abs', 'floor', 'ceil', 'round', 'min', 'max', 'pow', 'pi', 'e'],
     intrinsicElements: [...INTRINSIC_ELEMENT_TYPES],
   };

@@ -248,6 +248,7 @@ public struct InboundMessage: Decodable, Sendable {
     public let windowId: String?
     public let title: String?
     public let theme: String?
+    public let accent: String?
     public let tree: [ResolvedNode]?
     public let operationId: String?
     public let bookmarks: [HomeBookmark]?

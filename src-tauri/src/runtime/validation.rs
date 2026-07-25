@@ -15,7 +15,14 @@ use super::templates::{expand_ui_fragment, instantiate_pack_operations};
 use super::value::{js_to_string, js_truthy};
 
 const STYLE_THEMES: [&str; 4] = ["default", "dark", "paper", "terminal"];
-const STYLE_ACCENTS: [&str; 5] = ["blue", "green", "violet", "rose", "amber"];
+const STYLE_ACCENTS: [&str; 6] = ["blue", "green", "violet", "rose", "amber", "cyan"];
+
+/// A free-form accent: any six-digit hex color the model derives when the
+/// palette lacks the requested hue.
+fn is_hex_accent(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 7 && bytes[0] == b'#' && bytes[1..].iter().all(u8::is_ascii_hexdigit)
+}
 /// Transforms that read a row field while the value is still the original
 /// object array.
 const FIELD_READING_TRANSFORMS: [&str; 5] =
@@ -460,11 +467,11 @@ pub fn check_against_manifests(
             }
         }
         if let Some(accent) = styling.get("accent").and_then(Value::as_str) {
-            if !accent.is_empty() && !STYLE_ACCENTS.contains(&accent) {
+            if !accent.is_empty() && !STYLE_ACCENTS.contains(&accent) && !is_hex_accent(accent) {
                 checker.warn(
                     "styling.accent",
                     format!(
-                        "\"{}\" is not one of {}; accent removed",
+                        "\"{}\" is not one of {} or a hex color like \"#7c3aed\"; accent removed",
                         accent,
                         STYLE_ACCENTS.join("|")
                     ),

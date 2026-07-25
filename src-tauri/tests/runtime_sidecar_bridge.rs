@@ -68,7 +68,7 @@ fn open_bridge() -> (SidecarBridge, Recorder) {
     .expect("session opens");
     let elements = contract["elements"].as_array().cloned().unwrap();
     bridge
-        .open_window("w1", "exp-counter", "Counter", None, entry, elements, contract.clone(), false)
+        .open_window("w1", "exp-counter", "Counter", entry, elements, contract.clone(), false)
         .expect("window opens");
     (bridge, recorder)
 }
@@ -262,7 +262,6 @@ fn assembly_windows_flag_their_trees_and_finish_live() {
             "w1",
             "exp-live",
             "Building",
-            None,
             display_entry(&contract),
             elements.clone(),
             contract.clone(),
@@ -298,7 +297,6 @@ fn assembling_windows_never_persist_and_close_on_failure() {
             "w1",
             "exp-draft",
             "Building",
-            None,
             display_entry(&contract),
             elements,
             contract.clone(),
@@ -335,7 +333,6 @@ fn a_dismissed_assembly_stays_dismissed() {
             "w1",
             "exp-gone",
             "Building",
-            None,
             display_entry(&contract),
             elements,
             contract.clone(),

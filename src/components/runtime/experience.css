@@ -128,6 +128,12 @@
   --der-on-accent: #ffffff;
   --der-accent-soft: rgba(217, 119, 6, 0.16);
 }
+.der-accent-cyan {
+  --der-accent: #0891b2;
+  --der-accent-strong: #077996;
+  --der-on-accent: #ffffff;
+  --der-accent-soft: rgba(8, 145, 178, 0.15);
+}
 
 /* --- Base experience styles --- */
 

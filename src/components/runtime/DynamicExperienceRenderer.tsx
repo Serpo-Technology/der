@@ -13,6 +13,7 @@ import { OperationExecutor, EventContext } from './OperationExecutor';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { normalizeContract } from '../../schemas/contract';
 import { STYLE_ACCENTS, STYLE_THEMES } from '../../services/operations/registry';
+import { hexAccentVariables, isHexAccent } from '../../services/operations/accent-color';
 import { expandPackOperations } from '../../services/fragments/ui-fragments';
 
 interface DynamicExperienceRendererProps {
@@ -195,6 +196,8 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
     styling.accent && (STYLE_ACCENTS as readonly string[]).includes(styling.accent)
       ? styling.accent
       : undefined;
+  const hexAccent =
+    !accent && styling.accent && isHexAccent(styling.accent) ? styling.accent : undefined;
   const containerClassName = [
     'dynamic-experience-container',
     `der-theme-${theme}`,
@@ -202,11 +205,14 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
   ]
     .filter(Boolean)
     .join(' ');
+  const containerStyles = hexAccent
+    ? ({ ...layoutStyles, ...hexAccentVariables(hexAccent) } as React.CSSProperties)
+    : (layoutStyles as React.CSSProperties);
 
   return (
     <div
       className={containerClassName}
-      style={layoutStyles as React.CSSProperties}
+      style={containerStyles}
       data-experience-id={experienceId}
       data-contract-name={normalizedContract.name}
       data-testid="dynamic-experience-container"

@@ -9,6 +9,8 @@ final class TreeModel: ObservableObject {
     let windowId: String
     @Published var tree: [ResolvedNode]
     @Published var assembling: Bool
+    @Published var theme: String?
+    @Published var accent: String?
     @Published var editInstruction = ""
     @Published var editBusy = false
     @Published var editNote: String?
@@ -19,6 +21,33 @@ final class TreeModel: ObservableObject {
         self.windowId = windowId
         self.tree = tree
         self.assembling = assembling
+    }
+
+    /// The tint the contract's accent asks for: a palette name or any hex
+    /// color the model derived from the request.
+    var accentColor: Color? {
+        guard let accent else {
+            return theme == "terminal" ? Color(red: 0.2, green: 0.83, blue: 0.6) : nil
+        }
+        switch accent {
+        case "blue": return .blue
+        case "green": return .green
+        case "violet": return .purple
+        case "rose": return .pink
+        case "amber": return .orange
+        case "cyan": return .cyan
+        default: return Color(hex: accent)
+        }
+    }
+
+    /// A subtle themed surface behind the content.
+    var backgroundColor: Color? {
+        switch theme {
+        case "paper": return Color(red: 0.98, green: 0.955, blue: 0.90)
+        case "terminal": return Color(red: 0.04, green: 0.07, blue: 0.05)
+        case "dark": return Color(red: 0.11, green: 0.11, blue: 0.125)
+        default: return nil
+        }
     }
 
     func sendEdit() {
@@ -75,10 +104,29 @@ final class TreeModel: ObservableObject {
     }
 }
 
+extension Color {
+    /// "#RRGGBB" to a Color; nil for anything else.
+    init?(hex: String) {
+        guard hex.count == 7, hex.hasPrefix("#"),
+              let value = UInt32(hex.dropFirst(), radix: 16) else { return nil }
+        self.init(
+            red: Double((value >> 16) & 0xff) / 255.0,
+            green: Double((value >> 8) & 0xff) / 255.0,
+            blue: Double(value & 0xff) / 255.0
+        )
+    }
+}
+
 struct RootView: View {
     @ObservedObject var model: TreeModel
 
     var body: some View {
+        themedBody
+            .background(model.backgroundColor ?? Color(nsColor: .windowBackgroundColor))
+            .tint(model.accentColor ?? .accentColor)
+    }
+
+    private var themedBody: some View {
         VStack(spacing: 0) {
             if model.assembling {
                 HStack(spacing: 8) {

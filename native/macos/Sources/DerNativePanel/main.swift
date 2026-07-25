@@ -21,13 +21,17 @@ final class PanelWindows: NSObject, NSWindowDelegate {
         case "open":
             guard let windowId = message.windowId else { return }
             open(windowId: windowId, title: message.title ?? "Experience",
-                 theme: message.theme, tree: message.tree ?? [],
+                 theme: message.theme, accent: message.accent, tree: message.tree ?? [],
                  assembling: message.assembling ?? false)
         case "update":
             guard let windowId = message.windowId, let tree = message.tree,
                   let entry = windows[windowId] else { return }
             entry.model.tree = tree
             entry.model.assembling = message.assembling ?? false
+            // Edits can change the look mid-flight; restyle with the tree.
+            entry.model.theme = message.theme
+            entry.model.accent = message.accent
+            applyAppearance(entry.window, theme: message.theme)
         case "close":
             guard let windowId = message.windowId, let entry = windows.removeValue(forKey: windowId) else { return }
             entry.window.delegate = nil
@@ -154,9 +158,19 @@ final class PanelWindows: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func open(windowId: String, title: String, theme: String?, tree: [ResolvedNode],
-                      assembling: Bool) {
+    private func applyAppearance(_ window: NSWindow, theme: String?) {
+        if theme == "dark" || theme == "terminal" {
+            window.appearance = NSAppearance(named: .darkAqua)
+        } else {
+            window.appearance = nil
+        }
+    }
+
+    private func open(windowId: String, title: String, theme: String?, accent: String?,
+                      tree: [ResolvedNode], assembling: Bool) {
         let model = TreeModel(windowId: windowId, tree: tree, assembling: assembling)
+        model.theme = theme
+        model.accent = accent
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 620),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
@@ -165,9 +179,7 @@ final class PanelWindows: NSObject, NSWindowDelegate {
         )
         window.title = title
         window.isReleasedWhenClosed = false
-        if theme == "dark" || theme == "terminal" {
-            window.appearance = NSAppearance(named: .darkAqua)
-        }
+        applyAppearance(window, theme: theme)
         window.contentView = NSHostingView(rootView: RootView(model: model))
         window.center()
         window.identifier = NSUserInterfaceItemIdentifier(windowId)
@@ -229,8 +241,60 @@ if launchDerIfStandalone() {
     exit(0)
 }
 
+/// Without a main menu macOS dispatches no key equivalents, so Cmd+V and
+/// friends do nothing; the standard App/Edit/Window menus restore them.
+@MainActor
+func installMainMenu() {
+    let main = NSMenu()
+
+    let appItem = NSMenuItem()
+    let appMenu = NSMenu()
+    appMenu.addItem(withTitle: "Hide DER", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+    appMenu.addItem(NSMenuItem.separator())
+    appMenu.addItem(withTitle: "Quit DER", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    appItem.submenu = appMenu
+    main.addItem(appItem)
+
+    let editItem = NSMenuItem()
+    let editMenu = NSMenu(title: "Edit")
+    editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+    editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+    editMenu.addItem(NSMenuItem.separator())
+    editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+    editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+    editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+    editMenu.addItem(
+        withTitle: "Select All",
+        action: #selector(NSText.selectAll(_:)),
+        keyEquivalent: "a"
+    )
+    editItem.submenu = editMenu
+    main.addItem(editItem)
+
+    let windowItem = NSMenuItem()
+    let windowMenu = NSMenu(title: "Window")
+    windowMenu.addItem(
+        withTitle: "Close Window",
+        action: #selector(NSWindow.performClose(_:)),
+        keyEquivalent: "w"
+    )
+    windowMenu.addItem(
+        withTitle: "Minimize",
+        action: #selector(NSWindow.performMiniaturize(_:)),
+        keyEquivalent: "m"
+    )
+    windowItem.submenu = windowMenu
+    main.addItem(windowItem)
+    NSApp.windowsMenu = windowMenu
+
+    NSApp.mainMenu = main
+}
+
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
+MainActor.assumeIsolated {
+    installMainMenu()
+}
 
 pumpInbound { message in
     DispatchQueue.main.async {

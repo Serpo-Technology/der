@@ -24,6 +24,7 @@ import {
   getUiFragmentDef,
 } from '../services/operations/registry';
 import { TRANSFORMS } from '../services/operations/transforms';
+import { isHexAccent } from '../services/operations/accent-color';
 import {
   PackOperationInstance,
   expandPackOperations,
@@ -382,11 +383,15 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       );
       styling.theme = 'default';
     }
-    if (styling.accent && !(STYLE_ACCENTS as readonly string[]).includes(styling.accent)) {
+    if (
+      styling.accent &&
+      !(STYLE_ACCENTS as readonly string[]).includes(styling.accent) &&
+      !isHexAccent(styling.accent)
+    ) {
       warn(
         warnings,
         'styling.accent',
-        `"${styling.accent}" is not one of ${STYLE_ACCENTS.join('|')}; accent removed`
+        `"${styling.accent}" is not one of ${STYLE_ACCENTS.join('|')} or a hex color like "#7c3aed"; accent removed`
       );
       delete styling.accent;
     }

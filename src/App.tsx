@@ -14,6 +14,7 @@ import { repositoryService } from "./services/repository/repository-service";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { registerBuiltins } from "./services/repository/builtins";
 import { STYLE_ACCENTS, STYLE_THEMES } from "./services/operations/registry";
+import { hexAccentVariables, isHexAccent } from "./services/operations/accent-color";
 
 function App() {
   // Seed the shared component catalog once at startup. Installed parts load
@@ -257,11 +258,20 @@ const ExperienceWindow: React.FC<{
     styling.accent && (STYLE_ACCENTS as readonly string[]).includes(styling.accent)
       ? ` der-accent-${styling.accent}`
       : '';
+  const hexAccentStyles =
+    !accentClass && styling.accent && isHexAccent(styling.accent)
+      ? hexAccentVariables(styling.accent)
+      : undefined;
 
   return (
     <div
       className={`der-window ${themeClass}${accentClass}`}
-      style={{ display: "flex", flexDirection: "column", height: "100%" }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        ...(hexAccentStyles as React.CSSProperties | undefined),
+      }}
     >
       <header className="der-window-header">
         <div style={{ fontWeight: 600 }}>{title}</div>

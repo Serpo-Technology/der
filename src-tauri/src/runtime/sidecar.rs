@@ -68,18 +68,19 @@ impl SidecarBridge {
         window_id: &str,
         experience_id: &str,
         title: &str,
-        theme: Option<&str>,
         entry: SessionEntry,
         elements: Vec<Value>,
         contract: Value,
         assembling: bool,
     ) -> Result<(), String> {
         let tree = resolve_entry_view(&entry, &elements);
+        let (theme, accent) = contract_look(&contract);
         self.transport.send(&json!({
             "cmd": "open",
             "windowId": window_id,
             "title": title,
             "theme": theme,
+            "accent": accent,
             "tree": tree,
             "assembling": assembling,
         }))?;
@@ -298,13 +299,30 @@ impl SidecarBridge {
             .ok_or_else(|| format!("No native window {}", window_id))?;
         let tree = resolve_entry_view(&window.entry, &window.elements);
         let assembling = window.assembling;
+        // Edits can change the look; every update re-states it.
+        let (theme, accent) = contract_look(&window.contract);
         self.transport.send(&json!({
             "cmd": "update",
             "windowId": window_id,
             "tree": tree,
             "assembling": assembling,
+            "theme": theme,
+            "accent": accent,
         }))
     }
+}
+
+/// The app-level look a contract declares: theme and accent, as the panel
+/// applies them to window chrome and controls.
+fn contract_look(contract: &Value) -> (Option<String>, Option<String>) {
+    let styling = contract.get("styling");
+    let read = |key: &str| {
+        styling
+            .and_then(|styling| styling.get(key))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    };
+    (read("theme"), read("accent"))
 }
 
 // ---------------------------------------------------------------------------
@@ -613,13 +631,6 @@ fn build_entry(
     Ok((entry, elements))
 }
 
-fn contract_theme(contract: &Value) -> Option<String> {
-    contract
-        .get("styling")
-        .and_then(|styling| styling.get("theme"))
-        .and_then(Value::as_str)
-        .map(str::to_string)
-}
 
 /// Opens (or refreshes) the native window for an experience, restoring its
 /// saved per-app state. The native-mode default path for every experience.
@@ -642,7 +653,6 @@ pub fn open_native_for_experience(
             .unwrap_or("Experience")
             .to_string()
     });
-    let theme = contract_theme(&contract);
     let mut bridge = bridge.lock().unwrap();
     if bridge.window_for_experience(experience_id).is_some() {
         return bridge.replace_session(experience_id, entry, elements, contract, false);
@@ -652,7 +662,6 @@ pub fn open_native_for_experience(
         &window_id,
         experience_id,
         &title,
-        theme.as_deref(),
         entry,
         elements,
         contract,
@@ -1028,7 +1037,6 @@ pub fn show_assembly_preview(
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    let theme = contract_theme(&contract);
     let mut bridge = bridge.lock().unwrap();
     if bridge.window_for_experience(experience_id).is_some() {
         return bridge.replace_session(experience_id, entry, elements, contract, true);
@@ -1038,7 +1046,6 @@ pub fn show_assembly_preview(
         &window_id,
         experience_id,
         title,
-        theme.as_deref(),
         entry,
         elements,
         contract,
