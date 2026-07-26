@@ -130,7 +130,7 @@ struct PartsView: View {
                 GroupBox("Registry") {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
-                            TextField("https://... (index.json)", text: $model.registryUrl)
+                            TextField("Registry URL (.../index.json)", text: $model.registryUrl)
                                 .onSubmit { model.fetchRegistry() }
                             Button("Fetch") { model.fetchRegistry() }
                                 .disabled(model.registryUrl.trimmingCharacters(in: .whitespaces).isEmpty)

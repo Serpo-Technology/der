@@ -1415,13 +1415,42 @@ fn registry_client() -> Result<reqwest::Client, String> {
         .map_err(|e| format!("Failed to build HTTP client: {}", e))
 }
 
+/// Registries are untrusted transport (the signature and trust flow judges
+/// installs), so plain HTTP is fine where it is the honest scheme: bare
+/// URLs default to https, loopback hosts to http.
+pub(crate) fn normalize_registry_url(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return trimmed.to_string();
+    }
+    let loopback = trimmed.starts_with("localhost")
+        || trimmed.starts_with("127.0.0.1")
+        || trimmed.starts_with("[::1]");
+    let scheme = if loopback { "http" } else { "https" };
+    format!("{}://{}", scheme, trimmed)
+}
+
+fn registry_request_error(url: &str, error: reqwest::Error) -> String {
+    let mut message = format!("Registry request failed: {}", error);
+    if ["https://localhost", "https://127.0.0.1", "https://[::1]"]
+        .iter()
+        .any(|prefix| url.starts_with(prefix))
+    {
+        message.push_str(
+            "; local registries usually speak plain HTTP, so try the http:// form of this URL",
+        );
+    }
+    message
+}
+
 #[tauri::command]
 pub async fn fetch_registry_index(url: String) -> Result<Value, String> {
+    let url = normalize_registry_url(&url);
     let response = registry_client()?
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("Registry request failed: {}", e))?;
+        .map_err(|e| registry_request_error(&url, e))?;
     if !response.status().is_success() {
         return Err(format!("Registry answered {}", response.status()));
     }
@@ -1437,11 +1466,12 @@ pub async fn fetch_registry_index(url: String) -> Result<Value, String> {
 
 #[tauri::command]
 pub async fn download_registry_bundle(url: String) -> Result<String, String> {
+    let url = normalize_registry_url(&url);
     let response = registry_client()?
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("Bundle download failed: {}", e))?;
+        .map_err(|e| registry_request_error(&url, e))?;
     if !response.status().is_success() {
         return Err(format!("Bundle download answered {}", response.status()));
     }
@@ -1457,7 +1487,32 @@ pub async fn download_registry_bundle(url: String) -> Result<String, String> {
 
 #[cfg(test)]
 mod registry_tests {
+    use super::normalize_registry_url;
     use super::parse_registry_index;
+
+    #[test]
+    fn bare_registry_urls_get_a_scheme_and_loopback_stays_http() {
+        assert_eq!(
+            normalize_registry_url("registry.example.io/index.json"),
+            "https://registry.example.io/index.json"
+        );
+        assert_eq!(
+            normalize_registry_url("localhost:8940/index.json"),
+            "http://localhost:8940/index.json"
+        );
+        assert_eq!(
+            normalize_registry_url("127.0.0.1:8940/index.json"),
+            "http://127.0.0.1:8940/index.json"
+        );
+        assert_eq!(
+            normalize_registry_url("  https://kept.example.io/index.json "),
+            "https://kept.example.io/index.json"
+        );
+        assert_eq!(
+            normalize_registry_url("http://localhost:8940/index.json"),
+            "http://localhost:8940/index.json"
+        );
+    }
 
     #[test]
     fn resolves_relative_bundle_urls_and_checks_version() {
