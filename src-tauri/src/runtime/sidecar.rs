@@ -45,7 +45,7 @@ pub type TreeRewriter = Box<dyn Fn(&mut Vec<Value>) + Send>;
 
 pub struct SidecarBridge {
     windows: HashMap<String, WindowSession>,
-    transport: Box<dyn SidecarTransport>,
+    transport: Arc<Mutex<Box<dyn SidecarTransport>>>,
     on_change: Option<StateChanged>,
     tree_rewriter: Option<TreeRewriter>,
     /// Experiences whose assembly window the user closed mid-generation;
@@ -57,7 +57,7 @@ impl SidecarBridge {
     pub fn new(transport: Box<dyn SidecarTransport>) -> Self {
         Self {
             windows: HashMap::new(),
-            transport,
+            transport: Arc::new(Mutex::new(transport)),
             on_change: None,
             assembly_dismissed: std::collections::HashSet::new(),
             tree_rewriter: None,
@@ -70,6 +70,12 @@ impl SidecarBridge {
 
     pub fn set_tree_rewriter(&mut self, rewriter: TreeRewriter) {
         self.tree_rewriter = Some(rewriter);
+    }
+
+    /// The transport under its own short-lived lock: usable while the
+    /// bridge itself is held by a running dispatch (dialog requests).
+    pub fn transport_handle(&self) -> Arc<Mutex<Box<dyn SidecarTransport>>> {
+        self.transport.clone()
     }
 
     fn rewritten(&self, mut tree: Vec<Value>) -> Vec<Value> {
@@ -92,7 +98,7 @@ impl SidecarBridge {
     ) -> Result<(), String> {
         let tree = self.rewritten(resolve_entry_view(&entry, &elements));
         let (theme, accent, background) = contract_look(&contract);
-        self.transport.send(&json!({
+        self.transport.lock().unwrap().send(&json!({
             "cmd": "open",
             "windowId": window_id,
             "title": title,
@@ -125,7 +131,7 @@ impl SidecarBridge {
 
     /// Sends any prebuilt message to the panel (management snapshots).
     pub fn send_raw(&mut self, message: &Value) -> Result<(), String> {
-        self.transport.send(message)
+        self.transport.lock().unwrap().send(message)
     }
 
     pub fn assembly_dismissed(&self, experience_id: &str) -> bool {
@@ -194,7 +200,7 @@ impl SidecarBridge {
         recents: &[Value],
         raise: bool,
     ) -> Result<(), String> {
-        self.transport.send(&json!({
+        self.transport.lock().unwrap().send(&json!({
             "cmd": "home",
             "bookmarks": bookmarks,
             "recipes": recipes,
@@ -208,7 +214,7 @@ impl SidecarBridge {
         status: &str,
         message: Option<&str>,
     ) -> Result<(), String> {
-        self.transport.send(&json!({
+        self.transport.lock().unwrap().send(&json!({
             "cmd": "generationStatus",
             "status": status,
             "message": message,
@@ -218,6 +224,8 @@ impl SidecarBridge {
     pub fn close_window(&mut self, window_id: &str) -> Result<(), String> {
         if self.windows.remove(window_id).is_some() {
             self.transport
+                .lock()
+                .unwrap()
                 .send(&json!({ "cmd": "close", "windowId": window_id }))?;
         }
         Ok(())
@@ -284,7 +292,7 @@ impl SidecarBridge {
                     .session_mut()
                     .run_chain(&operation_ids, item.as_ref());
                 if let Some(operation_id) = failed {
-                    self.transport.send(&json!({
+                    self.transport.lock().unwrap().send(&json!({
                         "cmd": "operationFailed",
                         "windowId": window_id,
                         "operationId": operation_id,
@@ -320,7 +328,7 @@ impl SidecarBridge {
         let assembling = window.assembling;
         // Edits can change the look; every update re-states it.
         let (theme, accent, background) = contract_look(&window.contract);
-        self.transport.send(&json!({
+        self.transport.lock().unwrap().send(&json!({
             "cmd": "update",
             "windowId": window_id,
             "tree": tree,
@@ -425,6 +433,9 @@ impl SidecarTransport for ProcessTransport {
 
 struct RunningSidecar {
     bridge: Arc<Mutex<SidecarBridge>>,
+    /// The bridge's transport, reachable without the bridge lock so dialog
+    /// requests go out while a dispatch holds the bridge.
+    transport: Arc<Mutex<Box<dyn SidecarTransport>>>,
     child: Child,
 }
 
@@ -465,11 +476,13 @@ pub fn panel_available(app: &tauri::AppHandle) -> bool {
 }
 
 fn panel_dialog(app: &tauri::AppHandle, mut request: Value) -> Result<Option<String>, String> {
-    let bridge = {
+    // Only the transport, never the bridge: the caller is usually a dispatch
+    // that already holds the bridge lock.
+    let transport = {
         let state = app.state::<NativeRendererState>();
         let guard = state.0.lock().unwrap();
         match guard.as_ref() {
-            Some(running) => running.bridge.clone(),
+            Some(running) => running.transport.clone(),
             None => return Err("The panel is not running".to_string()),
         }
     };
@@ -481,7 +494,7 @@ fn panel_dialog(app: &tauri::AppHandle, mut request: Value) -> Result<Option<Str
         .lock()
         .unwrap()
         .insert(request_id.clone(), sender);
-    bridge.lock().unwrap().send_raw(&request)?;
+    transport.lock().unwrap().send(&request)?;
     let outcome = receiver
         .recv_timeout(std::time::Duration::from_secs(300))
         .map_err(|_| "The file dialog timed out".to_string());
@@ -804,8 +817,10 @@ fn ensure_running(app: &tauri::AppHandle) -> Result<Arc<Mutex<SidecarBridge>>, S
         })
         .map_err(|error| error.to_string())?;
 
+    let transport = bridge.lock().unwrap().transport_handle();
     *guard = Some(RunningSidecar {
         bridge: bridge.clone(),
+        transport,
         child,
     });
     Ok(bridge)

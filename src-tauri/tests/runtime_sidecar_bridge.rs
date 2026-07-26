@@ -346,3 +346,68 @@ fn a_dismissed_assembly_stays_dismissed() {
         .expect("close handled");
     assert!(bridge.assembly_dismissed("exp-gone"));
 }
+
+/// A dispatched operation that needs the transport mid-dispatch (the file
+/// dialog request pattern): the bridge lock is held by handle_event, and
+/// the send must still go out through the transport's own lock.
+#[test]
+fn a_dispatch_can_send_through_the_transport_while_the_bridge_is_held() {
+    use dynamic_experience_runtime_lib::runtime::session::{DispatchRequest, OperationDispatcher};
+
+    struct DialogishDispatcher {
+        transport: Arc<Mutex<Box<dyn SidecarTransport>>>,
+    }
+    impl OperationDispatcher for DialogishDispatcher {
+        fn dispatch(&self, _request: &DispatchRequest) -> Result<Map<String, Value>, String> {
+            self.transport
+                .lock()
+                .unwrap()
+                .send(&json!({ "cmd": "pickFile", "requestId": "r1" }))?;
+            let mut out = Map::new();
+            out.insert("file".to_string(), json!("token"));
+            Ok(out)
+        }
+    }
+
+    let recorder = Recorder::default();
+    let mut bridge = SidecarBridge::new(Box::new(recorder.clone()));
+    let transport = bridge.transport_handle();
+    let contract = json!({
+        "name": "picker",
+        "elements": [
+            { "id": "open-btn", "type": "button", "properties": { "text": "Open" },
+              "eventBindings": [ { "event": "click", "operationId": "op-pick" } ] }
+        ],
+        "operations": [
+            { "id": "op-pick", "operationName": "file.pick", "inputs": [], "outputs": [] }
+        ]
+    });
+    let entry = open_session_core(
+        &contract,
+        Map::new(),
+        Map::new(),
+        Box::new(ScriptedEnv {
+            ids: VecDeque::new(),
+            randoms: VecDeque::new(),
+            epoch_ms: 0,
+            tz_offset_minutes: 0,
+        }),
+        Some(Box::new(DialogishDispatcher { transport })),
+    )
+    .expect("session opens");
+    let elements = contract["elements"].as_array().cloned().unwrap();
+    bridge
+        .open_window("w1", "exp-pick", "Picker", entry, elements, contract.clone(), false)
+        .expect("window opens");
+
+    // Would deadlock before the transport split; completes now.
+    bridge
+        .handle_event(&json!({
+            "event": "dispatch",
+            "windowId": "w1",
+            "operationIds": ["op-pick"],
+        }))
+        .expect("dispatch completes");
+    let sent = recorder.0.lock().unwrap();
+    assert!(sent.iter().any(|m| m["cmd"] == json!("pickFile")));
+}
