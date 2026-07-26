@@ -109,7 +109,7 @@ commands (storage, `execute_operation`, window/tray control) plus the newer modu
 (the `llm_chat` command that performs all LLM HTTP via reqwest), `settings.rs` (LLM settings and
 credentials under `app_data_dir/settings/`, redacted reads), `oauth.rs` (Claude subscription
 PKCE sign-in and token refresh), and `mail.rs` (the mail account in the credential store and the
-`email_send`/`smtp_get`/`smtp_save`/`smtp_delete` commands). `execute_operation`'s `remote` branch performs real HTTP
+`email_send`/`mail_list`/`mail_fetch`/`smtp_get`/`smtp_save`/`smtp_delete` commands). `execute_operation`'s `remote` branch performs real HTTP
 (`{name}` endpoint substitution, GET query / JSON body, and named integration credentials:
 `implementation.auth` references a credential stored under `settings/integrations.json`
 (bearer/header/query kinds, a required service base URL the secret is CONFINED to, and optional
@@ -193,7 +193,11 @@ less than asked. A wiring-completeness rule family (grown from behavioral eval f
 hard-errors dead compositions: expression identifiers without matching `var.*` bindings,
 filters and sorts on fields a list's append never writes, filters driven by the same control
 that feeds the append, operations nothing triggers, appended lists no list element displays,
-list edits on keys nothing fills, and interactive controls nothing consumes. Transform
+list edits on keys nothing fills, and interactive controls nothing consumes. Row shapes are
+first-class: an array output may declare `itemFields` in its manifest (the catalog renders it
+as `array of {...}`), and item reads inside a list template (row bindings, row visibleWhen,
+and item inputs of row-triggered operations) validate against the known shape, whether it
+came from an append, a seed, or a declaring operation like `email.list`. Transform
 conventions: `filterBy`/`filterContains` with an empty value keep everything (the "All"
 dropdown case), and `pick` on an array reads its first entry (the filterBy-then-pick shape).
 Per-row computed values use `deriveField` (backed by `row-expression.ts`, a synchronous
@@ -297,27 +301,34 @@ and video tags in the webview, PDFKit and AVKit natively. Converter apps are cha
 these small bits (pick, read, convert, save) wired through state, proven end to end by
 the pdf-viewer, image-shrink, and md-to-pdf eval prompts with stubbed dialogs and real
 wasm.
-`email.send` is the same pattern for mail (`src-tauri/src/mail.rs`, lettre over
-rustls). The mail account is one credential in the shared store (kind `smtp`, name
-`mail`, in `settings/integrations.json` beside the HTTP and part-scoped kinds: the
-password is the secret, the server details are its `fields`), with the standard
-redaction (both faces see host/username/`hasPassword` views, an empty password on
-save keeps the stored one, and a legacy `settings/smtp.json` migrates in on first
-read). Contracts supply only to/subject/text (optional from falls back to the
-account's sender). Setup happens in the app's own flow: an unconfigured send opens
-the host-drawn account sheet natively (a `mailAccount` dialog request next to
-pickFile/saveFile) and then continues the send, the webview face offers "Set up
-email" on the error strip, and Settings reuses the same form as a row beside the
-HTTP credentials (add/edit/remove). Only bearer/header/query credentials are valid
-`implementation.auth` references and taught in the catalog; smtp and part-scoped
-kinds are invisible there (frozen in a validation vector) and refused at injection.
-SMTP is raw TCP, so no part kind can carry it: wasm parts import nothing and
-integration parts only get the confined HTTPS core, which is why it sits in the
-host platform layer next to the file dialogs. The mailer part (Resend API) stays
-the service-specific alternative and its howto defers ordinary sending to the
-builtin; mailto links remain the zero-setup path. The contact-email eval proves
-the composition class with a stubbed transport (`emailSent` expect on recipient,
-body, and the gated confirmation).
+The `email.*` builtins are the same pattern for mail (`src-tauri/src/mail.rs`):
+`email.send` (lettre over rustls), and the receive side `email.list` / `email.fetch`
+(the imap crate over a rustls stream, implicit TLS only, usually port 993;
+envelopes decode RFC 2047 words and bodies parse via mailparse, preferring
+text/plain with a tag-stripped html fallback; fetching a message marks it read).
+Operations name the CAPABILITY, never the protocol: contracts say "list my mail"
+and the account record decides the transport, so recipes survive account changes
+and future protocols (POP3, JMAP) arrive as new drivers behind the same three
+operations. The mail account is one credential in the shared store (kind `smtp`,
+name `mail`, in `settings/integrations.json` beside the HTTP and part-scoped
+kinds: the password is the secret, the server details are its `fields`, including
+`imapHost`/`imapPort` for incoming), with the standard redaction (both faces see
+host/username/`hasPassword` views, an empty password on save keeps the stored one,
+and a legacy `settings/smtp.json` migrates in on first read). Contracts supply
+only message fields and ids. Setup happens in the app's own flow: an unconfigured
+send or list opens the host-drawn account sheet natively (a `mailAccount` dialog
+request next to pickFile/saveFile) and then continues, the webview face offers
+"Set up email" on the error strip, and Settings reuses the same form as a row
+beside the HTTP credentials (add/edit/remove). Only bearer/header/query
+credentials are valid `implementation.auth` references and taught in the catalog;
+smtp and part-scoped kinds are invisible there (frozen in a validation vector)
+and refused at injection. SMTP and IMAP are raw TCP, so no part kind can carry
+them: wasm parts import nothing and integration parts only get the confined HTTPS
+core, which is why mail sits in the host platform layer next to the file dialogs.
+The mailer part (Resend API) stays the service-specific alternative and its howto
+defers ordinary sending to the builtin; mailto links remain the zero-setup path.
+The contact-email and mail-inbox evals prove the composition classes with stubbed
+transports (`emailSent` expect; a fixture inbox behind provider seams).
 
 ### Runtime kernel conformance
 

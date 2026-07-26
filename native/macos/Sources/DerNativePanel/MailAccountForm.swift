@@ -11,6 +11,8 @@ struct MailAccountDraft {
     var password = ""
     var security = "starttls"
     var from = ""
+    var imapHost = ""
+    var imapPort = ""
     var hasPassword = false
 
     init() {}
@@ -22,6 +24,8 @@ struct MailAccountDraft {
         username = prefill.username
         security = prefill.security
         from = prefill.from
+        imapHost = prefill.imapHost ?? ""
+        imapPort = prefill.imapPort.map { String($0) } ?? ""
         hasPassword = prefill.hasPassword
     }
 
@@ -34,9 +38,13 @@ struct MailAccountDraft {
             "password": password,
             "security": security,
             "from": from.trimmingCharacters(in: .whitespaces),
+            "imapHost": imapHost.trimmingCharacters(in: .whitespaces),
         ]
         if let port = Int(port.trimmingCharacters(in: .whitespaces)) {
             account["port"] = port
+        }
+        if let port = Int(imapPort.trimmingCharacters(in: .whitespaces)) {
+            account["imapPort"] = port
         }
         return account
     }
@@ -54,6 +62,7 @@ struct MailAccountForm: View {
             Text("The password stays on this Mac and mail only goes through this server.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Text("Outgoing (SMTP)").font(.subheadline).fontWeight(.medium)
             HStack {
                 TextField("Server (smtp.example.net)", text: $draft.host)
                 TextField("Port", text: $draft.port)
@@ -64,6 +73,13 @@ struct MailAccountForm: View {
                 }
                 .frame(width: 110)
             }
+            Text("Incoming (IMAP), for inbox apps").font(.subheadline).fontWeight(.medium)
+            HStack {
+                TextField("Server (imap.example.net); empty for send-only", text: $draft.imapHost)
+                TextField("Port", text: $draft.imapPort)
+                    .frame(width: 64)
+            }
+            Text("Account").font(.subheadline).fontWeight(.medium)
             TextField("Username", text: $draft.username)
             SecureField(
                 draft.hasPassword ? "Password (saved; type to replace)" : "Password",
@@ -75,7 +91,10 @@ struct MailAccountForm: View {
                 Button("Cancel") { onCancel() }
                 Button("Save") { onSave(draft) }
                     .buttonStyle(.borderedProminent)
-                    .disabled(draft.host.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(
+                        draft.host.trimmingCharacters(in: .whitespaces).isEmpty
+                            && draft.imapHost.trimmingCharacters(in: .whitespaces).isEmpty
+                    )
             }
         }
         .padding(20)

@@ -332,18 +332,22 @@ pub async fn handle_action(app: &tauri::AppHandle, event: &Value) {
             sidecar::send_panel_message(app, &snapshot);
         }
         "smtpSave" => {
-            let port = event
-                .get("port")
-                .and_then(Value::as_str)
-                .and_then(|value| value.trim().parse::<u16>().ok())
-                .or_else(|| event.get("port").and_then(Value::as_u64).map(|value| value as u16));
+            let port_of = |key: &str| {
+                event
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .and_then(|value| value.trim().parse::<u16>().ok())
+                    .or_else(|| event.get(key).and_then(Value::as_u64).map(|value| value as u16))
+            };
             let config = crate::mail::SmtpConfig {
                 host: text("host"),
-                port,
+                port: port_of("port"),
                 username: text("username"),
                 password: text("password"),
                 security: text("security"),
                 from: text("from"),
+                imap_host: text("imapHost"),
+                imap_port: port_of("imapPort"),
             };
             let note = match crate::mail::save_keeping_password(app, config) {
                 Ok(_) => ("info", "Mail account saved".to_string()),

@@ -377,6 +377,14 @@ export class ContractBuilder {
  * installed vocabulary, credentials, and proven recipes. Pure so offline
  * tooling and conformance vectors render the exact production prompt.
  */
+/** Array outputs with a declared row shape teach their fields inline, so
+ * list templates bind fields that actually exist. */
+function renderOutputSpec(spec: { name: string; type: string; itemFields?: string[] }): string {
+  return spec.itemFields?.length
+    ? `${spec.name}: array of {${spec.itemFields.join(', ')}}`
+    : `${spec.name}: ${spec.type}`;
+}
+
 export function renderCatalogText(compact = false, customLines: string[] = []): string {
   const elementLines = Object.values(ELEMENT_MANIFESTS).flatMap((manifest) => {
     const lines = [`- ${manifest.type}: ${manifest.description}`];
@@ -409,7 +417,7 @@ export function renderCatalogText(compact = false, customLines: string[] = []): 
         def.inputs
           .map((spec) => `${spec.name}${spec.required ? '' : '?'}: ${spec.type}`)
           .join(', ') || 'none';
-      const outputs = def.outputs.map((spec) => `${spec.name}: ${spec.type}`).join(', ') || 'none';
+      const outputs = def.outputs.map(renderOutputSpec).join(', ') || 'none';
       const lines = [`- ${def.name} (inputs: ${inputs}; outputs: ${outputs}): ${def.description}`];
       if (!compact) {
         if (def.howto) lines.push(`  howto: ${def.howto}`);
@@ -510,7 +518,7 @@ export function renderCatalogText(compact = false, customLines: string[] = []): 
       def.inputs
         .map((spec) => `${spec.name}${spec.required ? '' : '?'}: ${spec.type}`)
         .join(', ') || 'none';
-    const outputs = def.outputs.map((spec) => `${spec.name}: ${spec.type}`).join(', ') || 'none';
+    const outputs = def.outputs.map(renderOutputSpec).join(', ') || 'none';
     const lines = [`- ${def.name} (inputs: ${inputs}; outputs: ${outputs}): ${def.description}`];
     if (!compact) {
       if (def.howto) lines.push(`  howto: ${def.howto}`);

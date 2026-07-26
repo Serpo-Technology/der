@@ -193,3 +193,11 @@
   justify-content: flex-end;
   width: 100%;
 }
+
+.mail-account-group {
+  width: 100%;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--app-text-dim);
+  margin-top: 4px;
+}

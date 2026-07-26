@@ -30,6 +30,10 @@ pub struct SmtpConfig {
     pub security: String,
     /// Default sender, e.g. "Me <me@example.net>".
     pub from: String,
+    /// Incoming (IMAP) server; empty when the account is send-only.
+    /// Implicit TLS, usually port 993; the same username and password.
+    pub imap_host: String,
+    pub imap_port: Option<u16>,
 }
 
 impl SmtpConfig {
@@ -49,6 +53,8 @@ impl SmtpConfig {
             password: credential.secret.clone(),
             security: field("security"),
             from: field("from"),
+            imap_host: field("imapHost"),
+            imap_port: field("imapPort").trim().parse::<u16>().ok(),
         }
     }
 
@@ -64,6 +70,12 @@ impl SmtpConfig {
             if self.security.is_empty() { "starttls".to_string() } else { self.security.clone() },
         );
         fields.insert("from".to_string(), self.from.clone());
+        if !self.imap_host.is_empty() {
+            fields.insert("imapHost".to_string(), self.imap_host.clone());
+        }
+        if let Some(port) = self.imap_port {
+            fields.insert("imapPort".to_string(), port.to_string());
+        }
         IntegrationCredential {
             kind: "smtp".to_string(),
             target: None,
@@ -128,6 +140,8 @@ pub fn redacted_view(app: &AppHandle) -> Value {
         "hasPassword": !config.password.is_empty(),
         "security": if config.security.is_empty() { "starttls".to_string() } else { config.security },
         "from": config.from,
+        "imapHost": config.imap_host,
+        "imapPort": config.imap_port,
     })
 }
 
@@ -141,6 +155,7 @@ pub fn merge_saved(mut config: SmtpConfig, stored_password: String) -> SmtpConfi
     config.host = config.host.trim().to_string();
     config.username = config.username.trim().to_string();
     config.from = config.from.trim().to_string();
+    config.imap_host = config.imap_host.trim().to_string();
     config
 }
 
@@ -221,6 +236,240 @@ pub fn send_core(
     Ok(json!({ "sent": true, "to": to.trim() }))
 }
 
+/// Ensures the account has an incoming server, running the in-flow sheet
+/// when the panel can present it.
+fn ensure_incoming(app: &AppHandle) -> Result<SmtpConfig, String> {
+    let mut config = load_config(app);
+    if config.imap_host.is_empty() {
+        if let Some(saved) = crate::runtime::sidecar::panel_mail_account(app, &redacted_view(app)) {
+            save_keeping_password(app, saved)?;
+            config = load_config(app);
+        }
+    }
+    if config.imap_host.is_empty() {
+        return Err(
+            "Incoming mail is not set up; add your IMAP server to the mail account in Settings"
+                .to_string(),
+        );
+    }
+    Ok(config)
+}
+
+type ImapSession = imap::Session<rustls::StreamOwned<rustls::ClientConnection, std::net::TcpStream>>;
+
+/// Implicit-TLS IMAP connection with the account's credentials. The read
+/// side deliberately supports only the TLS port (usually 993).
+fn imap_session(config: &SmtpConfig) -> Result<ImapSession, String> {
+    let host = config.imap_host.trim();
+    let port = config.imap_port.unwrap_or(993);
+    let mut roots = rustls::RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let tls_config = rustls::ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let server_name = rustls::pki_types::ServerName::try_from(host.to_string())
+        .map_err(|_| format!("The incoming server name is not valid: {}", host))?;
+    let connection = rustls::ClientConnection::new(std::sync::Arc::new(tls_config), server_name)
+        .map_err(|e| format!("TLS setup failed: {}", e))?;
+    let tcp = std::net::TcpStream::connect((host, port))
+        .map_err(|e| format!("Could not reach {}:{}: {}", host, port, e))?;
+    let _ = tcp.set_read_timeout(Some(std::time::Duration::from_secs(30)));
+    let _ = tcp.set_write_timeout(Some(std::time::Duration::from_secs(30)));
+    let stream = rustls::StreamOwned::new(connection, tcp);
+    let mut client = imap::Client::new(stream);
+    client
+        .read_greeting()
+        .map_err(|e| format!("The mail server did not answer: {}", e))?;
+    client
+        .login(&config.username, &config.password)
+        .map_err(|(error, _)| format!("Mail sign-in failed: {}", error))
+}
+
+/// RFC 2047 encoded-word decoding via a synthetic header, so subjects and
+/// names read as text instead of =?UTF-8?...?= runs.
+fn decode_word(raw: &[u8]) -> String {
+    let mut line = b"X: ".to_vec();
+    line.extend_from_slice(raw);
+    match mailparse::parse_header(&line) {
+        Ok((header, _)) => header.get_value(),
+        Err(_) => String::from_utf8_lossy(raw).to_string(),
+    }
+}
+
+fn first_text_part(mail: &mailparse::ParsedMail, mimetype: &str) -> Option<String> {
+    if mail.subparts.is_empty() {
+        if mail.ctype.mimetype.eq_ignore_ascii_case(mimetype) {
+            return mail.get_body().ok();
+        }
+        return None;
+    }
+    mail.subparts
+        .iter()
+        .find_map(|part| first_text_part(part, mimetype))
+}
+
+/// Just enough HTML stripping for a readable fallback body; rich rendering
+/// belongs to viewer elements.
+fn strip_html(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(ch),
+            _ => {}
+        }
+    }
+    let decoded = out
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'");
+    let mut lines: Vec<&str> = decoded.lines().map(str::trim).collect();
+    lines.retain(|line| !line.is_empty());
+    lines.join("\n")
+}
+
+fn envelope_fields(fetch: &imap::types::Fetch) -> (String, String, String) {
+    let envelope = fetch.envelope();
+    let subject = envelope
+        .and_then(|e| e.subject.as_ref())
+        .map(|s| decode_word(s))
+        .unwrap_or_default();
+    let from = envelope
+        .and_then(|e| e.from.as_ref())
+        .and_then(|list| list.first())
+        .map(|address| {
+            let name = address
+                .name
+                .as_ref()
+                .map(|n| decode_word(n))
+                .unwrap_or_default();
+            let mailbox = address
+                .mailbox
+                .as_ref()
+                .map(|m| String::from_utf8_lossy(m).to_string())
+                .unwrap_or_default();
+            let host = address
+                .host
+                .as_ref()
+                .map(|h| String::from_utf8_lossy(h).to_string())
+                .unwrap_or_default();
+            let email = if mailbox.is_empty() || host.is_empty() {
+                String::new()
+            } else {
+                format!("{}@{}", mailbox, host)
+            };
+            match (name.is_empty(), email.is_empty()) {
+                (false, false) => format!("{} <{}>", name, email),
+                (false, true) => name,
+                (true, false) => email,
+                (true, true) => String::new(),
+            }
+        })
+        .unwrap_or_default();
+    let date = envelope
+        .and_then(|e| e.date.as_ref())
+        .map(|d| String::from_utf8_lossy(d).to_string())
+        .unwrap_or_default();
+    (subject, from, date)
+}
+
+/// The latest inbox messages, newest first: {messages: [{id, from,
+/// subject, date, seen}], count}. Ids are IMAP UIDs as strings.
+pub fn list_core(app: &AppHandle, limit_text: &str) -> Result<Value, String> {
+    let config = ensure_incoming(app)?;
+    let limit: u32 = limit_text
+        .trim()
+        .parse()
+        .ok()
+        .filter(|n| (1..=200).contains(n))
+        .unwrap_or(30);
+    let mut session = imap_session(&config)?;
+    let mailbox = session
+        .select("INBOX")
+        .map_err(|e| format!("Could not open the inbox: {}", e))?;
+    let mut messages: Vec<Value> = Vec::new();
+    if mailbox.exists > 0 {
+        let start = mailbox.exists.saturating_sub(limit - 1).max(1);
+        let range = format!("{}:{}", start, mailbox.exists);
+        let fetches = session
+            .fetch(&range, "(UID ENVELOPE FLAGS)")
+            .map_err(|e| format!("Could not read the inbox: {}", e))?;
+        for fetch in fetches.iter() {
+            let (subject, from, date) = envelope_fields(fetch);
+            let seen = fetch
+                .flags()
+                .iter()
+                .any(|flag| matches!(flag, imap::types::Flag::Seen));
+            messages.push(json!({
+                "id": fetch.uid.unwrap_or(0).to_string(),
+                "from": from,
+                "subject": subject,
+                "date": date,
+                "seen": seen,
+            }));
+        }
+    }
+    messages.reverse();
+    let _ = session.logout();
+    Ok(json!({ "messages": messages, "count": messages.len() }))
+}
+
+/// One message by UID, marked read by the fetch: {id, from, subject, date,
+/// text, seen}.
+pub fn fetch_core(app: &AppHandle, id_text: &str) -> Result<Value, String> {
+    let config = ensure_incoming(app)?;
+    let uid = id_text.trim();
+    if uid.is_empty() || !uid.bytes().all(|b| b.is_ascii_digit()) {
+        return Err("email.fetch needs a message \"id\" from email.list".to_string());
+    }
+    let mut session = imap_session(&config)?;
+    session
+        .select("INBOX")
+        .map_err(|e| format!("Could not open the inbox: {}", e))?;
+    let fetches = session
+        .uid_fetch(uid, "(UID ENVELOPE BODY[])")
+        .map_err(|e| format!("Could not read the message: {}", e))?;
+    let fetch = fetches
+        .iter()
+        .next()
+        .ok_or_else(|| format!("No message with id {}", uid))?;
+    let (subject, from, date) = envelope_fields(fetch);
+    let raw = fetch.body().unwrap_or_default();
+    let parsed = mailparse::parse_mail(raw)
+        .map_err(|e| format!("The message could not be parsed: {}", e))?;
+    let text = first_text_part(&parsed, "text/plain")
+        .or_else(|| first_text_part(&parsed, "text/html").map(|html| strip_html(&html)))
+        .unwrap_or_default();
+    let _ = session.logout();
+    Ok(json!({
+        "id": uid,
+        "from": from,
+        "subject": subject,
+        "date": date,
+        "text": text,
+        "seen": true,
+    }))
+}
+
+#[tauri::command]
+pub async fn mail_list(app: AppHandle, limit: Option<String>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || list_core(&app, limit.as_deref().unwrap_or("")))
+        .await
+        .map_err(|e| format!("mail.list failed: {}", e))?
+}
+
+#[tauri::command]
+pub async fn mail_fetch(app: AppHandle, id: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || fetch_core(&app, &id))
+        .await
+        .map_err(|e| format!("mail.fetch failed: {}", e))?
+}
+
 #[tauri::command]
 pub fn smtp_get(app: AppHandle) -> Value {
     redacted_view(&app)
@@ -264,12 +513,14 @@ mod tests {
             password: String::new(),
             security: "starttls".to_string(),
             from: " Me <me@example.net> ".to_string(),
-            port: None,
+            imap_host: " imap.example.net ".to_string(),
+            ..SmtpConfig::default()
         };
         let merged = merge_saved(incoming, "stored-secret".to_string());
         assert_eq!(merged.password, "stored-secret");
         assert_eq!(merged.host, "smtp.example.net");
         assert_eq!(merged.from, "Me <me@example.net>");
+        assert_eq!(merged.imap_host, "imap.example.net");
     }
 
     #[test]
@@ -291,6 +542,8 @@ mod tests {
             password: "secret".to_string(),
             security: "starttls".to_string(),
             from: "Me <me@example.net>".to_string(),
+            imap_host: "imap.example.net".to_string(),
+            imap_port: Some(993),
         };
         let credential = config.to_credential();
         assert_eq!(credential.kind, "smtp");
@@ -301,5 +554,13 @@ mod tests {
         assert_eq!(back.password, config.password);
         assert_eq!(back.security, config.security);
         assert_eq!(back.from, config.from);
+        assert_eq!(back.imap_host, config.imap_host);
+        assert_eq!(back.imap_port, config.imap_port);
+    }
+
+    #[test]
+    fn html_fallback_bodies_strip_to_readable_text() {
+        let html = "<div><p>Hello &amp; welcome,</p>\n<p>see you <b>soon</b>.</p></div>";
+        assert_eq!(strip_html(html), "Hello & welcome,\nsee you soon.");
     }
 }

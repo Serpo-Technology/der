@@ -20,6 +20,8 @@ export const MailAccountForm: React.FC<MailAccountFormProps> = ({ onSaved, onCan
   const [password, setPassword] = useState('');
   const [security, setSecurity] = useState('starttls');
   const [from, setFrom] = useState('');
+  const [imapHost, setImapHost] = useState('');
+  const [imapPort, setImapPort] = useState('');
   const [hasPassword, setHasPassword] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -32,23 +34,31 @@ export const MailAccountForm: React.FC<MailAccountFormProps> = ({ onSaved, onCan
         setUsername(view.username);
         setSecurity(view.security);
         setFrom(view.from);
+        setImapHost(view.imapHost ?? '');
+        setImapPort(view.imapPort == null ? '' : String(view.imapPort));
         setHasPassword(view.hasPassword);
       })
       .catch(() => undefined);
   }, []);
 
+  const parsePort = (value: string): number | null => {
+    const parsed = value.trim() ? Number.parseInt(value.trim(), 10) : null;
+    return Number.isNaN(parsed ?? 0) ? null : parsed;
+  };
+
   const save = async () => {
     setBusy(true);
     setError('');
     try {
-      const parsedPort = port.trim() ? Number.parseInt(port.trim(), 10) : null;
       const view = await saveSmtpSettings({
         host: host.trim(),
-        port: Number.isNaN(parsedPort ?? 0) ? null : parsedPort,
+        port: parsePort(port),
         username: username.trim(),
         password,
         security,
         from: from.trim(),
+        imapHost: imapHost.trim(),
+        imapPort: parsePort(imapPort),
       });
       onSaved(view);
     } catch (err) {
@@ -65,6 +75,7 @@ export const MailAccountForm: React.FC<MailAccountFormProps> = ({ onSaved, onCan
       </p>
       {error && <p className="settings-error">{error}</p>}
       <div className="settings-integration-form">
+        <span className="mail-account-group">Outgoing (SMTP)</span>
         <input
           value={host}
           onChange={(e) => setHost(e.target.value)}
@@ -81,6 +92,20 @@ export const MailAccountForm: React.FC<MailAccountFormProps> = ({ onSaved, onCan
           <option value="starttls">STARTTLS (587)</option>
           <option value="tls">TLS (465)</option>
         </select>
+        <span className="mail-account-group">Incoming (IMAP), for inbox apps</span>
+        <input
+          value={imapHost}
+          onChange={(e) => setImapHost(e.target.value)}
+          placeholder="imap.example.net (empty for send-only)"
+          disabled={busy}
+        />
+        <input
+          value={imapPort}
+          onChange={(e) => setImapPort(e.target.value)}
+          placeholder="port (usually 993)"
+          disabled={busy}
+        />
+        <span className="mail-account-group">Account</span>
         <input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
@@ -104,7 +129,7 @@ export const MailAccountForm: React.FC<MailAccountFormProps> = ({ onSaved, onCan
           <button onClick={onCancel} disabled={busy}>
             Cancel
           </button>
-          <button onClick={save} disabled={busy || !host.trim()}>
+          <button onClick={save} disabled={busy || (!host.trim() && !imapHost.trim())}>
             Save
           </button>
         </div>

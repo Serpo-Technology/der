@@ -14,6 +14,8 @@ export interface SmtpView {
   hasPassword: boolean;
   security: string;
   from: string;
+  imapHost?: string;
+  imapPort?: number | null;
 }
 
 export interface SmtpDraft {
@@ -23,6 +25,8 @@ export interface SmtpDraft {
   password: string;
   security: string;
   from: string;
+  imapHost: string;
+  imapPort: number | null;
 }
 
 export async function getSmtpSettings(): Promise<SmtpView> {

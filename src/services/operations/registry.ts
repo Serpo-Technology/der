@@ -27,6 +27,9 @@ export interface BuiltinIoSpec {
   type: string;
   required?: boolean;
   description?: string;
+  /** For array outputs: the fields each row carries, so list templates
+   * bound to the routed key validate their item reads. */
+  itemFields?: string[];
 }
 
 export interface BuiltinOperationDef {
@@ -156,6 +159,16 @@ export function setFileOpProviders(providers: {
 const emailProviders: { send?: FileOpProvider } = {};
 export function setEmailProvider(send?: FileOpProvider): void {
   emailProviders.send = send;
+}
+
+/** Test seam for the receive side; production always invokes. */
+const mailProviders: { list?: FileOpProvider; fetch?: FileOpProvider } = {};
+export function setMailProviders(providers: {
+  list?: FileOpProvider;
+  fetch?: FileOpProvider;
+}): void {
+  mailProviders.list = providers.list;
+  mailProviders.fetch = providers.fetch;
 }
 
 export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
@@ -598,6 +611,79 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
         subject: String(inputs.subject ?? ''),
         text: String(inputs.text ?? ''),
       });
+    },
+  },
+  'email.list': {
+    name: 'email.list',
+    description:
+      'Lists the latest emails from the configured mail account, newest first. Returns {messages, count}; each message has id, from, subject, date, and seen.',
+    inputs: [
+      {
+        name: 'limit',
+        type: 'number',
+        required: false,
+        description: 'How many recent messages (default 30, max 200)',
+      },
+    ],
+    outputs: [
+      {
+        name: 'messages',
+        type: 'array',
+        description: 'Message rows for a list element',
+        itemFields: ['id', 'from', 'subject', 'date', 'seen'],
+      },
+      { name: 'count', type: 'number' },
+    ],
+    howto:
+      'Wire a Refresh button to it and route "messages" into state; bind a list element to that key with rows showing item.from and item.subject (item.seen distinguishes unread). A Read button in the row feeds email.fetch with the row\'s id. The first use asks for the mail account if none is set up.',
+    example: {
+      id: 'op-load-inbox',
+      operationName: 'email.list',
+      executionType: 'builtin',
+      inputs: [],
+      outputs: [{ name: 'messages', target: 'state', targetId: 'inbox-messages' }],
+      triggers: [],
+    },
+    execute: async (inputs) => {
+      const provider = mailProviders.list;
+      if (provider) return provider(inputs);
+      return await invoke('mail_list', {
+        limit: String(inputs.limit ?? '') || undefined,
+      });
+    },
+  },
+  'email.fetch': {
+    name: 'email.fetch',
+    description:
+      'Opens one email by the "id" from email.list and marks it read. Returns {id, from, subject, date, text, seen}.',
+    inputs: [
+      { name: 'id', type: 'string', required: true, description: 'A message id from email.list' },
+    ],
+    outputs: [
+      { name: 'id', type: 'string' },
+      { name: 'from', type: 'string' },
+      { name: 'subject', type: 'string' },
+      { name: 'date', type: 'string' },
+      { name: 'text', type: 'string', description: 'The readable message body' },
+      { name: 'seen', type: 'boolean' },
+    ],
+    howto:
+      'Run it from a Read button inside the inbox list row, binding "id" from the row (source "item", sourceId "id"). Route "subject" and "text" into state and show them in a reader section gated with visibleWhen notEmpty on the text key.',
+    example: {
+      id: 'op-open-message',
+      operationName: 'email.fetch',
+      executionType: 'builtin',
+      inputs: [{ name: 'id', source: 'item', sourceId: 'id' }],
+      outputs: [
+        { name: 'subject', target: 'state', targetId: 'open-subject' },
+        { name: 'text', target: 'state', targetId: 'open-text' },
+      ],
+      triggers: [],
+    },
+    execute: async (inputs) => {
+      const provider = mailProviders.fetch;
+      if (provider) return provider(inputs);
+      return await invoke('mail_fetch', { id: String(inputs.id ?? '') });
     },
   },
 

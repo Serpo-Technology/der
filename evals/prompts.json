@@ -1558,6 +1558,54 @@
           }
         ]
       }
+    },
+    {
+      "id": "mail-inbox",
+      "prompt": "An inbox app: a refresh button loads my latest emails into a list showing sender and subject, and opening a message shows its text in a reader below",
+      "behavior": {
+        "steps": [
+          {
+            "do": "click",
+            "on": [
+              "refresh",
+              "check",
+              "load"
+            ]
+          },
+          {
+            "expect": "text",
+            "match": "Workshop notes"
+          },
+          {
+            "expect": "text",
+            "match": "/ada|lovelace/i"
+          },
+          {
+            "expect": "rowCount",
+            "count": 2
+          },
+          {
+            "do": "clickInRow",
+            "row": "workshop",
+            "on": [
+              "read",
+              "open",
+              "view",
+              "show"
+            ],
+            "optional": true
+          },
+          {
+            "do": "clickRow",
+            "row": "workshop",
+            "optional": true
+          },
+          {
+            "expect": "text",
+            "match": "/notes from the workshop/"
+          }
+        ]
+      }
     }
   ]
 }

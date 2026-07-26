@@ -181,6 +181,8 @@ public struct SmtpShape: Decodable, Sendable {
     public let hasPassword: Bool
     public let security: String
     public let from: String
+    public let imapHost: String?
+    public let imapPort: Int?
 }
 
 public struct PartOperationShape: Decodable, Sendable, Identifiable {

@@ -1421,6 +1421,8 @@ pub fn run() {
             mail::smtp_get,
             mail::smtp_save,
             mail::smtp_delete,
+            mail::mail_list,
+            mail::mail_fetch,
             read_repository_index,
             write_repository_index,
             read_component_manifest,

@@ -126,6 +126,18 @@ fn io_spec_line(spec: &Value, optional_marker: bool) -> String {
         let required = spec.get("required").and_then(Value::as_bool).unwrap_or(false);
         format!("{}{}: {}", name, if required { "" } else { "?" }, kind)
     } else {
+        // Array outputs with a declared row shape teach their fields inline,
+        // so list templates bind fields that actually exist.
+        let item_fields: Vec<&str> = spec
+            .get("itemFields")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        if !item_fields.is_empty() {
+            return format!("{}: array of {{{}}}", name, item_fields.join(", "));
+        }
         format!("{}: {}", name, kind)
     }
 }

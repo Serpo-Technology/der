@@ -255,19 +255,37 @@ function warn(warnings: ValidationWarning[], path: string, message: string): voi
   warnings.push({ path, message, code: 'MANIFEST_ADJUSTED' });
 }
 
+/** The known shape of a list's rows: fields plus what produced them (the
+ * append, or an operation whose manifest declares itemFields). */
+interface RowShape {
+  key: string;
+  fields: Set<string>;
+  producer: string;
+}
+
 function walkElements(
   elements: UIElement[],
-  visit: (element: UIElement, path: string, inListTemplate: boolean) => void,
+  visit: (
+    element: UIElement,
+    path: string,
+    inListTemplate: boolean,
+    rowShape: RowShape | undefined
+  ) => void,
   path = 'elements',
-  inListTemplate = false
+  inListTemplate = false,
+  shapeOf?: (element: UIElement) => RowShape | undefined,
+  rowShape?: RowShape
 ): void {
   elements.forEach((element, index) => {
     const here = `${path}.${index}`;
-    visit(element, here, inListTemplate);
+    visit(element, here, inListTemplate, rowShape);
     if (element.children?.length) {
-      const childTemplate =
-        inListTemplate || (element.type === 'list' && element.children.length > 0);
-      walkElements(element.children, visit, `${here}.children`, childTemplate);
+      const isTemplate = element.type === 'list' && element.children.length > 0;
+      const childTemplate = inListTemplate || isTemplate;
+      // A nested list rebinds the row scope; an unknown inner shape must not
+      // inherit the outer one.
+      const childShape = isTemplate ? shapeOf?.(element) : rowShape;
+      walkElements(element.children, visit, `${here}.children`, childTemplate, shapeOf, childShape);
     }
   });
 }
@@ -522,6 +540,83 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     'sortBy',
     'deriveField',
   ]);
+
+  // Keys fed by operation outputs whose manifests declare their row shape
+  // (mail.list's messages and the like); list templates bound to them get
+  // their item reads validated exactly like append-built keys.
+  const providedFieldsByKey = new Map<string, { fields: string[]; opName: string }>();
+  for (const op of allOperations) {
+    const def = getOperationDef(op.operationName);
+    if (!def) continue;
+    for (const output of op.outputs ?? []) {
+      if (output.target !== 'state' || !output.targetId) continue;
+      if ((output.transforms?.length ?? 0) > 0 || output.transform) continue;
+      const decl = def.outputs.find((candidate) => candidate.name === output.name);
+      if (decl?.itemFields && !providedFieldsByKey.has(output.targetId)) {
+        providedFieldsByKey.set(output.targetId, {
+          fields: decl.itemFields,
+          opName: op.operationName,
+        });
+      }
+    }
+  }
+
+  const rowShapeFor = (key: string): RowShape | undefined => {
+    const append = appendFieldsByKey.get(key);
+    if (append) {
+      const fields = new Set(append);
+      for (const field of laterFieldsByKey.get(key) ?? []) fields.add(field);
+      return { key, fields, producer: 'append' };
+    }
+    const provided = providedFieldsByKey.get(key);
+    if (provided) {
+      return { key, fields: new Set(provided.fields), producer: provided.opName };
+    }
+    return undefined;
+  };
+
+  /** The row shape a list element's template sees: the items key's shape,
+   * grown by deriveField steps and voided by reshaping transforms. */
+  const shapeOfList = (element: UIElement): RowShape | undefined => {
+    const items = (element.dataBindings ?? []).find((binding) => binding.property === 'items');
+    if (!items || items.source !== 'state' || !items.sourceId) return undefined;
+    const base = rowShapeFor(String(items.sourceId));
+    if (!base) return undefined;
+    const fields = new Set(base.fields);
+    const steps = [...(items.transforms ?? []), ...(items.transform ? [items.transform] : [])];
+    for (const step of steps) {
+      if (step.type === 'deriveField') {
+        const field = step.parameters?.field;
+        if (typeof field === 'string' && field) fields.add(field);
+      } else if (!SHAPE_PRESERVING_TRANSFORMS.has(step.type)) {
+        return undefined;
+      }
+    }
+    return { ...base, fields };
+  };
+
+  const rowFieldHint = (shape: RowShape, field: string): string =>
+    shape.producer === 'append'
+      ? `bind an existing field or add an item.${field} input to the append`
+      : `bind one of those fields`;
+
+  // Which list rows trigger each operation, so item inputs validate against
+  // the rows they actually read from.
+  const rowShapeByOpId = new Map<string, RowShape>();
+  walkElements(
+    contract.elements as UIElement[],
+    (element, _path, inTemplate, shape) => {
+      if (!inTemplate || !shape) return;
+      for (const binding of element.eventBindings ?? []) {
+        if (!rowShapeByOpId.has(binding.operationId)) {
+          rowShapeByOpId.set(binding.operationId, shape);
+        }
+      }
+    },
+    'elements',
+    false,
+    shapeOfList
+  );
   const checkListFieldReads = (
     path: string,
     binding: {
@@ -656,7 +751,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     elementIds.add(element.id);
     element.children?.forEach(collectExpandedIds);
   };
-  walkElements(contract.elements as UIElement[], (element, path, inListTemplate) => {
+  walkElements(contract.elements as UIElement[], (element, path, inListTemplate, rowShape) => {
     fixCenteredEntryRows(element, path);
     elementIds.add(element.id);
     if (element.type === 'list') {
@@ -797,6 +892,17 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       }
       if (binding.source === 'item' && !inListTemplate) {
         warn(warnings, bindingPath, `"item" binding outside a list template resolves to nothing`);
+      } else if (binding.source === 'item' && rowShape) {
+        const field = String(binding.sourceId ?? '').split('.')[0];
+        if (field && !rowShape.fields.has(field)) {
+          fail(
+            bindingPath,
+            `Row binding reads item field "${field}", but rows of "${rowShape.key}" carry: ${
+              [...rowShape.fields].join(', ') || 'nothing'
+            }; ${rowFieldHint(rowShape, field)}`,
+            'LIST_FIELD_UNWRITTEN'
+          );
+        }
       }
     });
 
@@ -818,6 +924,17 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
           `${path}.visibleWhen.${conditionIndex}`,
           `"item" condition outside a list template resolves to nothing`
         );
+      } else if (rowShape) {
+        const field = String(condition.sourceId ?? '').split('.')[0];
+        if (field && !rowShape.fields.has(field)) {
+          fail(
+            `${path}.visibleWhen.${conditionIndex}`,
+            `Row condition reads item field "${field}", but rows of "${rowShape.key}" carry: ${
+              [...rowShape.fields].join(', ') || 'nothing'
+            }; ${rowFieldHint(rowShape, field)}`,
+            'LIST_FIELD_UNWRITTEN'
+          );
+        }
       }
     });
 
@@ -833,7 +950,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
         );
       }
     });
-  });
+  }, 'elements', false, shapeOfList);
 
   // A model that wires events but forgets the operations array needs the fix
   // stated outright, ahead of the per-binding errors.
@@ -913,6 +1030,20 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       const inputPath = `${opPath}.inputs.${i}`;
       checkPipeline(inputPath, input, fail, checkParamRef);
       checkListFieldReads(inputPath, input);
+
+      if (input.source === 'item') {
+        const shape = rowShapeByOpId.get(op.id);
+        const field = String(input.sourceId ?? '').split('.')[0];
+        if (shape && field && !shape.fields.has(field)) {
+          fail(
+            inputPath,
+            `Input "${input.name}" reads item field "${field}", but rows of "${shape.key}" carry: ${
+              [...shape.fields].join(', ') || 'nothing'
+            }; ${rowFieldHint(shape, field)}`,
+            'LIST_FIELD_UNWRITTEN'
+          );
+        }
+      }
 
       if (input.source === 'ui-element' && !elementIds.has(input.sourceId)) {
         fail(

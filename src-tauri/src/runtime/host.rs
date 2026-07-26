@@ -110,6 +110,8 @@ impl HostDispatcher {
             "file.pick" => crate::files::pick_core(&self.app, &text("kind")),
             "file.read" => crate::files::read_core(&self.app, &text("file")),
             "file.save" => crate::files::save_core(&self.app, &text("data"), &text("name")),
+            "email.list" => crate::mail::list_core(&self.app, &text("limit")),
+            "email.fetch" => crate::mail::fetch_core(&self.app, &text("id")),
             "email.send" => crate::mail::send_core(
                 &self.app,
                 &text("from"),

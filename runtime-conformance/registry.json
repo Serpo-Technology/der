@@ -927,6 +927,112 @@
         "triggers": []
       }
     },
+    "email.list": {
+      "description": "Lists the latest emails from the configured mail account, newest first. Returns {messages, count}; each message has id, from, subject, date, and seen.",
+      "inputs": [
+        {
+          "name": "limit",
+          "type": "number",
+          "required": false,
+          "description": "How many recent messages (default 30, max 200)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "messages",
+          "type": "array",
+          "itemFields": [
+            "id",
+            "from",
+            "subject",
+            "date",
+            "seen"
+          ]
+        },
+        {
+          "name": "count",
+          "type": "number"
+        }
+      ],
+      "howto": "Wire a Refresh button to it and route \"messages\" into state; bind a list element to that key with rows showing item.from and item.subject (item.seen distinguishes unread). A Read button in the row feeds email.fetch with the row's id. The first use asks for the mail account if none is set up.",
+      "example": {
+        "id": "op-load-inbox",
+        "operationName": "email.list",
+        "executionType": "builtin",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "messages",
+            "target": "state",
+            "targetId": "inbox-messages"
+          }
+        ],
+        "triggers": []
+      }
+    },
+    "email.fetch": {
+      "description": "Opens one email by the \"id\" from email.list and marks it read. Returns {id, from, subject, date, text, seen}.",
+      "inputs": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "description": "A message id from email.list"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "from",
+          "type": "string"
+        },
+        {
+          "name": "subject",
+          "type": "string"
+        },
+        {
+          "name": "date",
+          "type": "string"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "seen",
+          "type": "boolean"
+        }
+      ],
+      "howto": "Run it from a Read button inside the inbox list row, binding \"id\" from the row (source \"item\", sourceId \"id\"). Route \"subject\" and \"text\" into state and show them in a reader section gated with visibleWhen notEmpty on the text key.",
+      "example": {
+        "id": "op-open-message",
+        "operationName": "email.fetch",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "id",
+            "source": "item",
+            "sourceId": "id"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "subject",
+            "target": "state",
+            "targetId": "open-subject"
+          },
+          {
+            "name": "text",
+            "target": "state",
+            "targetId": "open-text"
+          }
+        ],
+        "triggers": []
+      }
+    },
     "todos.add": {
       "description": "Appends a todo {id, title, completed:false} to the 'todos' state array.",
       "inputs": [

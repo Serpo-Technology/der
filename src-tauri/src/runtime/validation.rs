@@ -108,6 +108,31 @@ fn push_unique(list: &mut Vec<String>, value: String) {
     }
 }
 
+/// The known shape of a list's rows: fields plus what produced them (the
+/// append, or an operation whose manifest declares itemFields).
+#[derive(Clone)]
+struct RowShape {
+    key: String,
+    fields: Vec<String>,
+    producer: String,
+}
+
+fn row_field_hint(shape: &RowShape, field: &str) -> String {
+    if shape.producer == "append" {
+        format!("bind an existing field or add an item.{} input to the append", field)
+    } else {
+        "bind one of those fields".to_string()
+    }
+}
+
+fn joined_fields(shape: &RowShape) -> String {
+    if shape.fields.is_empty() {
+        "nothing".to_string()
+    } else {
+        shape.fields.join(", ")
+    }
+}
+
 /// A dynamic parameter reference: {"source": "state"|"element", "sourceId"}.
 fn param_ref_of(value: &Value) -> Option<&Map<String, Value>> {
     let map = value.as_object()?;
@@ -157,6 +182,10 @@ struct Checker<'a> {
     later_fields: FieldsByKey,
     append_elements: FieldsByKey,
     object_array_keys: OrderedSet,
+    /// Keys fed by operation outputs whose manifests declare itemFields.
+    provided_fields: Vec<(String, (Vec<String>, String))>,
+    /// Which list rows trigger each operation id.
+    row_shape_by_op: Vec<(String, RowShape)>,
 }
 
 impl Checker<'_> {
@@ -174,6 +203,71 @@ impl Checker<'_> {
         manifests::builtin_def(name)
             .cloned()
             .or_else(|| self.part_operations.get(name).cloned())
+    }
+
+    fn row_shape_for(&self, key: &str) -> Option<RowShape> {
+        if let Some(append) = self.append_fields.get(key) {
+            let mut fields = append.clone();
+            if let Some(later) = self.later_fields.get(key) {
+                for field in later {
+                    push_unique(&mut fields, field.clone());
+                }
+            }
+            return Some(RowShape {
+                key: key.to_string(),
+                fields,
+                producer: "append".to_string(),
+            });
+        }
+        self.provided_fields
+            .iter()
+            .find(|(candidate, _)| candidate == key)
+            .map(|(_, (fields, op_name))| RowShape {
+                key: key.to_string(),
+                fields: fields.clone(),
+                producer: op_name.clone(),
+            })
+    }
+
+    /// The row shape a list element's template sees: the items key's shape,
+    /// grown by deriveField steps and voided by reshaping transforms.
+    fn shape_of_list(&self, element: &Value) -> Option<RowShape> {
+        let bindings = element.get("dataBindings").and_then(Value::as_array)?;
+        let items = bindings
+            .iter()
+            .find(|binding| as_str(binding, "property") == "items")?;
+        if as_str(items, "source") != "state" {
+            return None;
+        }
+        let key = as_str(items, "sourceId");
+        if key.is_empty() {
+            return None;
+        }
+        let mut shape = self.row_shape_for(key)?;
+        for step in pipeline_steps(items) {
+            let step_type = as_str(&step, "type").to_string();
+            if step_type == "deriveField" {
+                if let Some(field) = step
+                    .get("parameters")
+                    .and_then(|parameters| parameters.get("field"))
+                    .and_then(Value::as_str)
+                {
+                    if !field.is_empty() {
+                        push_unique(&mut shape.fields, field.to_string());
+                    }
+                }
+            } else if !SHAPE_PRESERVING_TRANSFORMS.contains(&step_type.as_str()) {
+                return None;
+            }
+        }
+        Some(shape)
+    }
+
+    fn row_shape_of_op(&self, op_id: &str) -> Option<&RowShape> {
+        self.row_shape_by_op
+            .iter()
+            .find(|(id, _)| id == op_id)
+            .map(|(_, shape)| shape)
     }
 
     fn known_element_ids(&self) -> String {
@@ -448,6 +542,8 @@ pub fn check_against_manifests(
         append_fields: FieldsByKey::new(),
         later_fields: FieldsByKey::new(),
         append_elements: FieldsByKey::new(),
+        provided_fields: Vec::new(),
+        row_shape_by_op: Vec::new(),
         object_array_keys: OrderedSet::new(),
     };
 
@@ -643,9 +739,63 @@ pub fn check_against_manifests(
         }
     }
 
+    // Keys fed by operation outputs whose manifests declare their row shape
+    // (email.list's messages and the like); list templates bound to them get
+    // their item reads validated exactly like append-built keys.
+    for op in &all_ops {
+        let Some(def) = checker.operation_def(as_str(op, "operationName")) else {
+            continue;
+        };
+        for output in op.get("outputs").and_then(Value::as_array).into_iter().flatten() {
+            if as_str(output, "target") != "state" {
+                continue;
+            }
+            let target_id = as_str(output, "targetId");
+            if target_id.is_empty() {
+                continue;
+            }
+            let has_transforms = output
+                .get("transforms")
+                .and_then(Value::as_array)
+                .is_some_and(|steps| !steps.is_empty())
+                || output.get("transform").is_some_and(|value| !value.is_null());
+            if has_transforms {
+                continue;
+            }
+            let output_name = as_str(output, "name");
+            let item_fields: Vec<String> = def
+                .get("outputs")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .find(|candidate| as_str(candidate, "name") == output_name)
+                .and_then(|candidate| candidate.get("itemFields"))
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
+            if !item_fields.is_empty()
+                && !checker.provided_fields.iter().any(|(key, _)| key == target_id)
+            {
+                checker.provided_fields.push((
+                    target_id.to_string(),
+                    (item_fields, as_str(op, "operationName").to_string()),
+                ));
+            }
+        }
+    }
+
+    // Which list rows trigger each operation, so item inputs validate
+    // against the rows they actually read from.
+    if let Some(elements) = contract.get("elements").and_then(Value::as_array) {
+        map_row_ops(&elements.clone(), false, None, &mut checker);
+    }
+
     // The element walk: normalization, bookkeeping, and per-element rules.
     if let Some(elements) = contract.get_mut("elements").and_then(Value::as_array_mut) {
-        walk_elements(elements, "elements", false, &mut checker);
+        walk_elements(elements, "elements", false, &mut checker, None);
     }
 
     // A model that wires events but forgets the operations array needs the
@@ -904,11 +1054,53 @@ fn fix_centered_entry_rows(element: &mut Value, path: &str, checker: &mut Checke
     }
 }
 
+/// Maps operations triggered from list rows to their row shape, ahead of
+/// the operation checks.
+fn map_row_ops(
+    elements: &[Value],
+    in_template: bool,
+    shape: Option<&RowShape>,
+    checker: &mut Checker,
+) {
+    for element in elements {
+        if in_template {
+            if let Some(shape) = shape {
+                for binding in element
+                    .get("eventBindings")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    let op_id = as_str(binding, "operationId");
+                    if !checker.row_shape_by_op.iter().any(|(id, _)| id == op_id) {
+                        checker.row_shape_by_op.push((op_id.to_string(), shape.clone()));
+                    }
+                }
+            }
+        }
+        let children = element.get("children").and_then(Value::as_array);
+        if let Some(children) = children {
+            if children.is_empty() {
+                continue;
+            }
+            let is_template = as_str(element, "type") == "list";
+            let child_template = in_template || is_template;
+            let child_shape = if is_template {
+                checker.shape_of_list(element)
+            } else {
+                shape.cloned()
+            };
+            map_row_ops(children, child_template, child_shape.as_ref(), checker);
+        }
+    }
+}
+
 fn walk_elements(
     elements: &mut [Value],
     parent_path: &str,
     in_list_template: bool,
     checker: &mut Checker,
+    row_shape: Option<&RowShape>,
 ) {
     for (index, element) in elements.iter_mut().enumerate() {
         let path = format!("{}.{}", parent_path, index);
@@ -1129,6 +1321,23 @@ fn walk_elements(
                     &binding_path,
                     "\"item\" binding outside a list template resolves to nothing".to_string(),
                 );
+            } else if source == "item" {
+                if let Some(shape) = row_shape {
+                    let field = source_id.split('.').next().unwrap_or("");
+                    if !field.is_empty() && !shape.fields.iter().any(|f| f == field) {
+                        checker.fail(
+                            &binding_path,
+                            format!(
+                                "Row binding reads item field \"{}\", but rows of \"{}\" carry: {}; {}",
+                                field,
+                                shape.key,
+                                joined_fields(shape),
+                                row_field_hint(shape, field)
+                            ),
+                            "LIST_FIELD_UNWRITTEN",
+                        );
+                    }
+                }
             }
         }
 
@@ -1153,6 +1362,22 @@ fn walk_elements(
                     &condition_path,
                     "\"item\" condition outside a list template resolves to nothing".to_string(),
                 );
+            } else if let Some(shape) = row_shape {
+                let field_owner = as_str(condition, "sourceId").to_string();
+                let field = field_owner.split('.').next().unwrap_or("");
+                if !field.is_empty() && !shape.fields.iter().any(|f| f == field) {
+                    checker.fail(
+                        &condition_path,
+                        format!(
+                            "Row condition reads item field \"{}\", but rows of \"{}\" carry: {}; {}",
+                            field,
+                            shape.key,
+                            joined_fields(shape),
+                            row_field_hint(shape, field)
+                        ),
+                        "LIST_FIELD_UNWRITTEN",
+                    );
+                }
             }
         }
 
@@ -1179,20 +1404,34 @@ fn walk_elements(
             }
         }
 
-        let child_template = in_list_template
-            || (element_type == "list"
-                && element
-                    .get("children")
-                    .and_then(Value::as_array)
-                    .is_some_and(|children| !children.is_empty()));
+        let is_template = element_type == "list"
+            && element
+                .get("children")
+                .and_then(Value::as_array)
+                .is_some_and(|children| !children.is_empty());
+        let child_template = in_list_template || is_template;
+        // A nested list rebinds the row scope; an unknown inner shape must
+        // not inherit the outer one.
+        let child_shape = if is_template {
+            checker.shape_of_list(element)
+        } else {
+            row_shape.cloned()
+        };
         if let Some(children) = element.get_mut("children").and_then(Value::as_array_mut) {
-            walk_elements(children, &format!("{}.children", path), child_template, checker);
+            walk_elements(
+                children,
+                &format!("{}.children", path),
+                child_template,
+                checker,
+                child_shape.as_ref(),
+            );
         }
     }
 }
 
 fn check_operation(op: &mut Value, op_path: &str, checker: &mut Checker) {
     let name = as_str(op, "operationName").to_string();
+    let op_id = as_str(op, "id").to_string();
     let def = checker.operation_def(&name);
     let implementation = op.get("implementation").cloned().unwrap_or(Value::Null);
     let endpoint = as_str(&implementation, "endpoint").to_string();
@@ -1288,6 +1527,25 @@ fn check_operation(op: &mut Value, op_path: &str, checker: &mut Checker) {
         let source = as_str(input, "source");
         let source_id = as_str(input, "sourceId").to_string();
         let input_name = as_str(input, "name").to_string();
+        if source == "item" {
+            if let Some(shape) = checker.row_shape_of_op(&op_id).cloned() {
+                let field = source_id.split('.').next().unwrap_or("");
+                if !field.is_empty() && !shape.fields.iter().any(|f| f == field) {
+                    checker.fail(
+                        &input_path,
+                        format!(
+                            "Input \"{}\" reads item field \"{}\", but rows of \"{}\" carry: {}; {}",
+                            input_name,
+                            field,
+                            shape.key,
+                            joined_fields(&shape),
+                            row_field_hint(&shape, field)
+                        ),
+                        "LIST_FIELD_UNWRITTEN",
+                    );
+                }
+            }
+        }
         if source == "ui-element" && !checker.element_ids.has(&source_id) {
             let listed = checker.known_element_ids();
             checker.fail(

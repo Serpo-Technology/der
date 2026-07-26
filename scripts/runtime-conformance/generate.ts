@@ -2293,6 +2293,90 @@ const VALIDATION_CASES: ValidationCase[] = [
     ],
   },
   {
+    name: 'row reads validate against declared and appended row shapes',
+    contract: {
+      name: 'inbox-rows',
+      elements: [
+        {
+          id: 'refresh-btn',
+          type: 'button',
+          properties: { text: 'Refresh' },
+          eventBindings: [{ event: 'click', operationId: 'op-load' }],
+        },
+        {
+          id: 'inbox-list',
+          type: 'list',
+          dataBindings: [{ property: 'items', source: 'state', sourceId: 'inbox' }],
+          children: [
+            {
+              id: 'row-sender',
+              type: 'text',
+              dataBindings: [{ property: 'content', source: 'item', sourceId: 'sender' }],
+            },
+            {
+              id: 'row-subject',
+              type: 'text',
+              dataBindings: [{ property: 'content', source: 'item', sourceId: 'subject' }],
+            },
+            {
+              id: 'row-open',
+              type: 'button',
+              properties: { text: 'Read' },
+              eventBindings: [{ event: 'click', operationId: 'op-open' }],
+            },
+          ],
+        },
+        { id: 'todo-input', type: 'input', properties: { label: 'Task' } },
+        {
+          id: 'todo-add',
+          type: 'button',
+          properties: { text: 'Add' },
+          eventBindings: [{ event: 'click', operationId: 'op-add-todo' }],
+        },
+        {
+          id: 'todo-list',
+          type: 'list',
+          dataBindings: [{ property: 'items', source: 'state', sourceId: 'todos' }],
+          children: [
+            {
+              id: 'todo-label',
+              type: 'text',
+              dataBindings: [{ property: 'content', source: 'item', sourceId: 'label' }],
+            },
+          ],
+        },
+        {
+          id: 'reader',
+          type: 'text',
+          dataBindings: [{ property: 'content', source: 'state', sourceId: 'open-text' }],
+        },
+      ],
+      operations: [
+        {
+          id: 'op-load',
+          operationName: 'email.list',
+          inputs: [],
+          outputs: [{ name: 'messages', target: 'state', targetId: 'inbox' }],
+        },
+        {
+          id: 'op-open',
+          operationName: 'email.fetch',
+          inputs: [{ name: 'id', source: 'item', sourceId: 'uid' }],
+          outputs: [{ name: 'text', target: 'state', targetId: 'open-text' }],
+        },
+        {
+          id: 'op-add-todo',
+          operationName: 'list.append',
+          inputs: [
+            { name: 'key', source: 'constant', sourceId: 'todos' },
+            { name: 'item.title', source: 'ui-element', sourceId: 'todo-input' },
+          ],
+          outputs: [],
+        },
+      ],
+    },
+  },
+  {
     name: 'fragment params enforce and packs validate through every rule',
     contract: {
       name: 'fragments',
@@ -2412,7 +2496,11 @@ function buildRegistrySnapshot() {
           ...(input.required !== undefined ? { required: input.required } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
         })),
-        outputs: def.outputs.map((output) => ({ name: output.name, type: output.type })),
+        outputs: def.outputs.map((output) => ({
+          name: output.name,
+          type: output.type,
+          ...(output.itemFields ? { itemFields: output.itemFields } : {}),
+        })),
         ...(def.structuredPrefixes ? { structuredPrefixes: def.structuredPrefixes } : {}),
         ...(def.howto !== undefined ? { howto: def.howto } : {}),
         ...(def.example !== undefined ? { example: def.example } : {}),
