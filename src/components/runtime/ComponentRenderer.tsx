@@ -37,6 +37,7 @@ const UI_COMPONENTS = {
   'list': ListComponent,
   'form': FormComponent,
   'image': ImageComponent,
+  'chart': ChartComponent,
   'pdf': PdfComponent,
   'video': VideoComponent,
   'link': LinkComponent,
@@ -461,6 +462,81 @@ function imageSource(src: unknown): string | undefined {
 
 function ImageComponent({ src, alt, ...props }: any) {
   return <img src={imageSource(src)} alt={alt} {...props} />;
+}
+
+/** Themed inline SVG chart: bars or a line over an array of objects. */
+function ChartComponent({ data, x, y, emptyText, className, ...props }: any) {
+  const rows: Array<Record<string, unknown>> = Array.isArray(data)
+    ? data.filter((row) => row && typeof row === 'object')
+    : [];
+  const xField = typeof x === 'string' && x ? x : 'key';
+  const yField = typeof y === 'string' && y ? y : 'sum';
+  if (rows.length === 0) {
+    return <div className="der-viewer-empty">{emptyText || 'No data yet'}</div>;
+  }
+  const values = rows.map((row) => Number(row[yField]) || 0);
+  const max = Math.max(...values, 0) || 1;
+  const width = 420;
+  const height = 150;
+  const labelBand = 18;
+  const plotHeight = height - labelBand;
+  const step = width / rows.length;
+  const isLine = props.kind === 'line' || className?.includes?.('chart-kind-line');
+  const points = values
+    .map((value, index) => {
+      const px = step * index + step / 2;
+      const py = plotHeight - (value / max) * (plotHeight - 8);
+      return `${px},${py}`;
+    })
+    .join(' ');
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className={className}
+      style={{ width: '100%', maxWidth: 560, height: 'auto' }}
+      role="img"
+    >
+      {isLine ? (
+        <polyline
+          points={points}
+          fill="none"
+          stroke="var(--der-accent)"
+          strokeWidth="3"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      ) : (
+        values.map((value, index) => {
+          const barWidth = Math.max(step * 0.6, 4);
+          const barHeight = Math.max((value / max) * (plotHeight - 8), 1);
+          return (
+            <rect
+              key={index}
+              x={step * index + (step - barWidth) / 2}
+              y={plotHeight - barHeight}
+              width={barWidth}
+              height={barHeight}
+              rx="3"
+              fill="var(--der-accent)"
+            />
+          );
+        })
+      )}
+      {rows.map((row, index) => (
+        <text
+          key={`label-${index}`}
+          x={step * index + step / 2}
+          y={height - 4}
+          textAnchor="middle"
+          fontSize="10"
+          fill="var(--der-text)"
+          opacity="0.7"
+        >
+          {String(row[xField] ?? '').slice(0, 10)}
+        </text>
+      ))}
+    </svg>
+  );
 }
 
 function PdfComponent({ src, emptyText, ...props }: any) {

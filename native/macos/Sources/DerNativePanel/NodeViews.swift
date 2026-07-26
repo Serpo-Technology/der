@@ -3,6 +3,7 @@
 // only maps the element vocabulary and its knobs onto native controls.
 
 import AVKit
+import Charts
 import PDFKit
 import SwiftUI
 
@@ -278,6 +279,7 @@ struct NodeView: View {
         case "divider": Divider()
         case "progress": ProgressView()
         case "image": ImageNode(node: node)
+        case "chart": ChartNode(node: node)
         case "pdf": PdfNode(node: node)
         case "video": VideoNode(node: node)
         case "link": LinkNode(node: node)
@@ -601,6 +603,55 @@ struct ImageNode: View {
             .frame(maxHeight: 320)
         } else {
             EmptyView()
+        }
+    }
+}
+
+/// Bar or line chart over an array of objects, via Swift Charts.
+struct ChartNode: View {
+    let node: ResolvedNode
+    @EnvironmentObject var model: TreeModel
+
+    private struct Point: Identifiable {
+        let id: Int
+        let label: String
+        let value: Double
+    }
+
+    private var points: [Point] {
+        let xField = node.prop("x")?.stringValue ?? "key"
+        let yField = node.prop("y")?.stringValue ?? "sum"
+        let rows = node.prop("data")?.arrayValue ?? []
+        return rows.enumerated().compactMap { index, row in
+            guard case .object(let fields) = row else { return nil }
+            let label = fields[xField]?.display ?? ""
+            let value = fields[yField].flatMap { $0.numberValue } ?? 0
+            return Point(id: index, label: label, value: value)
+        }
+    }
+
+    var body: some View {
+        let data = points
+        if data.isEmpty {
+            ViewerEmpty(text: node.prop("emptyText")?.stringValue ?? "No data yet")
+        } else {
+            Chart(data) { point in
+                if node.knob("kind", fallback: "bar") == "line" {
+                    LineMark(
+                        x: .value("Label", point.label),
+                        y: .value("Value", point.value)
+                    )
+                    .interpolationMethod(.catmullRom)
+                } else {
+                    BarMark(
+                        x: .value("Label", point.label),
+                        y: .value("Value", point.value)
+                    )
+                    .cornerRadius(3)
+                }
+            }
+            .foregroundStyle(model.accentColor ?? .accentColor)
+            .frame(height: 180)
         }
     }
 }

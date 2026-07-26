@@ -17,11 +17,14 @@ export interface BehaviorStep {
   value?: string;
   ms?: number;
   optional?: boolean;
-  expect?: 'text' | 'noText' | 'rowCount' | 'viewer' | 'fileSaved';
+  expect?: 'text' | 'noText' | 'rowCount' | 'viewer' | 'fileSaved' | 'selector';
   match?: string;
   count?: number;
   /** fileSaved: the saved base64 must start with this (a magic-byte check). */
   dataPrefix?: string;
+  /** selector: a CSS selector that must match at least `min` nodes. */
+  selector?: string;
+  min?: number;
 }
 
 export interface BehaviorScenario {
@@ -235,6 +238,15 @@ async function runOne(step: BehaviorStep, root: HTMLElement): Promise<void> {
         if (!sources.some((src) => src.length > 0 && matches(src))) {
           throw new Error(
             `Expected a viewer with src matching ${JSON.stringify(step.match)}; sources: ${JSON.stringify(sources)}`
+          );
+        }
+      }, { timeout: 4000 });
+    } else if (step.expect === 'selector') {
+      await waitFor(() => {
+        const found = root.querySelectorAll(step.selector ?? '').length;
+        if (found < (step.min ?? 1)) {
+          throw new Error(
+            `Expected at least ${step.min ?? 1} nodes for ${JSON.stringify(step.selector)}; found ${found}`
           );
         }
       }, { timeout: 4000 });

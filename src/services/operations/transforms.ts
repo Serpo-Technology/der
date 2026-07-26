@@ -208,6 +208,25 @@ export const TRANSFORMS: Record<string, TransformDef> = {
       });
     },
   },
+  groupSum: {
+    name: 'groupSum',
+    output: 'array',
+    description:
+      'Groups an array of objects by a field and sums another per group; returns [{key, sum}] in first-seen order. The chart element\'s natural feed (x "key", y "sum").',
+    parameters: [
+      { name: 'by', type: 'string', description: 'Field to group by' },
+      { name: 'field', type: 'string', description: 'Numeric field to sum per group' },
+    ],
+    apply: (value, parameters) => {
+      const groups = new Map<string, number>();
+      for (const item of asArray(value)) {
+        const key = String(fieldOf(item, parameters.by) ?? '');
+        const amount = Number(fieldOf(item, parameters.field)) || 0;
+        groups.set(key, (groups.get(key) ?? 0) + amount);
+      }
+      return [...groups.entries()].map(([key, sum]) => ({ key, sum }));
+    },
+  },
   pick: {
     name: 'pick',
     output: 'any',

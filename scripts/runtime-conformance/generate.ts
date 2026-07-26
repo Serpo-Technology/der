@@ -239,6 +239,27 @@ const TRANSFORM_CASES: TransformCase[] = [
   { name: 'round string number', transform: 'round', parameters: { decimals: 1 }, input: '2.55' },
 
   {
+    name: 'groupSum groups in first-seen order',
+    transform: 'groupSum',
+    parameters: { by: 'category', field: 'amount' },
+    input: [
+      { category: 'food', amount: 12 },
+      { category: 'travel', amount: 30 },
+      { category: 'food', amount: 8 },
+      { category: 'other', amount: '5.5' },
+    ],
+  },
+  {
+    name: 'groupSum nulls group under the empty key and coerce to zero',
+    transform: 'groupSum',
+    parameters: { by: 'category', field: 'amount' },
+    input: [
+      { amount: 3 },
+      { category: null, amount: 'seven' },
+      { category: '', amount: 4 },
+    ],
+  },
+  {
     name: 'format inserts value',
     transform: 'format',
     parameters: { template: 'Total: {{value}} items' },

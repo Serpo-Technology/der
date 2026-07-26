@@ -512,6 +512,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
     'sortBy',
     'pluck',
     'sum',
+    'groupSum',
   ]);
   const SHAPE_PRESERVING_TRANSFORMS = new Set([
     'filterBy',

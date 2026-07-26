@@ -360,6 +360,91 @@
       }
     },
     {
+      "id": "spending-chart",
+      "prompt": "A spending tracker: I log expenses with a category and amount, and a bar chart shows the total per category, plus the overall total as a number",
+      "behavior": {
+        "steps": [
+          {
+            "do": "type",
+            "into": [
+              "category",
+              "cat"
+            ],
+            "value": "food",
+            "optional": true
+          },
+          {
+            "do": "select",
+            "in": [
+              "category",
+              "cat"
+            ],
+            "value": "food",
+            "optional": true
+          },
+          {
+            "do": "type",
+            "into": [
+              "amount",
+              "cost",
+              "price"
+            ],
+            "value": "12"
+          },
+          {
+            "do": "click",
+            "on": [
+              "add",
+              "log"
+            ]
+          },
+          {
+            "do": "type",
+            "into": [
+              "category",
+              "cat"
+            ],
+            "value": "travel",
+            "optional": true
+          },
+          {
+            "do": "select",
+            "in": [
+              "category",
+              "cat"
+            ],
+            "value": "travel",
+            "optional": true
+          },
+          {
+            "do": "type",
+            "into": [
+              "amount",
+              "cost",
+              "price"
+            ],
+            "value": "30"
+          },
+          {
+            "do": "click",
+            "on": [
+              "add",
+              "log"
+            ]
+          },
+          {
+            "expect": "text",
+            "match": "/\\b42\\b/"
+          },
+          {
+            "expect": "selector",
+            "selector": "svg rect, svg polyline",
+            "min": 1
+          }
+        ]
+      }
+    },
+    {
       "id": "wifi-qr",
       "prompt": "A wifi card maker: I enter the network name and password, and it shows a QR code guests can scan to join, with a save button for the PNG",
       "behavior": {

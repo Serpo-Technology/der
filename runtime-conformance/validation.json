@@ -1573,7 +1573,7 @@
         "errors": [
           {
             "path": "elements.0.dataBindings.0",
-            "message": "Unknown transform \"reverse\"; available transforms: count, sum, filterBy, filterContains, filterTruthy, filterFalsy, sortBy, deriveField, pick, pluck, equals, not, parseNumber, round, format, formatNumber, formatDate, map. Math on values belongs in expr.evaluate.",
+            "message": "Unknown transform \"reverse\"; available transforms: count, sum, filterBy, filterContains, filterTruthy, filterFalsy, sortBy, deriveField, groupSum, pick, pluck, equals, not, parseNumber, round, format, formatNumber, formatDate, map. Math on values belongs in expr.evaluate.",
             "code": "UNKNOWN_TRANSFORM"
           },
           {

@@ -25,8 +25,8 @@ fn is_hex_accent(value: &str) -> bool {
 }
 /// Transforms that read a row field while the value is still the original
 /// object array.
-const FIELD_READING_TRANSFORMS: [&str; 5] =
-    ["filterBy", "filterContains", "sortBy", "pluck", "sum"];
+const FIELD_READING_TRANSFORMS: [&str; 6] =
+    ["filterBy", "filterContains", "sortBy", "pluck", "sum", "groupSum"];
 const SHAPE_PRESERVING_TRANSFORMS: [&str; 6] = [
     "filterBy",
     "filterContains",

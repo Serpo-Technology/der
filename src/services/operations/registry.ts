@@ -766,6 +766,23 @@ export const ELEMENT_MANIFESTS: Record<string, ElementManifest> = {
     bindableProps: ['src'],
     howto: 'Set "src" and "alt".',
   },
+  chart: {
+    type: 'chart',
+    description: 'Bar or line chart over an array of objects.',
+    knobs: [
+      {
+        name: 'kind',
+        type: 'enum',
+        values: ['bar', 'line'],
+        default: 'bar',
+        description: 'Chart form',
+      },
+    ],
+    passthroughProps: ['data', 'x', 'y', 'emptyText', 'className'],
+    bindableProps: ['data'],
+    howto:
+      'Bind "data" from a state array; "x" names the label field and "y" the numeric field (defaults "key" and "sum", exactly what groupSum emits). Category totals: transforms [{"type": "groupSum", "parameters": {"by": "category", "field": "amount"}}] on the data binding. Per-row computed values chain deriveField first.',
+  },
   pdf: {
     type: 'pdf',
     description: 'PDF viewer: renders the document its "src" points at.',

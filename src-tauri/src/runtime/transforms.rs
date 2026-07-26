@@ -113,6 +113,44 @@ pub fn apply_transform(name: &str, value: &Value, parameters: &Map<String, Value
             });
             Value::Array(items)
         }
+        "groupSum" => {
+            let by = param(parameters, "by");
+            let field = param(parameters, "field");
+            // First-seen key order, like the JS Map.
+            let mut order: Vec<String> = Vec::new();
+            let mut totals: Map<String, Value> = Map::new();
+            for item in as_array(value) {
+                // String(x ?? ''): null and missing group under the empty key.
+                let key = match field_of(&item, by) {
+                    Value::Null => String::new(),
+                    other => js_to_string(&other),
+                };
+                let amount = {
+                    let n = js_to_number(&field_of(&item, field));
+                    if n.is_nan() { 0.0 } else { n }
+                };
+                let current = totals
+                    .get(&key)
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0);
+                if !totals.contains_key(&key) {
+                    order.push(key.clone());
+                }
+                totals.insert(key, number_value(current + amount));
+            }
+            Value::Array(
+                order
+                    .into_iter()
+                    .map(|key| {
+                        let mut row = Map::new();
+                        let sum = totals.get(&key).cloned().unwrap_or(Value::Null);
+                        row.insert("key".to_string(), Value::String(key));
+                        row.insert("sum".to_string(), sum);
+                        Value::Object(row)
+                    })
+                    .collect(),
+            )
+        }
         "pick" => {
             let source = match value {
                 Value::Array(items) => items.first().cloned().unwrap_or(Value::Null),

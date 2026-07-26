@@ -165,18 +165,51 @@ struct HomeView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            HStack(spacing: 8) {
-                TextField("A tip calculator, a reading log, a pantry tracker...", text: $model.prompt)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.large)
-                    .focused($promptFocused)
-                    .onSubmit { model.create() }
-                Button("Create") { model.create() }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(
-                        model.prompt.trimmingCharacters(in: .whitespaces).isEmpty || model.isBuilding
-                    )
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $model.prompt)
+                        .font(.body)
+                        .scrollContentBackground(.hidden)
+                        .padding(8)
+                        .frame(minHeight: 84, maxHeight: 150)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color(nsColor: .textBackgroundColor))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color(nsColor: .separatorColor))
+                                )
+                        )
+                        .focused($promptFocused)
+                    if model.prompt.isEmpty {
+                        Text("Describe the app you want: what it shows, what you enter, what it computes...")
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 16)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .onKeyPress(.return, phases: .down) { press in
+                    // Cmd+Return creates; plain Return stays a newline.
+                    if press.modifiers.contains(.command) {
+                        model.create()
+                        return .handled
+                    }
+                    return .ignored
+                }
+                HStack {
+                    Text("Cmd+Return to create")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                    Button("Create") { model.create() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .disabled(
+                            model.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                || model.isBuilding
+                        )
+                }
             }
             if let note = model.note {
                 HStack(spacing: 6) {
