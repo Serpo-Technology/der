@@ -389,16 +389,90 @@ pub async fn runtime_compose(
     app: tauri::AppHandle,
     description: String,
 ) -> Result<ComposeResult, String> {
+    use tauri::Emitter;
     let vocab = compose_vocabulary(&app);
     let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
     let mut llm = HostLlm { app: app.clone() };
-    let outcome =
-        super::compose::compose_from_description(&mut llm, &description, &vocab, &now_iso, None)
-            .await?;
+    // Streaming partials reach webview listeners as events; the raw
+    // accumulated text keeps the client's own draft extraction in charge.
+    let emitter = app.clone();
+    let mut emit_partial = move |accumulated: &str, attempt: u32| {
+        let _ = emitter.emit(
+            "runtime-compose-partial",
+            serde_json::json!({ "accumulated": accumulated, "attempt": attempt }),
+        );
+    };
+    let outcome = super::compose::compose_from_description(
+        &mut llm,
+        &description,
+        &vocab,
+        &now_iso,
+        Some(&mut emit_partial),
+    )
+    .await?;
     Ok(ComposeResult {
         contract: outcome.contract,
         spec: outcome.spec,
         recipe_name: outcome.recipe_name,
+        warnings: outcome.warnings,
+    })
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditResult {
+    pub contract: Value,
+    pub warnings: Vec<Value>,
+}
+
+/// A natural-language contract edit run host-side: the id-stability rules,
+/// the checker, and the repair loop are the native edit pipeline's.
+#[tauri::command]
+pub async fn runtime_edit_contract(
+    app: tauri::AppHandle,
+    contract: Value,
+    instruction: String,
+) -> Result<EditResult, String> {
+    use tauri::Emitter;
+    let vocab = compose_vocabulary(&app);
+    let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let mut llm = HostLlm { app: app.clone() };
+    let emitter = app.clone();
+    let mut emit_partial = move |accumulated: &str, attempt: u32| {
+        let _ = emitter.emit(
+            "runtime-edit-partial",
+            serde_json::json!({ "accumulated": accumulated, "attempt": attempt }),
+        );
+    };
+    let outcome = super::compose::edit_contract(
+        &mut llm,
+        &contract,
+        &instruction,
+        &vocab,
+        &now_iso,
+        Some(&mut emit_partial),
+    )
+    .await?;
+    Ok(EditResult {
+        contract: outcome.contract,
+        warnings: outcome.warnings,
+    })
+}
+
+/// Blueprint-mode regeneration host-side, for the webview's blueprint tab.
+#[tauri::command]
+pub async fn runtime_generate_from_blueprint(
+    app: tauri::AppHandle,
+    blueprint: Value,
+) -> Result<EditResult, String> {
+    let vocab = compose_vocabulary(&app);
+    let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let mut llm = HostLlm { app: app.clone() };
+    let outcome =
+        super::compose::generate_from_blueprint(&mut llm, &blueprint, &vocab, &now_iso, None)
+            .await?;
+    Ok(EditResult {
+        contract: outcome.contract,
         warnings: outcome.warnings,
     })
 }

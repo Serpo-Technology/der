@@ -503,10 +503,17 @@ failure text). Compose vectors freeze prompt text, response verdicts, finalized 
 (stamps masked), and the loop's full conversation protocol over scripted responses; the TS
 side runs them through the same exported pure functions (`renderCatalogText`,
 `parseValidatedJson`, `checkComposedCandidate`, `finalizeContractShape`). The
-`runtime_compose` command is the native entry: vocabulary from the installed manifests on
+`runtime_compose` command is the host entry: vocabulary from the installed manifests on
 disk, the real transport backed by `llm_chat`, one call from description to finalized
 contract with no webview involved (`tests/runtime_compose_native.rs` proves compose ->
 session -> resolved tree end to end, recipe reuse and the repair round included).
+Under Tauri the webview flows run this pipeline too: `AIInterpreterService` routes
+compose, natural-language edits (`runtime_edit_contract`), and blueprint regeneration
+(`runtime_generate_from_blueprint`) through the core (`compose-client.ts`), with
+streaming partials arriving as `runtime-compose-partial` / `runtime-edit-partial`
+events carrying the raw accumulated text so the webview's own draft extraction and
+mode routing stay unchanged; the TS ContractBuilder remains the engine outside Tauri
+(evals, plain browser runs) and its pure exports keep feeding the compose vectors.
 The committed vectors in `runtime-conformance/` are
 the semantic contract: both test suites run every vector (vitest
 `runtime-conformance.test.ts`, cargo `runtime_conformance.rs`), covering the

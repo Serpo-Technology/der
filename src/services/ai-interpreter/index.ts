@@ -11,6 +11,12 @@ import { LLMClient } from './llm-client';
 import { BlueprintGenerator } from './blueprint-generator';
 import { ContractBuilder } from './contract-builder';
 import { EditPreservationSystem, EditConflict, ConflictResolution } from './edit-preservation';
+import { isTauriRuntime } from '../tauri/TauriCommandService';
+import {
+  composeViaCore,
+  editViaCore,
+  generateFromBlueprintViaCore,
+} from '../runtime-core/compose-client';
 
 export interface ComposedExperience {
   blueprint: Blueprint;
@@ -49,6 +55,17 @@ export class AIInterpreterService implements AIInterpreter {
     }
 
     try {
+      // Under Tauri the runtime core runs the whole pipeline; the TS
+      // builder stays the engine outside it (evals, plain browser runs).
+      if (isTauriRuntime()) {
+        const { contract, spec, recipeName, warnings } = await composeViaCore(
+          description,
+          onPartial
+        );
+        this.lastContractWarnings = warnings;
+        const blueprint = this.generator.deriveFromComposition(spec, contract, description);
+        return { blueprint, contract, spec, warnings, recipeName };
+      }
       const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
       const { contract, spec, recipeName } = await contractBuilder.composeFromDescription(
         description,
@@ -113,14 +130,24 @@ export class AIInterpreterService implements AIInterpreter {
     }
   }
 
+  /** Blueprint regeneration through the core under Tauri, the TS builder
+   * otherwise; every regenerate entry point funnels through here. */
+  private async regenerateFromBlueprint(blueprint: Blueprint): Promise<Contract> {
+    if (isTauriRuntime()) {
+      const { contract, warnings } = await generateFromBlueprintViaCore(blueprint);
+      this.lastContractWarnings = warnings;
+      return contract;
+    }
+    const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
+    const contract = await contractBuilder.generateFromBlueprint(blueprint);
+    this.lastContractWarnings = contractBuilder.getLastWarnings();
+    return contract;
+  }
+
   async generateContract(blueprint: Blueprint, userEdits?: ContractEdits): Promise<Contract> {
     try {
-      // Create contract builder with repository access
-      const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
-      
       // Generate contract from blueprint
-      let contract = await contractBuilder.generateFromBlueprint(blueprint);
-      this.lastContractWarnings = contractBuilder.getLastWarnings();
+      let contract = await this.regenerateFromBlueprint(blueprint);
       
       // Apply user edits if provided
       if (userEdits) {
@@ -148,6 +175,11 @@ export class AIInterpreterService implements AIInterpreter {
     onPartial?: (accumulated: string, attempt: number) => void
   ): Promise<{ contract: Contract; warnings: ValidationWarning[] }> {
     try {
+      if (isTauriRuntime()) {
+        const { contract, warnings } = await editViaCore(current, instruction, onPartial);
+        this.lastContractWarnings = warnings;
+        return { contract, warnings };
+      }
       const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
       const contract = await contractBuilder.editContract(current, instruction, onPartial);
       this.lastContractWarnings = contractBuilder.getLastWarnings();
@@ -185,8 +217,7 @@ export class AIInterpreterService implements AIInterpreter {
   async regenerateWithConflictDetection(blueprint: Blueprint, existingContract: Contract, sections: string[]): Promise<{ contract: Contract; conflicts: EditConflict[] }> {
     try {
       // Generate new contract from blueprint
-      const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
-      const newContract = await contractBuilder.generateFromBlueprint(blueprint);
+      const newContract = await this.regenerateFromBlueprint(blueprint);
       
       // Preserve user edits and detect conflicts
       return this.editPreservation.regenerateWithPreservation(
@@ -211,8 +242,7 @@ export class AIInterpreterService implements AIInterpreter {
   async regenerateWithPreservation(blueprint: Blueprint, existingContract: Contract, sections: string[]): Promise<Contract> {
     try {
       // Generate new contract from blueprint
-      const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
-      const newContract = await contractBuilder.generateFromBlueprint(blueprint);
+      const newContract = await this.regenerateFromBlueprint(blueprint);
       
       // Preserve user edits and detect conflicts
       const { contract: preservedContract, conflicts } = this.editPreservation.regenerateWithPreservation(

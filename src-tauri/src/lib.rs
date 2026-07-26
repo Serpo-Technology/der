@@ -1535,6 +1535,8 @@ pub fn run() {
             runtime::sessions::runtime_dispatch_event,
             runtime::sessions::runtime_close_session,
             runtime::sessions::runtime_compose,
+            runtime::sessions::runtime_edit_contract,
+            runtime::sessions::runtime_generate_from_blueprint,
             runtime::sidecar::open_native_experience_window,
             runtime::sidecar::native_update_experience_contract,
             runtime::sidecar::native_generation_status,

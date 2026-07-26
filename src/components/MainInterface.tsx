@@ -33,6 +33,7 @@ import { repositoryService } from '../services/repository/repository-service';
 import { persistenceService } from '../services/persistence';
 import { integratedExperienceService } from '../services/IntegratedExperienceService';
 import { isTauriRuntime } from '../services/tauri/TauriCommandService';
+import { generateFromBlueprintViaCore } from '../services/runtime-core/compose-client';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
@@ -201,8 +202,11 @@ export const MainInterface: React.FC = () => {
     setState(prev => ({ ...prev, isProcessing: true, error: null }));
 
     try {
-      // Generate contract from blueprint
-      const contractData = await services.contractBuilder.generateFromBlueprint(state.blueprint);
+      // Generate contract from blueprint: the runtime core under Tauri,
+      // the TS builder outside it.
+      const contractData = isTauriRuntime()
+        ? (await generateFromBlueprintViaCore(state.blueprint)).contract
+        : await services.contractBuilder.generateFromBlueprint(state.blueprint);
       const contract = new ContractClass(contractData);
       
       // Validate contract
