@@ -7,16 +7,14 @@ import React from 'react';
 import { Contract, ContractDelta, UIElement, EventBinding } from '../../types/contract';
 import { Experience, ExperienceState } from '../../types/experience';
 import { DynamicExperienceRuntime } from '../../interfaces/dynamic-runtime';
-import { DynamicExperienceRenderer } from './DynamicExperienceRenderer';
+import { CoreExperienceRenderer } from './CoreExperienceRenderer';
 import { ExperienceStateManager } from './ExperienceStateManager';
-import { OperationExecutor } from './OperationExecutor';
 import { PersistenceService } from '../../services/persistence/PersistenceService';
 import { emit } from '@tauri-apps/api/event';
 
 export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime {
   private experiences: Map<string, Experience> = new Map();
   private stateManagers: Map<string, ExperienceStateManager> = new Map();
-  private operationExecutor: OperationExecutor = new OperationExecutor();
   private persistenceService: PersistenceService = new PersistenceService();
 
   async renderExperience(contract: Contract, experienceId?: string): Promise<React.ComponentType> {
@@ -28,7 +26,7 @@ export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime
 
     // Create the React component
     const ExperienceComponent: React.ComponentType = (props: any) => {
-      return React.createElement(DynamicExperienceRenderer, {
+      return React.createElement(CoreExperienceRenderer, {
         contract,
         experienceId: expId,
         onStateChange: (state: ExperienceState) => {
@@ -89,43 +87,10 @@ export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime
     }
   }
 
-  async executeOperation(operationId: string, _inputs: any[]): Promise<any> {
-    try {
-      // Find the operation across all experiences
-      let operationBinding = null;
-      let experienceId = null;
-
-      for (const [expId, experience] of this.experiences.entries()) {
-        const operation = experience.contract.operations.find(op => op.id === operationId);
-        if (operation) {
-          operationBinding = operation;
-          experienceId = expId;
-          break;
-        }
-      }
-
-      if (!operationBinding || !experienceId) {
-        throw new Error(`Operation ${operationId} not found`);
-      }
-
-      const stateManager = this.stateManagers.get(experienceId);
-      if (!stateManager) {
-        throw new Error(`State manager not found for experience ${experienceId}`);
-      }
-
-      // Execute the operation; inputs resolve from the contract's input
-      // bindings against experience state (no event context on this path)
-      const result = await this.operationExecutor.executeOperation(operationBinding, {}, stateManager);
-
-      // Update state with results
-      stateManager.updateStateFromOperationResult(operationId, result, operationBinding.outputs);
-
-      return result;
-    } catch (error) {
-      console.error(`Error executing operation ${operationId}:`, error);
-      throw error;
-    }
+  async executeOperation(): Promise<never> {
+    throw new Error('Operations run in the runtime core sessions now');
   }
+
 
   bindEventHandlers(element: UIElement, bindings: EventBinding[]): void {
     // Event handlers are bound during rendering in ComponentRenderer
@@ -283,7 +248,7 @@ export class DynamicExperienceRuntimeService implements DynamicExperienceRuntime
     
     // Recreate the React component
     const ExperienceComponent: React.ComponentType = (props: any) => {
-      return React.createElement(DynamicExperienceRenderer, {
+      return React.createElement(CoreExperienceRenderer, {
         contract: experience.contract,
         experienceId,
         onStateChange: (state: ExperienceState) => {

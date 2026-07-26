@@ -322,7 +322,6 @@ const ExperienceWindow: React.FC<{
             experienceId={initialExperienceId}
             initialData={rehydrationData}
             onStateChange={handleStateChange}
-            enableRealTimeUpdates={true}
             onContractUpdate={(c) => setCurrentContract(c as unknown as ContractType)}
           />
         </ErrorBoundary>

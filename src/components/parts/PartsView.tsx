@@ -4,7 +4,7 @@
  * what you confirm is exactly what gets pinned.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fragmentsService,
   InstalledFragment,
@@ -120,15 +120,22 @@ export const PartsView: React.FC<PartsViewProps> = ({ onError }) => {
   // Each installed recipe is validated against the current part vocabulary;
   // one whose parts are missing shows as unavailable instead of opening
   // broken.
-  const recipeChecks = useMemo(() => {
-    const checks: Record<string, RecipeCheck> = {};
-    for (const part of installed) {
-      for (const recipe of part.manifest.recipes ?? []) {
-        const def = getRecipeDef(recipe.name);
-        if (def) checks[recipe.name] = checkRecipe(def);
+  const [recipeChecks, set_recipeChecks] = useState<Record<string, RecipeCheck>>({});
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const checks: Record<string, RecipeCheck> = {};
+      for (const part of installed) {
+        for (const recipe of part.manifest.recipes ?? []) {
+          const def = getRecipeDef(recipe.name);
+          if (def) checks[recipe.name] = await checkRecipe(def);
+        }
       }
-    }
-    return checks;
+      if (!cancelled) set_recipeChecks(checks);
+    })().catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [installed]);
 
   const handleOpenRecipe = useCallback(

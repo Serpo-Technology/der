@@ -11,8 +11,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './experience.css';
 import { Contract } from '../../types/contract';
 import { ExperienceState } from '../../types/experience';
-import { ComponentRenderer } from './ComponentRenderer';
-import type { EventContext } from './OperationExecutor';
+import { ComponentRenderer, EventContext } from './ComponentRenderer';
 import { CoreSessionClient } from '../../services/runtime-core/session-client';
 import type { ResolvedNode } from '../../services/runtime-view/resolve-view';
 import { STYLE_ACCENTS, STYLE_THEMES } from '../../services/operations/registry';

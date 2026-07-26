@@ -6,9 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Dynamic Experience Runtime (DER): a Tauri + React desktop app that turns natural-language
 descriptions into interactive UIs through an AI-generated pipeline:
-`Natural language -> Contract (+ spec header) -> rendered React Experience`, with the
-reviewable Blueprint projected from that result. The React frontend handles interpretation,
-editing, and rendering; the Rust backend handles storage, operation execution, and
+`Natural language -> Contract (+ spec header) -> rendered Experience`, with the
+reviewable Blueprint projected from that result. One Rust runtime kernel (`runtime-core/`)
+owns interpretation, validation, and operation execution; the SwiftUI panel and the React
+webview are parallel renderer faces over it, and the Rust backend also handles storage and
 window/tray management.
 
 The app itself lives at the repository root (`src/`, `src-tauri/`). This file is the
@@ -64,34 +65,39 @@ renderers stay parallel by construction rather than by promise.
 
 ### Generation pipeline
 
-`AIInterpreterService` (`src/services/ai-interpreter/`) is the pipeline core. Creation is ONE
-model call: `compose` -> `ContractBuilder.composeFromDescription` asks for
-`{spec: {goal, assumptions, openQuestions}, contract}` (`ComposedResponseSchema`), validated
-through `generateValidatedJson` (`llm-json.ts`): zod structural validation plus a semantic
-`checkAgainstManifests` pass, with one repair round feeding all problems back before failing.
+The pipeline is `runtime/compose.rs` over the kernel's `compose` module; there is exactly one
+implementation and every face calls it through commands. Creation is ONE model call:
+`runtime_compose` asks for `{spec: {goal, assumptions, openQuestions}, contract}`
+(`ComposedResponseSchema` structurally; `runtime/llm_schema.rs` semantically), validated
+through `generate_validated_json`: structural validation plus the manifest checker, with one
+repair round feeding all problems back before failing (two rounds on local/mercury).
 When installed recipes exist, the catalog lists them under INSTALLED APPS and the same call may
 answer `{spec, recipe: "<name>"}` instead of a contract (exactly one of the two; enforced by
 the schema): the referenced recipe is validated in the semantic check (unknown or broken
-references repair toward composing) and instantiated through `resolveRecipeShape` +
-`postProcess`, with `recipeName` surfaced on the composed result.
-The Blueprint shown in the tabs is a projection (`BlueprintGenerator.deriveFromComposition`);
-the tab's regenerate path still uses `ContractBuilder.generateFromBlueprint`, and spec
-assumptions/openQuestions surface as informational warnings. The prompt is
-`buildBasePrompt(catalog)` (shape, rules, manifest catalog, example) as a cached system block
-shared by the create/blueprint/edit modes, plus a short mode section block; the model is taught
-to omit empty arrays, defaults, `executionType`, `layout`, `styling`, `metadata`, `triggers`,
-and empty-array seeds (`checkAgainstManifests` seeds read-only array keys silently; null seeds
-still warn). Post-processing dedupes ids, maps unknown element types to `container`, resolves
-execution types, and fills the default column layout; normalization warnings are exposed via
-`ContractBuilder.getLastWarnings()`.
+references repair toward composing) and instantiated through finalization, with `recipeName`
+surfaced on the composed result.
+The webview reaches the pipeline through `src/services/runtime-core/compose-client.ts`
+(`composeViaCore`/`editViaCore`/`generateFromBlueprintViaCore` wrap `runtime_compose`,
+`runtime_edit_contract`, `runtime_generate_from_blueprint` and forward streaming partials from
+the `runtime-compose-partial`/`runtime-edit-partial` events); `AIInterpreterService`
+(`src/services/ai-interpreter/`) is a thin façade over those calls that refuses outside Tauri.
+The Blueprint shown in the tabs is a projection (`BlueprintGenerator.deriveFromComposition`
+in TS for display; `compose::derive_blueprint` for the native editors); blueprint regeneration
+runs `runtime_generate_from_blueprint`, and spec assumptions/openQuestions surface as
+informational warnings. The prompt is `build_base_prompt` (`runtime/prompt.rs`: shape, rules,
+manifest catalog, example) as a cached system block shared by the create/blueprint/edit modes,
+plus a short mode section block; the model is taught to omit empty arrays, defaults,
+`executionType`, `layout`, `styling`, `metadata`, `triggers`, and empty-array seeds (the
+checker seeds read-only array keys silently; null seeds still warn). Finalization dedupes ids,
+maps unknown element types to `container`, resolves execution types, and fills the default
+column layout, returning normalization warnings alongside the contract.
 On streaming providers, creation opens the app window as soon as the first elements parse and
-assembles it live: `llm_chat` forwards text deltas over a Tauri channel, `parsePartialJson` /
-`extractStreamingContract` (`partial-json.ts`) shape the growing response into an inert
-display-only contract (operations and event bindings stripped), and
+assembles it live: text deltas stream over a channel, `runtime/streaming.rs` shapes the growing
+response into an inert display-only contract (operations and event bindings stripped; the
+webview asks for the same extraction through `runtime_extract_streaming`), and
 `IntegratedExperienceService` pushes it through `experience-contract-updated` until the
 validated final contract replaces it. Non-streaming providers open the window when done.
-`DynamicExperienceRenderer` -> `ComponentRenderer` then render the contract live, with
-`ExperienceStateManager` holding per-experience state and `OperationExecutor` running operations.
+Rendering happens over a core session in both faces (see Runtime kernel conformance).
 
 ### Orchestration and singletons
 
@@ -99,8 +105,9 @@ validated final contract replaces it. Non-streaming providers open the window wh
 every subsystem together and is the entry point most UI flows call
 (`createExperienceFromNaturalLanguage`, `editExperience`, `regenerateExperienceWithPreservation`,
 share/bookmark/import). `DynamicExperienceRuntimeService` is also a singleton and keeps live
-experiences and their state managers in in-memory `Map`s keyed by `experienceId`; nothing there
-survives a reload unless persisted.
+experience records in in-memory `Map`s keyed by `experienceId`; nothing there survives a
+reload unless persisted. State and operations live in the core session behind each window,
+not in these singletons.
 
 ### Frontend/backend boundary
 
@@ -117,8 +124,12 @@ model-facing notes) that Rust injects at request time after checking the endpoin
 the base URL; the webview only sees redacted name/kind/target/baseUrl/notes views, the catalog
 teaches names, base URLs, and notes so the model calls the real service, and validation rejects
 unknown names and out-of-confinement endpoints); the `local` and `repository` branches in
-Rust are legacy and unreachable from contracts (the TS executor handles those). Rust
-`query_repository` still returns mock components and is unused by the TS repository.
+Rust are legacy and unreachable from contracts. Rust `query_repository` still returns mock
+components and is unused by the TS repository.
+The contract commands the webview leans on: `runtime_check_contract` (structural schema plus
+the manifest checker, string verdicts), `runtime_finalize_contract` (generation-path
+normalization for stored shapes), `runtime_extract_streaming`, and `runtime_derive_blueprint`,
+next to the session commands in `runtime/sessions.rs`.
 
 ### Persistence and the tray launcher
 
@@ -171,25 +182,29 @@ OpenAI-compatible base URLs (e.g. `http://localhost:11434`) normalize to `/v1`. 
 ### Composition-only part system
 
 Architectural constraint: **the model never writes code**; it composes prewritten parts. The part
-registry (`src/services/operations/registry.ts`) is the single source of truth: `ELEMENT_MANIFESTS`
+registry (`src/services/operations/registry.ts`) is the vocabulary's catalog: `ELEMENT_MANIFESTS`
 (typed knobs, bindable props, howto, validated examples) and `BUILTIN_OPERATIONS` (generic
 primitives `state.set`, `counter.add`, `list.append`/`updateWhere`/`removeWhere`/`toggleField`,
-`math.add`, `time.now`, `http.get`; todos.* survive as hidden compat parts). A `timer` element
+`math.add`, `time.now`, `http.get`; todos.* survive as hidden compat parts). These are
+manifests only: no execute bodies live in TypeScript; the kernel implements every operation
+and the registry snapshot (`runtime-conformance/registry.json`, generated from these tables)
+is what the kernel compiles in. A `timer` element
 ticks on an interval while rendered (visibleWhen gates double as pause buttons) and `textarea`
 is a first-class labeled part. Structured inputs use dotted
 prefixes (`item.<field>`, `set.<field>`, and part-declared ones like expr's `var.<name>`) grouped
 by `assembleStructured`; fragment manifests may declare `structuredPrefixes`; `list.append`
-generates ids itself. The shared transform registry (`src/services/operations/transforms.ts`) provides the
-declarative derivations (`count`, `sum`, `filterBy`, `filterContains`, `sortBy`, `pick`,
-`parseNumber`, `round`, `format`, `map`, ...) used by binding `transforms` pipelines and
-`visibleWhen` conditions; transform parameter values may be live references
+generates ids itself. The transform vocabulary (`src/services/operations/transforms.ts`, also
+metadata only) names the declarative derivations (`count`, `sum`, `filterBy`, `filterContains`,
+`sortBy`, `pick`, `parseNumber`, `round`, `format`, `map`, ...) used by binding `transforms`
+pipelines and `visibleWhen` conditions; transform parameter values may be live references
 (`{"source": "state"|"element", "sourceId"}`) resolved against current state, which is how
 search boxes and dynamic filters work. The
-model's output schema (`LlmContractSchema`) rejects `local`/`implementation.code` as a parse error
-so the repair round teaches it; `checkAgainstManifests` (`src/schemas/contract.ts`) runs inside
-the repair loop. Anything the parts cannot express (unknown operations, inputs, outputs,
-transforms) is a hard error: the model recomposes or generation fails, never silently ships
-less than asked. A wiring-completeness rule family (grown from behavioral eval findings) also
+model's output schema rejects `local`/`implementation.code` as a parse error so the repair
+round teaches it (`src/schemas/contract.ts` keeps the zod twin for webview-side structural
+parses; the checker itself is `runtime/validation.rs`, reached from TS through
+`runtime_check_contract`). Anything the parts cannot express (unknown operations, inputs,
+outputs, transforms) is a hard error: the model recomposes or generation fails, never silently
+ships less than asked. A wiring-completeness rule family (grown from behavioral eval findings) also
 hard-errors dead compositions: expression identifiers without matching `var.*` bindings,
 filters and sorts on fields a list's append never writes, filters driven by the same control
 that feeds the append, operations nothing triggers, appended lists no list element displays,
@@ -200,16 +215,17 @@ and item inputs of row-triggered operations) validate against the known shape, w
 came from an append, a seed, or a declaring operation like `email.list`. Transform
 conventions: `filterBy`/`filterContains` with an empty value keep everything (the "All"
 dropdown case), and `pick` on an array reads its first entry (the filterBy-then-pick shape).
-Per-row computed values use `deriveField` (backed by `row-expression.ts`, a synchronous
-evaluator with exactly the expr part's grammar): it adds an arithmetic field to every row from
-that row's own fields, so row templates read it like any field and totals chain deriveField
-then sum; validation parses every expression and checks its identifiers against the fields the
-list's append actually writes, with fields derived mid-pipeline visible to later steps.
+Per-row computed values use `deriveField` (backed by the kernel's `expression` module, a
+synchronous evaluator with exactly the expr part's grammar): it adds an arithmetic field to
+every row from that row's own fields, so row templates read it like any field and totals chain
+deriveField then sum; validation parses every expression and checks its identifiers against
+the fields the list's append actually writes, with fields derived mid-pipeline visible to
+later steps.
 Builtins also include `random.int`/`random.pick` (randomness cannot live in zero-import wasm).
 Warnings are cosmetic normalizations only (knob defaults, deduped inputs, seeded state keys);
 the edit bar shows them grouped apart from spec assumptions and open questions. The `local`
-execution type is sunset: the executor refuses `implementation.code` with a clear
-message, so contracts compose parts everywhere, including hand-edited ones.
+execution type is sunset: sessions refuse `implementation.code` with a clear message, so
+contracts compose parts everywhere, including hand-edited ones.
 
 ### Runtime conventions
 
@@ -245,18 +261,19 @@ behaviorally proven contract with title/description/keywords and its captured sp
 recipe bundle ships nothing but recipes). A fragment that also declares `operations` is a
 partial-experience pack: its operation templates instantiate per use with the same `{{id}}`
 scoping as template ids (state keys namespaced per instance, e.g. `<instance id>-elapsed`), so
-a dropped-in pattern works with no outer wiring. `expandPackOperations`
-(`src/services/fragments/ui-fragments.ts`) is the one expansion: the renderer merges the
-instantiated operations into its lookup, and `checkAgainstManifests` validates them through
-every existing rule on fresh copies (pack paths name the instance), while the stored contract
-keeps only the compact instance element. Pack operations compose the installed vocabulary by
+a dropped-in pattern works with no outer wiring. Pack expansion happens where sessions and
+views resolve (the kernel's `templates` module; `src/services/fragments/ui-fragments.ts`
+keeps the TS expansion the models layer uses for id collection): instantiated operations
+join the lookup, and the checker validates them through every existing rule on fresh copies
+(pack paths name the instance), while the stored contract keeps only the compact instance
+element. Pack operations compose the installed vocabulary by
 name only; the verifier rejects an `implementation` on them, and the expansion strips one
 defensively. The catalog marks such fragments self-wired and derives their state keys so
 outer bindings can read them. Recipes publish into `FRAGMENT_RECIPES`;
-`RecipeService` (`src/services/recipes/`) revalidates each contract against the installed
-vocabulary (zod parse + `checkAgainstManifests` on a clone, so a recipe whose parts are
-missing surfaces its problems instead of rendering broken) and instantiates through
-`ContractBuilder.finalizeShape`; `IntegratedExperienceService.createExperienceFromRecipe`
+`RecipeService` (`src/services/recipes/`) revalidates each contract through
+`runtime_check_contract` (so a recipe whose parts are missing surfaces its problems instead
+of rendering broken) and instantiates through `runtime_finalize_contract`;
+`IntegratedExperienceService.createExperienceFromRecipe`
 opens the result exactly like a generated app with no model call. The Parts view lists a
 part's recipes with an Open button (unavailable ones disabled with the validation problems)
 and the install review lists them under Apps. A `.derpart` bundle (verbatim-signed manifest + base64 wasm;
@@ -278,7 +295,7 @@ browses a static registry (an `index.json` generated by fragment-tool's `index` 
 to the bundles), auto-checks a saved registry on open, and shows per-part update badges;
 `fetch_registry_index`/`download_registry_bundle` in Rust are untrusted transport and the
 signature/trust flow still judges installs. All operation lookups go through `getOperationDef()`
-(builtins win collisions), so the prompt catalog, `checkAgainstManifests`, and the executor
+(builtins win collisions), so the prompt catalog, the checker, and the dispatchers
 treat part operations exactly like builtins (the model still emits `executionType: "builtin"`).
 Parts and the signing tool live in `fragments/` as standalone crates (NOT src-tauri workspace
 members); committed signed bundles keep `cargo test` hermetic; rebuilding needs
@@ -351,22 +368,23 @@ transports (`emailSent` expect; a fixture inbox behind provider seams).
 The pure runtime kernel (transform semantics, the row-expression grammar, the builtin
 operations with structured input assembly, sessions, view resolution, validation,
 streaming recovery, and the compose orchestration) lives in the standalone `der-runtime`
-crate (`runtime-core/`), host-free by construction: the desktop core links it natively
+crate (`runtime-core/`), host-free by construction, and it is the ONLY implementation:
+the TypeScript twin is deleted. The desktop core links the crate natively
 (`src-tauri/src/runtime/` re-exports it and adds the host: dispatcher, live sessions,
 sidecar, manage, schedule), and `runtime-wasm/` compiles the same crate to wasm32 behind
 the parts' `der_alloc`/`der_run` envelope with one `env.host_call` import for dispatch
 and entropy (`scripts/build-runtime-wasm.sh`; the artifact in `runtime-wasm/dist/` is
-committed so the Node suites stay hermetic; `wasm-kernel.ts` is the loader). Dispatched
-part operations get their structured prefixes assembled by the dispatch hosts exactly
-like the webview executor. The corpus runner itself is shared
-(`runtime-core/src/vectors.rs`): the cargo suite, the wasm build's Node suite
-(`runtime-wasm-conformance.test.ts`), and the generator's closing arbiter all drive the
-one implementation. A TypeScript twin of the executable kernel
-(`src/services/operations/transforms.ts`, `row-expression.ts`, the executable parts of
-`registry.ts`) remains in the tree for the display-only assembly drafts, the plain
-browser dev server, and its own conformance suite, but no production execution path
-under Tauri touches it, and it retires fully once the browser face loads the wasm
-kernel. Operations run
+committed so the Node suites stay hermetic; `src/services/runtime-core/wasm-kernel.ts`
+is the loader). Besides sessions, the wasm build exposes the kernel's pure functions as
+capture operations (validation, streaming extraction, prompt rendering, schema parses,
+finalization, the compose loop over scripted transports, `contract.check` for the human
+checker, and `capture.judgeComposed` for eval scoring), which is how the vector
+generator and the eval runner consume it under Node. Dispatched part operations get
+their structured prefixes assembled by the dispatch hosts from the manifests'
+`structuredPrefixes`. The corpus runner itself is shared (`runtime-core/src/vectors.rs`):
+the cargo suite, the committed-artifact Node suite (`src/__tests__/kernel-vectors.test.ts`,
+which catches a runtime-core edit that skipped the wasm rebuild), and the generator's
+closing arbiter all drive the one implementation. Operations run
 over an injected environment (scripted ids, randoms, and clock in vectors; real entropy in
 production), `time.now`'s local date and time are asserted by shape so the corpus stays
 timezone-independent, and `http.get` stays outside the kernel (network IO owned by the
@@ -374,35 +392,29 @@ host's confined HTTP path). `runtime/session.rs` runs whole experiences headless
 initialization (initialState seeds, per-output `operation_<id>_<name>` placeholders, element
 defaultValue seeds), declarative input resolution (ui-element/state/constant with the typed
 value field/item scope, input pipelines with live parameter lookup), builtin execution, and
-output routing with the webview's exact quirks (output transforms run without live context,
+output routing with its settled quirks (output transforms run without live context,
 a result missing an output's name routes the whole result, ui-element property outputs merge
 a sub-object, `operation_` mirrors). Chains stop at the first failure with earlier writes
 standing. Local code, remote endpoints, installed part operations, and http.get fail with a
-resolution error in the session; the host dispatcher owns those. Session vectors in the
-corpus drive the same scenarios through the headless webview classes and the Rust session.
-The view layer is shared the same way: `resolveViewTree`
-(`src/services/runtime-view/resolve-view.ts`) is the pure resolver (visibility, binding
-resolution, list rows with item scopes, control values, event tables, fragment expansion)
-that `ComponentRenderer` consumes, keeping only presentation (React components, knob classes,
-handler wiring); `runtime/view.rs` plus `runtime/templates.rs` are the Rust twins, held to
-identical trees by the template and view vectors under the protocol's JSON-value semantics
-(object keys holding null and absent keys are equivalent; missing state reads stay distinct
-from null in numeric comparisons). A resolved tree plus the session is everything a renderer
-backend needs. The webview's standalone experience windows are themselves
-protocol clients now: `CoreExperienceRenderer` (over
+resolution error in the session; the host dispatcher owns those.
+The view layer: `runtime/view.rs` plus `runtime/templates.rs` resolve visibility, bindings,
+list rows with item scopes, control values, event tables, and fragment expansion into a
+renderer-agnostic tree under the protocol's JSON-value semantics (object keys holding null
+and absent keys are equivalent; missing state reads stay distinct from null in numeric
+comparisons). A resolved tree plus the session is everything a renderer backend needs;
+`src/services/runtime-view/resolve-view.ts` keeps only the tree's TypeScript types.
+The webview's experience windows are protocol clients: `CoreExperienceRenderer` (over
 `src/services/runtime-core/session-client.ts`, a FIFO-serialized invoke
 wrapper mirroring stdio ordering) opens a core session, renders its resolved
-trees through the same React presentation (`ComponentRenderer.renderResolvedNode`),
+trees through the React presentation layer (`ComponentRenderer.renderResolvedNode`,
+which holds only components, knob classes, and handler wiring),
 dispatches chains one operation per call so the chain-stop rule stays with
 the core (EventOutcome carries the failure message for the error strip), and
 overlays local control values over async echoes until a dispatch lands.
-`LiveExperienceRenderer` picks it whenever the contract is core-servable;
-the local TS runtime remains for the legacy `implementation.code` escape
-hatch, for runs outside Tauri, and as the eval harness's engine. This is the
-first step of a settled convergence: the Rust core is becoming the single
-semantics implementation (eventually compiled to wasm for a browser face),
-with TypeScript keeping presentation; the TS kernel retires only after the
-eval harness rebases onto the core. The dispatcher seam
+`LiveExperienceRenderer` wraps it for the standalone window. Outside Tauri
+(`npm run dev`, plain vite) there is no session backend, so windows render
+nothing interactive; jsdom suites that need semantics route invoke to the
+wasm kernel through `src/test/kernel-invoke.ts`. The dispatcher seam
 (`runtime/session.rs` trait, `runtime/host.rs` implementation) routes non-builtin operations
 to the machinery that already runs them: wasm parts in the wasmtime host, integration part
 remotes through the signed service path, contract remotes and `http.get` through the shared
@@ -488,55 +500,52 @@ the panel compiles in release mode, stages under `src-tauri/binaries/` (gitignor
 `tauri build --config src-tauri/tauri.macos-app.conf.json` bundles it as an externalBin in
 DER.app; a packaged build with the bundled panel runs native-first by default
 (`DER_NATIVE_MODE=0` opts out), while dev builds stay webview-first behind the flag.
-`runtime/streaming.rs` is the twin of `partial-json.ts`
-(truncated-stream recovery over UTF-16 indices and the display-only contract extraction,
-with the transform-name filter spanning the full registry including the presentation
-transforms the kernel does not execute). `runtime/validation.rs` is the twin of
-`checkAgainstManifests`: every rule family (transform pipelines and param refs, list-field
+`runtime/streaming.rs` is the truncated-stream recovery (UTF-16 indices) and the
+display-only contract extraction, with the transform-name filter spanning the full
+registry including the presentation transforms the kernel does not execute.
+`runtime/validation.rs` is the manifest checker: every rule family (transform pipelines
+and param refs, list-field
 reads with deriveField growth, knob and styling normalization, operation input/output
 manifest checks with in-place dedup, expr.evaluate lint, placeholder endpoints and
 credential confinement, fragment params and pack-operation merging, orphan/dead-control/
-display rules, the seed pass) reproduces the webview checker's error paths, codes, and
-message text byte for byte, because those messages feed the repair round. It reads the same
+display rules, the seed pass), with its error paths, codes, and message text frozen by the
+validation vectors because those messages feed the repair round. It reads the
 part vocabulary two ways: `runtime/manifests.rs` embeds `runtime-conformance/registry.json`
-(knob tables, builtin shapes, transform kinds, expr reserved words, generated from the TS
-registry by the vector generator) at compile time, and installed vocabulary (fragment defs,
-part operations, credentials) is passed per check; serde_json runs with `preserve_order` so
-object iteration matches JS insertion order in message text. Validation vectors freeze
-{errors, warnings, mutated contract} per fixture, with each fixture's installed vocabulary
-carried alongside and published into the registries by both harnesses.
-The compose orchestration is implemented twice the same way: `runtime/prompt.rs` renders
-the byte-identical base prompt and catalog (the registry snapshot carries the full
+(knob tables, builtin shapes, transform kinds, expr reserved words, generated from the
+registry catalog by the vector generator) at compile time, and installed vocabulary
+(fragment defs, part operations, credentials) is passed per check; serde_json runs with
+`preserve_order` so object iteration matches JS insertion order in message text.
+Validation vectors freeze {errors, warnings, mutated contract} per fixture, with each
+fixture's installed vocabulary carried alongside.
+The compose orchestration sits on top: `runtime/prompt.rs` renders
+the base prompt and catalog (the registry snapshot carries the full
 model-facing manifest text; installed vocabulary, credentials, and validated recipes arrive
-per call), `runtime/llm_schema.rs` twins the zod schemas (issue paths, zod-v4 message text,
-default filling, snippet context, and the five-issue cap all frozen), and
-`runtime/compose.rs` twins composeFromDescription: the semantic gate (recipe resolution or
-the checker), finalization (id dedup, type degradation, executionType resolution, layout
-fill, metadata stamping, trigger normalization), and the repair loop over a `ComposeLlm`
-transport trait (one repair round, two on local/mercury, the exact repair-message and
-failure text). Compose vectors freeze prompt text, response verdicts, finalized contracts
-(stamps masked), and the loop's full conversation protocol over scripted responses; the TS
-side runs them through the same exported pure functions (`renderCatalogText`,
-`parseValidatedJson`, `checkComposedCandidate`, `finalizeContractShape`). The
+per call), `runtime/llm_schema.rs` validates the model's response shape (issue paths,
+zod-v4-flavored message text, default filling, snippet context, and the five-issue cap all
+frozen by vectors), and `runtime/compose.rs` runs composition: the semantic gate (recipe
+resolution or the checker), finalization (id dedup, type degradation, executionType
+resolution, layout fill, metadata stamping, trigger normalization), and the repair loop
+over a `ComposeLlm` transport trait (one repair round, two on local/mercury, the exact
+repair-message and failure text). Compose vectors freeze prompt text, response verdicts,
+finalized contracts (stamps masked), and the loop's full conversation protocol over
+scripted responses. The
 `runtime_compose` command is the host entry: vocabulary from the installed manifests on
 disk, the real transport backed by `llm_chat`, one call from description to finalized
 contract with no webview involved (`tests/runtime_compose_native.rs` proves compose ->
 session -> resolved tree end to end, recipe reuse and the repair round included).
-Under Tauri the webview flows run this pipeline too: `AIInterpreterService` routes
-compose, natural-language edits (`runtime_edit_contract`), and blueprint regeneration
-(`runtime_generate_from_blueprint`) through the core (`compose-client.ts`), with
-streaming partials arriving as `runtime-compose-partial` / `runtime-edit-partial`
-events carrying the raw accumulated text so the webview's own draft extraction and
-mode routing stay unchanged; the TS ContractBuilder remains the engine outside Tauri
-(evals, plain browser runs) and its pure exports keep feeding the compose vectors.
 The committed vectors in `runtime-conformance/` are
-the semantic contract: both test suites run every vector (vitest
-`runtime-conformance.test.ts`, cargo `runtime_conformance.rs`), covering the
+the semantic contract: the cargo suite (`runtime_conformance.rs`) runs them against the
+sources, `kernel-vectors.test.ts` runs them against the committed wasm artifact, and the
+generator's arbiter runs them at regeneration time, covering the
 JavaScript-flavored edges (Math.round at negative halves, toFixed strings, loose equality,
 string coercions, stable sort fallbacks), with undefined normalizing to null because JSON is
-what crosses the renderer boundary. To change kernel semantics: regenerate the vectors
-(`npx tsx scripts/runtime-conformance/generate.ts`), review the diff, and make both suites
-pass; an implementation edit that fails a vector is a drift bug, never a test to update.
+what crosses the renderer boundary. To change kernel semantics: edit `runtime-core`, update
+the generator's expectations if the change is intentional, regenerate the vectors
+(`scripts/build-runtime-wasm.sh`, then `npx tsx scripts/runtime-conformance/generate.ts`),
+review the diff, and make the suites pass; an implementation edit that fails a vector is a
+drift bug, never a test to update. The generator authors every expectation by calling the
+kernel itself (its `capture.*` operations), so the corpus records what the kernel does and
+the review burden is the diff, not a re-derivation.
 `formatNumber` and `formatDate` stay outside the kernel: their output is locale presentation
 owned by whichever renderer displays the value.
 
@@ -559,10 +568,12 @@ seam) and renders its resolved trees through the real React presentation under j
 running the prompt's `behavior` script: steps address controls by fuzzy hints (generated
 ids and labels vary), compute parts execute their actual wasm synchronously inside the
 kernel's host_call, and remote parts return the scenario's `stubs`; the platform stubs
-(dialogs, mail, store) share one synchronous core with the TS providers. Behavioral runs
-therefore prove the exact semantics the desktop core ships.
-`ContractBuilder.finalizeShape` is the tooling entry that normalizes a stored shape without a
-model call. Prompts may carry `expectRecipe`: the correct answer reuses that installed recipe
+(dialogs, mail, store) are synchronous cores in `evals/harness/file-stubs.ts`. Behavioral
+runs therefore prove the exact semantics the desktop core ships. The static judge is the
+kernel too: the runner builds its prompt from `capture.promptBase`/`capture.promptSections`
+and scores each response with `capture.judgeComposed` (parse, schema, recipe or manifest
+gate, finalization), so eval verdicts and the app's repair loop can never disagree.
+Prompts may carry `expectRecipe`: the correct answer reuses that installed recipe
 (a composed contract scores `no-reuse`, the wrong or unexpected recipe `recipe-mismatch`), and
 a correct reuse feeds the recipe's stored contract through the behavior stage so reuse must
 also behave as the prompt demands. Results files (`evals/results-*.json`) store the generated
@@ -576,7 +587,7 @@ Mercury occasionally emits unclosed JSON (an unparseable verdict); rerun the pro
 
 - Imports are relative throughout. The `@/`, `@/types`, `@/interfaces` aliases exist in
   `vite.config.ts` and `tsconfig.json` but are unused; match the surrounding relative style.
-- Linting is deliberately lenient: `npm run lint` allows up to 350 warnings (a ratchet just above
+- Linting is deliberately lenient: `npm run lint` allows up to 295 warnings (a ratchet just above
   the legacy `no-explicit-any` count; lower it as warnings get fixed), and `no-explicit-any` plus
   the react-refresh rule are warnings. Unused vars/args/caught errors are errors unless prefixed
   with `_`. Do not treat a clean lint run as zero warnings.
@@ -584,7 +595,7 @@ Mercury occasionally emits unclosed JSON (an unparseable verdict); rerun the pro
   not fail `npm run build`. Run `npm run test` to check them.
 - The global test setup (`src/test/setup.ts`) only registers `@testing-library/jest-dom`. There
   is no global Tauri or SQLite mock, so any test exercising `invoke` or `Database` must stub them
-  itself. For pipeline tests, `src/test/llm-mocks.ts` provides canned intent/contract JSON and a
-  `routeLlmChat` router for mocking the `llm_chat` command.
+  itself. Suites that need real contract validation or finalization under jsdom mock invoke
+  with `src/test/kernel-invoke.ts`, which serves those commands from the kernel's wasm build.
 - Tests use Vitest + React Testing Library under jsdom, colocated in `__tests__/` next to source;
   broader integration/acceptance/performance suites live in `src/__tests__/`.

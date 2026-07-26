@@ -27,8 +27,6 @@ import { BookmarkedExperience } from '../types/persistence';
 
 // Import services
 import { BlueprintGenerator } from '../services/ai-interpreter/blueprint-generator';
-import { ContractBuilder } from '../services/ai-interpreter/contract-builder';
-import { LLMClient } from '../services/ai-interpreter/llm-client';
 import { repositoryService } from '../services/repository/repository-service';
 import { persistenceService } from '../services/persistence';
 import { integratedExperienceService } from '../services/IntegratedExperienceService';
@@ -79,11 +77,8 @@ export const MainInterface: React.FC = () => {
   // Initialize services (provider and model come from the stored settings;
   // the shared repository singleton is seeded at app startup)
   const services = useMemo(() => {
-    const llmClient = new LLMClient();
-
     return {
       blueprintGenerator: new BlueprintGenerator(),
-      contractBuilder: new ContractBuilder(repositoryService, llmClient),
       repositoryService
     };
   }, []);
@@ -204,13 +199,19 @@ export const MainInterface: React.FC = () => {
     try {
       // Generate contract from blueprint: the runtime core under Tauri,
       // the TS builder outside it.
-      const contractData = isTauriRuntime()
-        ? (await generateFromBlueprintViaCore(state.blueprint)).contract
-        : await services.contractBuilder.generateFromBlueprint(state.blueprint);
+      const contractData = (await generateFromBlueprintViaCore(state.blueprint)).contract;
       const contract = new ContractClass(contractData);
       
-      // Validate contract
-      const validation = services.contractBuilder.validateContract(contractData);
+      // Validate contract through the core's checker
+      const verdict = (await invoke('runtime_check_contract', { contract: contractData })) as {
+        errors: string[];
+        warnings: string[];
+      };
+      const validation = {
+        isValid: verdict.errors.length === 0,
+        errors: verdict.errors.map((message) => ({ path: '', message, code: 'CHECK' })),
+        warnings: verdict.warnings.map((message) => ({ path: '', message, code: 'CHECK' })),
+      } as unknown as ValidationResult;
       
       setState(prev => ({
         ...prev,

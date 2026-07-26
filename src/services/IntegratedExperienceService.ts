@@ -17,7 +17,16 @@ import { Contract as ContractModel } from '../models/contract';
 import { emit, listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { isTauriRuntime } from './tauri/TauriCommandService';
-import { extractStreamingContract } from './ai-interpreter/partial-json';
+// Streaming drafts extract in the runtime core; the webview holds no
+// parser of its own.
+async function extractStreamingDraft(accumulated: string): Promise<unknown | null> {
+  try {
+    const draft = await invoke('runtime_extract_streaming', { accumulated });
+    return draft === null || draft === undefined ? null : draft;
+  } catch {
+    return null;
+  }
+}
 import type { Contract, ValidationWarning } from '../types/contract';
 import type { Experience, ExperienceState } from '../types/experience';
 import type { ShareableContract, BookmarkedExperience } from '../types/persistence';
@@ -141,40 +150,42 @@ export class IntegratedExperienceService {
         ? undefined
         : nativeMode
           ? (accumulated: string) => {
-              const preview = extractStreamingContract(accumulated);
-              if (!preview) return;
-              invoke('open_experience_window', {
-                experienceId,
-                contract: preview,
-                title: windowTitle,
-                assembling: true
-              }).catch(() => undefined);
-            }
-          : (accumulated: string) => {
-              const preview = extractStreamingContract(accumulated);
-              if (!preview) return;
-              this.assemblySnapshots.set(experienceId, {
-                contract: preview as unknown as Record<string, unknown>,
-                status: 'assembling'
-              });
-              if (!windowOpened) {
-                windowOpened = true;
-                opening = invoke('open_experience_window', {
+              void extractStreamingDraft(accumulated).then((preview) => {
+                if (!preview) return;
+                invoke('open_experience_window', {
                   experienceId,
                   contract: preview,
                   title: windowTitle,
                   assembling: true
-                }).then(
-                  () => undefined,
-                  (error) => {
-                    console.warn('Failed to open the assembly window', error);
-                  }
+                }).catch(() => undefined);
+              });
+            }
+          : (accumulated: string) => {
+              void extractStreamingDraft(accumulated).then((preview) => {
+                if (!preview) return;
+                this.assemblySnapshots.set(experienceId, {
+                  contract: preview as unknown as Record<string, unknown>,
+                  status: 'assembling'
+                });
+                if (!windowOpened) {
+                  windowOpened = true;
+                  opening = invoke('open_experience_window', {
+                    experienceId,
+                    contract: preview,
+                    title: windowTitle,
+                    assembling: true
+                  }).then(
+                    () => undefined,
+                    (error) => {
+                      console.warn('Failed to open the assembly window', error);
+                    }
+                  );
+                  return;
+                }
+                emit('experience-contract-updated', { experienceId, contract: preview }).catch(
+                  () => undefined
                 );
-                return;
-              }
-              emit('experience-contract-updated', { experienceId, contract: preview }).catch(
-                () => undefined
-              );
+              });
             };
 
       let composed;
@@ -298,7 +309,7 @@ export class IntegratedExperienceService {
   ): Promise<ExperienceCreationResult> {
     try {
       const experienceId = this.generateExperienceId();
-      const instantiated = instantiateRecipe(recipeName);
+      const instantiated = await instantiateRecipe(recipeName);
       const contract = ContractModel.fromObject(instantiated.contract);
       const blueprint = BlueprintModel.fromObject(
         new BlueprintGenerator().deriveFromComposition(

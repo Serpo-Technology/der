@@ -5,7 +5,7 @@
  */
 
 import { ValidationWarning } from '../../types/contract';
-import { LlmContractSchema, checkAgainstManifests, formatZodError } from '../../schemas/contract';
+import { invoke } from '@tauri-apps/api/core';
 import type { ContractShape } from '../../schemas/contract';
 import { RecipeDef } from '../operations/registry';
 
@@ -26,22 +26,26 @@ function cloneContract(def: RecipeDef): unknown {
   return JSON.parse(JSON.stringify(def.contract));
 }
 
-export function resolveRecipeShape(def: RecipeDef): ResolvedRecipeShape {
-  const parsed = LlmContractSchema.safeParse(cloneContract(def));
-  if (!parsed.success) {
-    return { problems: [formatZodError(parsed.error)], warnings: [] };
+export async function resolveRecipeShape(def: RecipeDef): Promise<ResolvedRecipeShape> {
+  // The runtime core runs the same structural and manifest gates the model
+  // faces; the webview carries no checker of its own.
+  const verdict = (await invoke('runtime_check_contract', { contract: cloneContract(def) })) as {
+    shape: ContractShape | null;
+    errors: string[];
+    warnings: string[];
+  };
+  if (!verdict.shape || verdict.errors.length > 0) {
+    return { problems: verdict.errors, warnings: [] };
   }
-  const shape = parsed.data as ContractShape;
-  const result = checkAgainstManifests(shape);
   return {
-    shape,
-    problems: result.errors.map((error) => `${error.path}: ${error.message}`),
-    warnings: result.warnings,
+    shape: verdict.shape,
+    problems: [],
+    warnings: verdict.warnings.map((message) => ({ path: '', message, code: 'MANIFEST_ADJUSTED' })),
   };
 }
 
 /** Validates a recipe's contract against the current part vocabulary. */
-export function checkRecipe(def: RecipeDef): RecipeCheck {
-  const { problems } = resolveRecipeShape(def);
+export async function checkRecipe(def: RecipeDef): Promise<RecipeCheck> {
+  const { problems } = await resolveRecipeShape(def);
   return { ok: problems.length === 0, problems };
 }

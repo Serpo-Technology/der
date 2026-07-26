@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 350",
+    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 295",
     "lint:fix": "eslint src --ext ts,tsx --fix",
     "format": "prettier --write src/**/*.{ts,tsx}",
     "format:check": "prettier --check src/**/*.{ts,tsx}",
@@ -17,8 +17,6 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "type-check": "tsc --noEmit",
-    "probe:prompt": "tsx scripts/diffusion-probe/export-prompt.ts",
-    "probe:validate": "tsx scripts/diffusion-probe/validate.ts",
     "eval": "tsx scripts/eval/run.ts"
   },
   "dependencies": {

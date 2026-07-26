@@ -55,7 +55,7 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
 
   // Validate import data: parsing, hydration, and the vocabulary check all
   // happen in the service; this component renders only the result.
-  const handleValidate = useCallback(() => {
+  const handleValidate = useCallback(async () => {
     if (!importData.trim()) {
       onError?.('Please provide data to import');
       return;
@@ -63,7 +63,7 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
 
     setIsProcessing(true);
     try {
-      setValidationResult(sharingService.validateSharedExperienceText(importData));
+      setValidationResult(await sharingService.validateSharedExperienceText(importData));
       setCurrentStep('validate');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to validate import data';

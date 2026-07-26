@@ -385,13 +385,24 @@ describe('PersistenceService', () => {
 
       const jsonData = JSON.stringify(shareableContract);
 
-      mockInvoke
-        .mockResolvedValueOnce({ success: true, experienceId: 'imported-123' })
-        .mockResolvedValueOnce({
-          id: 'imported-123',
-          contract: mockContract,
-          last_accessed_at: '2024-01-01T00:00:00Z'
-        });
+      mockInvoke.mockImplementation(async (command: string, args: any) => {
+        // Contract validation and finalization run in the kernel; storage
+        // commands answer like the Rust side.
+        if (command.startsWith('runtime_')) {
+          return (await import('../../../test/kernel-invoke')).kernelInvoke(command, args);
+        }
+        if (command === 'import_shared_experience') {
+          return { success: true, experienceId: 'imported-123' };
+        }
+        if (command === 'load_bookmarked_experience') {
+          return {
+            id: 'imported-123',
+            contract: mockContract,
+            last_accessed_at: '2024-01-01T00:00:00Z'
+          };
+        }
+        return {};
+      });
 
       const result = await persistenceService.importExperience(jsonData);
 
@@ -425,13 +436,22 @@ describe('PersistenceService', () => {
         checksum: 'abc123'
       });
 
-      mockInvoke
-        .mockResolvedValueOnce({ success: true, experienceId: 'imported-123' })
-        .mockResolvedValueOnce({
-          id: 'imported-123',
-          contract: mockContract,
-          last_accessed_at: '2024-01-01T00:00:00Z'
-        });
+      mockInvoke.mockImplementation(async (command: string, args: any) => {
+        if (command.startsWith('runtime_')) {
+          return (await import('../../../test/kernel-invoke')).kernelInvoke(command, args);
+        }
+        if (command === 'import_shared_experience') {
+          return { success: true, experienceId: 'imported-123' };
+        }
+        if (command === 'load_bookmarked_experience') {
+          return {
+            id: 'imported-123',
+            contract: mockContract,
+            last_accessed_at: '2024-01-01T00:00:00Z'
+          };
+        }
+        return {};
+      });
 
       const result = await persistenceService.importExperience(jsonData);
       expect(result.success).toBe(true);

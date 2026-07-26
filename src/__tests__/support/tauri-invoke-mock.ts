@@ -8,15 +8,15 @@
  *   vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
  *
  * and then calls `installInvokeMock()` in beforeEach. The installed
- * implementation routes the `llm_chat` command through the shared llm-mocks
- * fixtures and answers every storage-backed command benignly. Bookmark
+ * implementation routes the contract commands through the kernel's wasm
+ * build and answers every storage-backed command benignly. Bookmark
  * commands are backed by an in-memory store so save and load round trips
  * behave like real persistence.
  */
 
 import { vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
-import { routeLlmChat } from '../../test/llm-mocks';
+import { kernelInvoke } from '../../test/kernel-invoke';
 
 export const invokeMock = vi.mocked(invoke);
 
@@ -57,8 +57,9 @@ export function installInvokeMock(options: InvokeMockOptions = {}): InvokeMockHa
     }
 
     switch (cmd) {
-      case 'llm_chat':
-        return routeLlmChat(args);
+      case 'runtime_check_contract':
+      case 'runtime_finalize_contract':
+        return kernelInvoke(cmd, args);
 
       // Repository index storage is unavailable in tests; the repository
       // service falls back to its in-memory index.

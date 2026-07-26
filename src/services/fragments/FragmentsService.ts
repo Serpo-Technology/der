@@ -117,38 +117,6 @@ export interface StageSummary {
   isDowngrade: boolean;
 }
 
-interface FragmentExecResult {
-  success: boolean;
-  data?: Record<string, unknown>;
-  error?: { kind: string; message: string };
-}
-
-const ERROR_TEXT: Record<string, string> = {
-  not_installed: 'This part is no longer installed',
-  verify_failed: 'The part failed verification',
-  abi_mismatch: 'The part is not compatible with this app',
-  operation_not_found: 'The part has no such operation',
-  input_too_large: 'The inputs are too large for this part',
-  compile_failed: 'The part could not be prepared',
-  trap: 'The part crashed',
-  fuel_exhausted: 'The part exceeded its compute budget',
-  timeout: 'The part took too long',
-  oom: 'The part exceeded its memory limit',
-  bad_output: 'The part returned an invalid result',
-  guest_error: 'The part reported an error',
-  busy: 'Too many parts are running; try again',
-  trust_violation: 'The part was blocked by a trust rule',
-  io: 'The part could not be loaded',
-};
-
-const MAX_UNTRUSTED_TEXT = 500;
-
-function describeError(error?: { kind: string; message: string }): string {
-  if (!error) return 'Part execution failed';
-  const base = ERROR_TEXT[error.kind] ?? 'Part execution failed';
-  const detail = String(error.message ?? '').slice(0, MAX_UNTRUSTED_TEXT);
-  return error.kind === 'guest_error' && detail ? `${base}: ${detail}` : base;
-}
 
 function toIoSpec(spec: FragmentIoSpec): BuiltinIoSpec {
   return {
@@ -221,10 +189,9 @@ export class FragmentsService {
     }
   }
 
-  private wrapOperation(fragmentId: string, op: FragmentOpSpec): BuiltinOperationDef {
-    // Remote (integration) operations run through the host's confined HTTP
-    // path; compute operations run in the wasm sandbox.
-    const command = op.remote ? 'execute_part_remote' : 'execute_fragment';
+  private wrapOperation(_fragmentId: string, op: FragmentOpSpec): BuiltinOperationDef {
+    // Execution happens in the runtime core (wasm sandbox or the confined
+    // HTTP path); the webview publishes only the manifest surface.
     return {
       name: op.name,
       description: op.description,
@@ -233,17 +200,6 @@ export class FragmentsService {
       howto: op.howto,
       example: op.example as BuiltinOperationDef['example'],
       structuredPrefixes: op.structuredPrefixes,
-      execute: async (inputs) => {
-        const result = await invoke<FragmentExecResult>(command, {
-          fragmentId,
-          operation: op.name,
-          inputs,
-        });
-        if (!result.success || !result.data) {
-          throw new Error(describeError(result.error));
-        }
-        return result.data;
-      },
     };
   }
 

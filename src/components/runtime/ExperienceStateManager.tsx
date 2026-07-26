@@ -3,9 +3,8 @@
  * Requirements: 3.1, 3.2, 9.1
  */
 
-import { Contract, OutputBinding } from '../../types/contract';
+import { Contract } from '../../types/contract';
 import { ExperienceState } from '../../types/experience';
-import { applyBindingTransforms } from '../../services/operations/transforms';
 
 type StateChangeCallback = (newState: ExperienceState) => void;
 
@@ -126,56 +125,12 @@ export class ExperienceStateManager {
     this.notifyStateChange();
   }
 
-  updateStateFromOperationResult(
-    operationId: string,
-    result: any,
-    outputs: OutputBinding[]
-  ): void {
-    // Clear any existing errors for this operation
-    this.clearError(operationId);
-
-    // Mirror the whole result where 'operation' data bindings read it
-    this.setData(`operation_${operationId}`, result);
-
-    // Update state based on operation outputs
-    outputs.forEach(output => {
-      const resultValue = applyBindingTransforms(this.extractResultValue(result, output.name), output);
-
-      if (output.target === 'state') {
-        // Update global state
-        this.setData(output.targetId, resultValue);
-      } else if (output.target === 'ui-element') {
-        // Update UI element property
-        const elementKey = `element_${output.targetId}`;
-        if (output.property) {
-          const elementData = this.getData(elementKey);
-          // Ensure elementData is an object, not a primitive value
-          const elementObject = typeof elementData === 'object' && elementData !== null 
-            ? elementData 
-            : { value: elementData };
-          elementObject[output.property] = resultValue;
-          this.setData(elementKey, elementObject);
-        } else {
-          this.setData(elementKey, resultValue);
-        }
-      }
-
-      // Also store the raw operation result
-      const operationResultKey = `operation_${operationId}_${output.name}`;
-      this.setData(operationResultKey, resultValue);
-    });
+  updateStateFromOperationResult(): void {
+    // Output routing happens inside the runtime core's sessions now.
   }
 
-  private extractResultValue(result: any, outputName: string): any {
-    if (result && typeof result === 'object') {
-      if (result[outputName] !== undefined) return result[outputName];
-      // "reset" is a universal output: any operation may route it to clear
-      // a control, whether or not the part returns one.
-      if (outputName === 'reset') return '';
-      return result;
-    }
-    return result;
-  }
+
+
 
   subscribeToStateChanges(callback: StateChangeCallback): () => void {
     this.callbacks.add(callback);

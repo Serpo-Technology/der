@@ -110,8 +110,8 @@ export class SharingService {
    * the installed part vocabulary exactly like a recipe. The dialog renders
    * only what this returns.
    */
-  validateSharedExperienceText(text: string): ParsedShare {
-    return parseShareableText(text);
+  async validateSharedExperienceText(text: string): Promise<ParsedShare> {
+    return await parseShareableText(text);
   }
 
   /**

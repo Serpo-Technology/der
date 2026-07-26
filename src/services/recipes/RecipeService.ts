@@ -9,9 +9,8 @@
 
 import { ComposedSpec } from '../../types/blueprint';
 import { Contract, ValidationWarning } from '../../types/contract';
-import { ContractBuilder } from '../ai-interpreter/contract-builder';
+import { invoke } from '@tauri-apps/api/core';
 import { getRecipeDef } from '../operations/registry';
-import { repositoryService } from '../repository/repository-service';
 import { resolveRecipeShape } from './recipe-check';
 
 export { checkRecipe } from './recipe-check';
@@ -25,12 +24,12 @@ export interface InstantiatedRecipe {
 
 /** Turns an installed recipe into a renderable contract without a model
  * call, through the same validation and normalization as generation. */
-export function instantiateRecipe(name: string): InstantiatedRecipe {
+export async function instantiateRecipe(name: string): Promise<InstantiatedRecipe> {
   const def = getRecipeDef(name);
   if (!def) {
     throw new Error(`No installed recipe named "${name}"`);
   }
-  const { shape, problems, warnings } = resolveRecipeShape(def);
+  const { shape, problems, warnings } = await resolveRecipeShape(def);
   if (!shape || problems.length > 0) {
     throw new Error(
       `Recipe "${def.title}" does not validate against the installed parts:\n${problems.join('\n')}`
@@ -41,7 +40,9 @@ export function instantiateRecipe(name: string): InstantiatedRecipe {
     assumptions: def.spec?.assumptions ?? [],
     openQuestions: def.spec?.openQuestions ?? [],
   };
-  const builder = new ContractBuilder(repositoryService);
-  const contract = builder.finalizeShape(shape, spec.goal);
+  const contract = (await invoke('runtime_finalize_contract', {
+    shape,
+    description: spec.goal,
+  })) as Contract;
   return { contract, spec, warnings };
 }

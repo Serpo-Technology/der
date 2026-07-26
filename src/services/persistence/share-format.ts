@@ -10,13 +10,11 @@
 import { z } from 'zod';
 import {
   LlmContractSchema,
-  checkAgainstManifests,
   formatZodError,
 } from '../../schemas/contract';
 import type { ContractShape } from '../../schemas/contract';
-import { ContractBuilder } from '../ai-interpreter/contract-builder';
-import { repositoryService } from '../repository/repository-service';
-import type { Contract, ValidationWarning } from '../../types/contract';
+import { invoke } from '@tauri-apps/api/core';
+import type { Contract } from '../../types/contract';
 import type { ShareableContract } from '../../types/persistence';
 
 const ShareMetadataSchema = z.object({
@@ -79,7 +77,7 @@ export interface ParsedShare {
  * bare contract (no envelope) imports with default details rather than
  * failing on missing metadata.
  */
-export function parseShareableText(text: string): ParsedShare {
+export async function parseShareableText(text: string): Promise<ParsedShare> {
   const problems: string[] = [];
   const warnings: string[] = [];
 
@@ -134,30 +132,29 @@ export function parseShareableText(text: string): ParsedShare {
     };
   }
   const shape = contractParse.data as ContractShape;
-  const manifest = checkAgainstManifests(shape);
-  for (const error of manifest.errors) {
-    problems.push(`${error.path}: ${error.message}`);
-  }
-  for (const warning of manifest.warnings as ValidationWarning[]) {
-    warnings.push(warning.message);
-  }
+  const verdict = (await invoke('runtime_check_contract', { contract: shape })) as {
+    shape: ContractShape | null;
+    errors: string[];
+    warnings: string[];
+  };
+  problems.push(...verdict.errors);
+  warnings.push(...verdict.warnings);
 
   return {
     shareable: envelope.data as unknown as ShareableContract,
-    shape: problems.length === 0 ? shape : undefined,
+    shape: problems.length === 0 ? (verdict.shape ?? shape) : undefined,
     problems,
     warnings,
   };
 }
 
 /** Normalizes a validated share's contract exactly like generation does. */
-export function finalizeSharedContract(parsed: ParsedShare): Contract {
+export async function finalizeSharedContract(parsed: ParsedShare): Promise<Contract> {
   if (!parsed.shape || parsed.problems.length > 0) {
     throw new Error(`This share does not validate:\n${parsed.problems.join('\n')}`);
   }
-  const builder = new ContractBuilder(repositoryService);
-  return builder.finalizeShape(
-    parsed.shape,
-    parsed.shareable?.metadata.description ?? parsed.shareable?.metadata.title
-  );
+  return (await invoke('runtime_finalize_contract', {
+    shape: parsed.shape,
+    description: parsed.shareable?.metadata.description ?? parsed.shareable?.metadata.title,
+  })) as Contract;
 }

@@ -6,7 +6,6 @@
  * these parts; they never carry code.
  */
 
-import { invoke } from '@tauri-apps/api/core';
 import type { KnobSpec } from '../../types/component';
 import type { OperationBinding, UIElement } from '../../types/contract';
 
@@ -47,7 +46,6 @@ export interface BuiltinOperationDef {
   example?: OperationBinding;
   /** Executable but omitted from the model-facing catalog. */
   hidden?: boolean;
-  execute: BuiltinFn;
 }
 
 /** A UI part's declared capability surface. */
@@ -85,21 +83,8 @@ export function getValueAtPath(value: unknown, path: string): unknown {
   return current;
 }
 
-function newId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
 
-function readList(ctx: OperationContext, key: unknown): Record<string, unknown>[] {
-  const value = ctx.getState(String(key ?? ''));
-  return Array.isArray(value) ? (value as Record<string, unknown>[]) : [];
-}
 
-function isBlank(value: unknown): boolean {
-  return value === undefined || value === null || String(value).trim() === '';
-}
 
 /**
  * Groups prefixed inputs into objects: with prefixes ['item'], the resolved
@@ -144,48 +129,6 @@ export function getOperationDef(name: string): BuiltinOperationDef | undefined {
   return BUILTIN_OPERATIONS[name] ?? FRAGMENT_OPERATIONS[name];
 }
 
-/** Test seam: harnesses stub the file dialogs; production always invokes. */
-type FileOpProvider = (inputs: Record<string, unknown>) => Promise<Record<string, unknown>>;
-const fileOpProviders: { pick?: FileOpProvider; read?: FileOpProvider; save?: FileOpProvider } = {};
-export function setFileOpProviders(providers: {
-  pick?: FileOpProvider;
-  read?: FileOpProvider;
-  save?: FileOpProvider;
-}): void {
-  fileOpProviders.pick = providers.pick;
-  fileOpProviders.read = providers.read;
-  fileOpProviders.save = providers.save;
-}
-
-/** Test seam for the host-owned mail path, same shape as the file dialogs. */
-const emailProviders: { send?: FileOpProvider } = {};
-export function setEmailProvider(send?: FileOpProvider): void {
-  emailProviders.send = send;
-}
-
-/** Test seam for the receive side; production always invokes. */
-const mailProviders: { list?: FileOpProvider; fetch?: FileOpProvider } = {};
-export function setMailProviders(providers: {
-  list?: FileOpProvider;
-  fetch?: FileOpProvider;
-}): void {
-  mailProviders.list = providers.list;
-  mailProviders.fetch = providers.fetch;
-}
-
-/** Test seam for the per-app record store; production always invokes. */
-const storeProviders: { put?: FileOpProvider; query?: FileOpProvider; remove?: FileOpProvider } =
-  {};
-export function setStoreProviders(providers: {
-  put?: FileOpProvider;
-  query?: FileOpProvider;
-  remove?: FileOpProvider;
-}): void {
-  storeProviders.put = providers.put;
-  storeProviders.query = providers.query;
-  storeProviders.remove = providers.remove;
-}
-
 export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
   'state.set': {
     name: 'state.set',
@@ -208,11 +151,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       outputs: [],
       triggers: [],
     },
-    execute: (inputs, ctx) => {
-      const key = String(inputs.key ?? '');
-      ctx.setState(key, inputs.value);
-      return { value: inputs.value };
-    },
   },
   'counter.add': {
     name: 'counter.add',
@@ -223,14 +161,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
     ],
     outputs: [{ name: 'value', type: 'number', description: 'The new value' }],
     howto: 'Seed the key in initialState. Negative amounts subtract.',
-    execute: (inputs, ctx) => {
-      const key = String(inputs.key ?? '');
-      const current = Number(ctx.getState(key)) || 0;
-      const amount = inputs.amount === undefined ? 1 : Number(inputs.amount) || 0;
-      const next = current + amount;
-      ctx.setState(key, next);
-      return { value: next };
-    },
   },
   'list.append': {
     name: 'list.append',
@@ -273,22 +203,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       ],
       triggers: [],
     },
-    execute: (inputs, ctx) => {
-      const key = String(inputs.key ?? '');
-      const list = readList(ctx, key);
-      const fields =
-        inputs.item && typeof inputs.item === 'object'
-          ? { ...(inputs.item as Record<string, unknown>) }
-          : {};
-      const meaningful = Object.entries(fields).filter(([name]) => name !== 'id');
-      if (meaningful.length === 0 || meaningful.every(([, value]) => isBlank(value))) {
-        return { list, item: null, reset: '' };
-      }
-      const item = { ...fields, id: newId() };
-      const next = [...list, item];
-      ctx.setState(key, next);
-      return { list: next, item, reset: '' };
-    },
   },
   'list.updateWhere': {
     name: 'list.updateWhere',
@@ -306,24 +220,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
     ],
     structuredPrefixes: ['set'],
     howto: "Typical row edit: value from {source: 'item', sourceId: 'id'}.",
-    execute: (inputs, ctx) => {
-      const key = String(inputs.key ?? '');
-      const field = isBlank(inputs.field) ? 'id' : String(inputs.field);
-      const updates =
-        inputs.set && typeof inputs.set === 'object'
-          ? (inputs.set as Record<string, unknown>)
-          : {};
-      let count = 0;
-      const next = readList(ctx, key).map((item) => {
-        if (looseEquals(getValueAtPath(item, field), inputs.value)) {
-          count++;
-          return { ...item, ...updates };
-        }
-        return item;
-      });
-      ctx.setState(key, next);
-      return { list: next, count };
-    },
   },
   'list.removeWhere': {
     name: 'list.removeWhere',
@@ -346,15 +242,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       outputs: [],
       triggers: [],
     },
-    execute: (inputs, ctx) => {
-      const key = String(inputs.key ?? '');
-      const field = isBlank(inputs.field) ? 'id' : String(inputs.field);
-      const next = readList(ctx, key).filter(
-        (item) => !looseEquals(getValueAtPath(item, field), inputs.value)
-      );
-      ctx.setState(key, next);
-      return { list: next };
-    },
   },
   'list.toggleField': {
     name: 'list.toggleField',
@@ -366,17 +253,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
     ],
     outputs: [{ name: 'list', type: 'array', description: 'The updated array' }],
     howto: "Typical row toggle: id from {source: 'item', sourceId: 'id'}. Show the flag: bind the row text's className from it (map {'true': 'done'}) and count remaining rows with filterFalsy.",
-    execute: (inputs, ctx) => {
-      const key = String(inputs.key ?? '');
-      const field = isBlank(inputs.field) ? 'completed' : String(inputs.field);
-      const next = readList(ctx, key).map((item) =>
-        looseEquals(getValueAtPath(item, 'id'), inputs.id)
-          ? { ...item, [field]: !item[field] }
-          : item
-      );
-      ctx.setState(key, next);
-      return { list: next };
-    },
   },
   'math.add': {
     name: 'math.add',
@@ -387,7 +263,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
     ],
     outputs: [{ name: 'result', type: 'number' }],
     howto: 'Pure calculation; write the result to state with an OutputBinding when it should display.',
-    execute: (inputs) => ({ result: (Number(inputs.a) || 0) + (Number(inputs.b) || 0) }),
   },
   'time.now': {
     name: 'time.now',
@@ -401,16 +276,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
     ],
     howto:
       'To stamp new list entries, run this FIRST on the same click (bindings run in order): first binding writes date to a state key, the second binding is the list.append whose "item.date" input reads that key {source: "state", sourceId: "<key>"}. Display stamps with the formatDate transform.',
-    execute: () => {
-      const now = new Date();
-      const pad = (n: number) => String(n).padStart(2, '0');
-      return {
-        iso: now.toISOString(),
-        date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
-        time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
-        epoch: now.getTime(),
-      };
-    },
   },
   'random.int': {
     name: 'random.int',
@@ -432,16 +297,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       ],
       outputs: [{ name: 'value', target: 'state', targetId: 'roll' }],
       triggers: [],
-    },
-    execute: (inputs) => {
-      const min = Number(inputs.min);
-      const max = Number(inputs.max);
-      if (!Number.isFinite(min) || !Number.isFinite(max)) {
-        throw new Error('random.int needs numeric min and max');
-      }
-      const lo = Math.ceil(Math.min(min, max));
-      const hi = Math.floor(Math.max(min, max));
-      return { value: lo + Math.floor(Math.random() * (hi - lo + 1)) };
     },
   },
   'random.pick': {
@@ -471,14 +326,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       ],
       triggers: [],
     },
-    execute: (inputs) => {
-      const list = Array.isArray(inputs.list) ? inputs.list : [];
-      if (list.length === 0) {
-        throw new Error('The list is empty; add entries before picking');
-      }
-      const index = Math.floor(Math.random() * list.length);
-      return { value: list[index], index };
-    },
   },
   'http.get': {
     name: 'http.get',
@@ -488,28 +335,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
     outputs: [{ name: 'response', type: 'object' }],
     howto:
       'Fetching real remote data ONLY; never for math on existing state (use expr.evaluate, stats, or transforms for that). A computed URL is a url input bound from an element or state with a format transform, e.g. transforms [{"type": "format", "parameters": {"template": "https://host/search?q={{value}}"}}]. Route the response into a state key and display it with pick/format.',
-    execute: async (inputs) => {
-      const url = String(inputs.url ?? '');
-      if (!/^https?:\/\//.test(url)) {
-        throw new Error(`http.get needs an http(s) URL, got: ${url || '(empty)'}`);
-      }
-      const result = await invoke<{ success: boolean; data?: unknown; error?: string }>(
-        'execute_operation',
-        {
-          request: {
-            operation_id: 'http.get',
-            operation_name: 'http.get',
-            operation_type: 'remote',
-            inputs: {},
-            implementation: { type: 'remote', endpoint: url, method: 'GET', headers: {} },
-          },
-        }
-      );
-      if (!result.success) {
-        throw new Error(result.error ?? 'HTTP GET failed');
-      }
-      return { response: result.data };
-    },
   },
 
   'file.pick': {
@@ -533,11 +358,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
     ],
     howto:
       'Wire it to an Open button, route "url" into state for a viewer\'s src binding and "name" into state for a caption. Route "file" into state only when a converter needs the bytes via file.read. Cancelling the dialog stops the chain.',
-    execute: async (inputs) => {
-      const provider = fileOpProviders.pick;
-      if (provider) return provider(inputs);
-      return await invoke('file_pick', { kind: String(inputs.kind ?? '') || undefined });
-    },
   },
   'file.read': {
     name: 'file.read',
@@ -555,11 +375,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
     ],
     howto:
       'Chain on the same click after file.pick: pick routes "file" into state, file.read takes it from state and routes "base64" (binary parts) or "text" (markdown and text parts) into state for the converter step. Only user-picked files are readable.',
-    execute: async (inputs) => {
-      const provider = fileOpProviders.read;
-      if (provider) return provider(inputs);
-      return await invoke('file_read', { file: String(inputs.file ?? '') });
-    },
   },
   'file.save': {
     name: 'file.save',
@@ -575,14 +390,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
     ],
     howto:
       'The last step of a converter chain: feed it the converter\'s base64 output from state and suggest a filename with the right extension. The user picks where it lands; cancelling stops the chain.',
-    execute: async (inputs) => {
-      const provider = fileOpProviders.save;
-      if (provider) return provider(inputs);
-      return await invoke('file_save', {
-        data: String(inputs.data ?? ''),
-        name: String(inputs.name ?? '') || undefined,
-      });
-    },
   },
   'email.send': {
     name: 'email.send',
@@ -616,16 +423,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       ],
       outputs: [{ name: 'sent', target: 'state', targetId: 'note-sent' }],
       triggers: [],
-    },
-    execute: async (inputs) => {
-      const provider = emailProviders.send;
-      if (provider) return provider(inputs);
-      return await invoke('email_send', {
-        from: String(inputs.from ?? '') || undefined,
-        to: String(inputs.to ?? ''),
-        subject: String(inputs.subject ?? ''),
-        text: String(inputs.text ?? ''),
-      });
     },
   },
   'store.put': {
@@ -663,15 +460,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       ],
       outputs: [{ name: 'reset', target: 'ui-element', targetId: 'note-input' }],
       triggers: [],
-    },
-    execute: async (inputs, ctx) => {
-      const provider = storeProviders.put;
-      if (provider) return provider({ ...inputs, experienceId: ctx.experienceId });
-      return await invoke('store_put', {
-        experienceId: ctx.experienceId ?? '',
-        collection: String(inputs.collection ?? ''),
-        record: (inputs.record as Record<string, unknown>) ?? {},
-      });
     },
   },
   'store.query': {
@@ -727,21 +515,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       outputs: [{ name: 'items', target: 'state', targetId: 'visible-notes' }],
       triggers: [],
     },
-    execute: async (inputs, ctx) => {
-      const provider = storeProviders.query;
-      if (provider) return provider({ ...inputs, experienceId: ctx.experienceId });
-      return await invoke('store_query', {
-        experienceId: ctx.experienceId ?? '',
-        collection: String(inputs.collection ?? ''),
-        field: String(inputs.field ?? '') || undefined,
-        equals: inputs.equals,
-        contains: String(inputs.contains ?? '') || undefined,
-        sortBy: String(inputs.sortBy ?? '') || undefined,
-        direction: String(inputs.direction ?? '') || undefined,
-        limit: String(inputs.limit ?? '') || undefined,
-        offset: String(inputs.offset ?? '') || undefined,
-      });
-    },
   },
   'store.remove': {
     name: 'store.remove',
@@ -757,15 +530,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
     ],
     howto:
       'Wire it to a Delete button inside the list row, binding "id" from the row (source "item", sourceId "id"), and chain store.query afterwards so the list reflects the removal.',
-    execute: async (inputs, ctx) => {
-      const provider = storeProviders.remove;
-      if (provider) return provider({ ...inputs, experienceId: ctx.experienceId });
-      return await invoke('store_remove', {
-        experienceId: ctx.experienceId ?? '',
-        collection: String(inputs.collection ?? ''),
-        id: String(inputs.id ?? ''),
-      });
-    },
   },
   'email.list': {
     name: 'email.list',
@@ -798,13 +562,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       outputs: [{ name: 'messages', target: 'state', targetId: 'inbox-messages' }],
       triggers: [],
     },
-    execute: async (inputs) => {
-      const provider = mailProviders.list;
-      if (provider) return provider(inputs);
-      return await invoke('mail_list', {
-        limit: String(inputs.limit ?? '') || undefined,
-      });
-    },
   },
   'email.fetch': {
     name: 'email.fetch',
@@ -834,11 +591,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       ],
       triggers: [],
     },
-    execute: async (inputs) => {
-      const provider = mailProviders.fetch;
-      if (provider) return provider(inputs);
-      return await invoke('mail_fetch', { id: String(inputs.id ?? '') });
-    },
   },
 
   // Compat parts for previously saved contracts; hidden from the catalog.
@@ -852,17 +604,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       { name: 'reset', type: 'string', description: "Always ''; use to clear the entry input" },
     ],
     hidden: true,
-    execute: (inputs, ctx) => {
-      const title = String(inputs.title ?? '').trim();
-      const todos = readList(ctx, 'todos') as unknown as TodoItem[];
-      if (!title) {
-        return { todos, todo: null, reset: '' };
-      }
-      const todo: TodoItem = { id: newId(), title, completed: false };
-      const next = [...todos, todo];
-      ctx.setState('todos', next);
-      return { todos: next, todo, reset: '' };
-    },
   },
   'todos.toggle': {
     name: 'todos.toggle',
@@ -870,13 +611,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
     inputs: [{ name: 'id', type: 'string', required: true, description: 'Todo id' }],
     outputs: [{ name: 'todos', type: 'array', description: 'The updated todos array' }],
     hidden: true,
-    execute: (inputs, ctx) => {
-      const next = (readList(ctx, 'todos') as unknown as TodoItem[]).map((todo) =>
-        looseEquals(todo.id, inputs.id) ? { ...todo, completed: !todo.completed } : todo
-      );
-      ctx.setState('todos', next);
-      return { todos: next };
-    },
   },
   'todos.remove': {
     name: 'todos.remove',
@@ -884,13 +618,6 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
     inputs: [{ name: 'id', type: 'string', required: true, description: 'Todo id' }],
     outputs: [{ name: 'todos', type: 'array', description: 'The updated todos array' }],
     hidden: true,
-    execute: (inputs, ctx) => {
-      const next = (readList(ctx, 'todos') as unknown as TodoItem[]).filter(
-        (todo) => !looseEquals(todo.id, inputs.id)
-      );
-      ctx.setState('todos', next);
-      return { todos: next };
-    },
   },
 };
 

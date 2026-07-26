@@ -7,7 +7,11 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+// The desktop core's checker and finalizer, served by the kernel's wasm
+// build so these tests exercise the real semantics under jsdom.
+vi.mock('@tauri-apps/api/core', async () => ({
+  invoke: (await import('../../../test/kernel-invoke')).kernelInvoke,
+}));
 
 import { finalizeSharedContract, parseShareableText } from '../share-format';
 
@@ -52,7 +56,7 @@ function envelope(overrides: Record<string, unknown> = {}): string {
 }
 
 describe('parseShareableText', () => {
-  it('round-trips the app\'s own export format exactly as Rust emits it', () => {
+  it('round-trips the app\'s own export format exactly as Rust emits it', async () => {
     // Mirrors share_experience in src-tauri/src/lib.rs byte for byte: absent
     // options serialize as null and the date keys are snake_case.
     const rustWire = JSON.stringify({
@@ -70,7 +74,7 @@ describe('parseShareableText', () => {
       checksum: '1a2b3c',
     });
 
-    const parsed = parseShareableText(rustWire);
+    const parsed = await parseShareableText(rustWire);
 
     expect(parsed.problems).toEqual([]);
     expect(parsed.shape?.name).toBe('counter');
@@ -81,8 +85,8 @@ describe('parseShareableText', () => {
     expect(parsed.shareable?.metadata.sharedAt.getUTCDate()).toBe(23);
   });
 
-  it('hydrates string dates into Date instances and validates the contract', () => {
-    const parsed = parseShareableText(envelope());
+  it('hydrates string dates into Date instances and validates the contract', async () => {
+    const parsed = await parseShareableText(envelope());
 
     expect(parsed.problems).toEqual([]);
     expect(parsed.shareable?.metadata.createdAt).toBeInstanceOf(Date);
@@ -91,25 +95,25 @@ describe('parseShareableText', () => {
     expect(parsed.shape?.name).toBe('counter');
   });
 
-  it('imports a bare contract paste with default details and a note', () => {
-    const parsed = parseShareableText(JSON.stringify(COUNTER_CONTRACT));
+  it('imports a bare contract paste with default details and a note', async () => {
+    const parsed = await parseShareableText(JSON.stringify(COUNTER_CONTRACT));
 
     expect(parsed.problems).toEqual([]);
     expect(parsed.shareable?.metadata.title).toBe('Shared experience');
     expect(parsed.warnings.join(' ')).toContain('bare app contract');
   });
 
-  it('reports unparseable text instead of throwing', () => {
-    const parsed = parseShareableText('not json at all');
+  it('reports unparseable text instead of throwing', async () => {
+    const parsed = await parseShareableText('not json at all');
 
     expect(parsed.shareable).toBeUndefined();
     expect(parsed.problems[0]).toContain('not valid JSON');
   });
 
-  it('rejects a share whose operations are not installed, naming them', () => {
+  it('rejects a share whose operations are not installed, naming them', async () => {
     const contract = JSON.parse(JSON.stringify(COUNTER_CONTRACT));
     contract.operations[0].operationName = 'wizardry.cast';
-    const parsed = parseShareableText(envelope({ contract }));
+    const parsed = await parseShareableText(envelope({ contract }));
 
     expect(parsed.shape).toBeUndefined();
     expect(parsed.problems.join('\n')).toContain('wizardry.cast');
@@ -117,19 +121,19 @@ describe('parseShareableText', () => {
     expect(parsed.shareable?.metadata.title).toBe('Click Counter');
   });
 
-  it('rejects code-carrying operations outright', () => {
+  it('rejects code-carrying operations outright', async () => {
     const contract = JSON.parse(JSON.stringify(COUNTER_CONTRACT));
     contract.operations[0].implementation = { type: 'local', code: 'alert(1)' };
-    const parsed = parseShareableText(envelope({ contract }));
+    const parsed = await parseShareableText(envelope({ contract }));
 
     expect(parsed.shape).toBeUndefined();
     expect(parsed.problems.length).toBeGreaterThan(0);
   });
 
-  it('notes a missing checksum without blocking the import', () => {
+  it('notes a missing checksum without blocking the import', async () => {
     const raw = JSON.parse(envelope());
     delete raw.checksum;
-    const parsed = parseShareableText(JSON.stringify(raw));
+    const parsed = await parseShareableText(JSON.stringify(raw));
 
     expect(parsed.problems).toEqual([]);
     expect(parsed.warnings.join(' ')).toContain('checksum');
@@ -137,19 +141,19 @@ describe('parseShareableText', () => {
 });
 
 describe('finalizeSharedContract', () => {
-  it('normalizes a valid share like the generation path', () => {
-    const parsed = parseShareableText(envelope());
-    const contract = finalizeSharedContract(parsed);
+  it('normalizes a valid share like the generation path', async () => {
+    const parsed = await parseShareableText(envelope());
+    const contract = await finalizeSharedContract(parsed);
 
     expect(contract.operations[0].executionType).toBe('builtin');
     expect(contract.layout?.properties?.flexDirection).toBe('column');
   });
 
-  it('refuses to finalize a share with problems', () => {
+  it('refuses to finalize a share with problems', async () => {
     const contract = JSON.parse(JSON.stringify(COUNTER_CONTRACT));
     contract.operations[0].operationName = 'wizardry.cast';
-    const parsed = parseShareableText(envelope({ contract }));
+    const parsed = await parseShareableText(envelope({ contract }));
 
-    expect(() => finalizeSharedContract(parsed)).toThrow(/wizardry\.cast/);
+    await expect(finalizeSharedContract(parsed)).rejects.toThrow(/wizardry\.cast/);
   });
 });

@@ -15,17 +15,17 @@
 
 import React from 'react';
 import { UIElement } from '../../types/contract';
-import { ExperienceState } from '../../types/experience';
 import { ELEMENT_MANIFESTS } from '../../services/operations/registry';
-import {
-  ResolvedNode,
-  resolveViewTree,
-} from '../../services/runtime-view/resolve-view';
+import type { ResolvedNode } from '../../services/runtime-view/resolve-view';
 import { sanitizeHtml } from '../../services/runtime-view/sanitize-html';
 import type { ItemScope } from '../../services/runtime-view/resolve-view';
-import type { EventContext } from './OperationExecutor';
 
 export type { ItemScope } from '../../services/runtime-view/resolve-view';
+
+/** Per-event context: the list item whose template fired the event. */
+export interface EventContext {
+  item?: unknown;
+}
 
 // Standard UI component registry
 const UI_COMPONENTS = {
@@ -68,39 +68,6 @@ export type OperationExecuteHandler = (
 ) => Promise<void>;
 
 export class ComponentRenderer {
-  /**
-   * Back-compat wrapper returning a component. Prefer renderElement: a fresh
-   * component type per render makes React remount the subtree (inputs lose
-   * focus on every keystroke).
-   */
-  renderUIElement(
-    element: UIElement,
-    experienceState: ExperienceState,
-    onOperationExecute: OperationExecuteHandler,
-    options: RenderOptions = {}
-  ): React.ComponentType {
-    return () => this.renderElement(element, experienceState, onOperationExecute, options);
-  }
-
-  /**
-   * Renders a contract element directly as JSX (stable element identity).
-   * Resolution (visibility, bindings, rows, control values, fragments) runs
-   * through the shared view resolver; this class adds the presentation:
-   * React components, knob classes, and handler wiring.
-   */
-  renderElement(
-    element: UIElement,
-    experienceState: ExperienceState,
-    onOperationExecute: OperationExecuteHandler,
-    options: RenderOptions = {}
-  ): React.ReactElement {
-    const nodes = resolveViewTree([element], { data: experienceState.data }, options.scope);
-    if (nodes.length === 0) {
-      return <React.Fragment key={element.id} />;
-    }
-    return this.renderResolved(nodes[0], onOperationExecute, options);
-  }
-
   /**
    * Renders an already-resolved node (a tree from the runtime core's
    * sessions). Same presentation as renderElement without the local

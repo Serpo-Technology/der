@@ -368,13 +368,13 @@ export class PersistenceService implements PersistenceLayer {
       // Every import passes the same gate as a recipe: envelope hydration,
       // the composable contract schema, and the manifest check; what gets
       // saved is the normalized contract, never the raw bytes.
-      const parsed = parseShareableText(data);
+      const parsed = await parseShareableText(data);
       if (!parsed.shareable || parsed.problems.length > 0) {
         return { success: false, errors: parsed.problems };
       }
       const shareableContract: ShareableContract = {
         ...parsed.shareable,
-        contract: finalizeSharedContract(parsed)
+        contract: await finalizeSharedContract(parsed)
       };
 
       const experience = await this.importSharedExperience(shareableContract);

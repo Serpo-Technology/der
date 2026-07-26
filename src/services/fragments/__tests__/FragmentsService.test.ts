@@ -120,48 +120,14 @@ describe('FragmentsService', () => {
     expect(getOperationDef('list.append')).toBe(BUILTIN_OPERATIONS['list.append']);
   });
 
-  it('executes through the wasm host and returns the data', async () => {
+  it('publishes the manifest surface only; execution lives in the runtime core', async () => {
     invokeMock.mockResolvedValueOnce(INSTALLED);
     await service.init();
 
-    invokeMock.mockResolvedValueOnce({
-      success: true,
-      data: { count: 3, mean: 2 },
-    });
-
     const def = FRAGMENT_OPERATIONS['stats.summary'];
-    const result = await def.execute({ values: [1, 2, 3] }, {
-      getState: () => undefined,
-      setState: () => undefined,
-    });
-
-    expect(result).toEqual({ count: 3, mean: 2 });
-    const [cmd, args] = invokeMock.mock.calls.at(-1) as [string, any];
-    expect(cmd).toBe('execute_fragment');
-    expect(args.fragmentId).toBe('der-labs.stats-summary');
-    expect(args.operation).toBe('stats.summary');
-  });
-
-  it('maps host error kinds to readable messages and caps guest text', async () => {
-    invokeMock.mockResolvedValueOnce(INSTALLED);
-    await service.init();
-
-    invokeMock.mockResolvedValueOnce({
-      success: false,
-      error: { kind: 'timeout', message: 'internal detail' },
-    });
-    const def = FRAGMENT_OPERATIONS['stats.summary'];
-    await expect(
-      def.execute({ values: [] }, { getState: () => undefined, setState: () => undefined })
-    ).rejects.toThrow('The part took too long');
-
-    invokeMock.mockResolvedValueOnce({
-      success: false,
-      error: { kind: 'guest_error', message: 'x'.repeat(2000) },
-    });
-    await expect(
-      def.execute({ values: [] }, { getState: () => undefined, setState: () => undefined })
-    ).rejects.toThrow(/^The part reported an error: x{1,500}$/);
+    expect(def.inputs.map((input) => input.name)).toEqual(['values']);
+    expect(def.outputs.map((output) => output.name)).toEqual(['mean']);
+    expect('execute' in def).toBe(false);
   });
 
   it('treats an unavailable backend as no installed parts', async () => {

@@ -9,7 +9,6 @@ import { Contract, ContractEdits, ValidationWarning } from '../../types/contract
 import { ComponentRepository } from '../../types/repository';
 import { LLMClient } from './llm-client';
 import { BlueprintGenerator } from './blueprint-generator';
-import { ContractBuilder } from './contract-builder';
 import { EditPreservationSystem, EditConflict, ConflictResolution } from './edit-preservation';
 import { isTauriRuntime } from '../tauri/TauriCommandService';
 import {
@@ -29,16 +28,14 @@ export interface ComposedExperience {
 }
 
 export class AIInterpreterService implements AIInterpreter {
-  private llmClient: LLMClient;
   private lastContractWarnings: ValidationWarning[] = [];
   private generator: BlueprintGenerator;
-  private repository: ComponentRepository;
   private editPreservation: EditPreservationSystem;
 
   constructor(repository: ComponentRepository, llmClient: LLMClient = new LLMClient()) {
-    this.llmClient = llmClient;
+    void llmClient;
     this.generator = new BlueprintGenerator();
-    this.repository = repository;
+    void repository;
     this.editPreservation = new EditPreservationSystem();
   }
 
@@ -57,24 +54,16 @@ export class AIInterpreterService implements AIInterpreter {
     try {
       // Under Tauri the runtime core runs the whole pipeline; the TS
       // builder stays the engine outside it (evals, plain browser runs).
-      if (isTauriRuntime()) {
-        const { contract, spec, recipeName, warnings } = await composeViaCore(
-          description,
-          onPartial
-        );
-        this.lastContractWarnings = warnings;
-        const blueprint = this.generator.deriveFromComposition(spec, contract, description);
-        return { blueprint, contract, spec, warnings, recipeName };
+      if (!isTauriRuntime()) {
+        throw new Error('Creating apps needs the desktop core');
       }
-      const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
-      const { contract, spec, recipeName } = await contractBuilder.composeFromDescription(
+      const { contract, spec, recipeName, warnings } = await composeViaCore(
         description,
         onPartial
       );
-      this.lastContractWarnings = contractBuilder.getLastWarnings();
-
+      this.lastContractWarnings = warnings;
       const blueprint = this.generator.deriveFromComposition(spec, contract, description);
-      return { blueprint, contract, spec, warnings: this.lastContractWarnings, recipeName };
+      return { blueprint, contract, spec, warnings, recipeName };
     } catch (error) {
       throw new Error(`Failed to compose experience: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -133,14 +122,11 @@ export class AIInterpreterService implements AIInterpreter {
   /** Blueprint regeneration through the core under Tauri, the TS builder
    * otherwise; every regenerate entry point funnels through here. */
   private async regenerateFromBlueprint(blueprint: Blueprint): Promise<Contract> {
-    if (isTauriRuntime()) {
-      const { contract, warnings } = await generateFromBlueprintViaCore(blueprint);
-      this.lastContractWarnings = warnings;
-      return contract;
+    if (!isTauriRuntime()) {
+      throw new Error('Regenerating apps needs the desktop core');
     }
-    const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
-    const contract = await contractBuilder.generateFromBlueprint(blueprint);
-    this.lastContractWarnings = contractBuilder.getLastWarnings();
+    const { contract, warnings } = await generateFromBlueprintViaCore(blueprint);
+    this.lastContractWarnings = warnings;
     return contract;
   }
 
@@ -175,15 +161,12 @@ export class AIInterpreterService implements AIInterpreter {
     onPartial?: (accumulated: string, attempt: number) => void
   ): Promise<{ contract: Contract; warnings: ValidationWarning[] }> {
     try {
-      if (isTauriRuntime()) {
-        const { contract, warnings } = await editViaCore(current, instruction, onPartial);
-        this.lastContractWarnings = warnings;
-        return { contract, warnings };
+      if (!isTauriRuntime()) {
+        throw new Error('Editing apps needs the desktop core');
       }
-      const contractBuilder = new ContractBuilder(this.repository, this.llmClient);
-      const contract = await contractBuilder.editContract(current, instruction, onPartial);
-      this.lastContractWarnings = contractBuilder.getLastWarnings();
-      return { contract, warnings: this.lastContractWarnings };
+      const { contract, warnings } = await editViaCore(current, instruction, onPartial);
+      this.lastContractWarnings = warnings;
+      return { contract, warnings };
     } catch (error) {
       throw new Error(`Failed to edit contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -357,7 +340,6 @@ export class AIInterpreterService implements AIInterpreter {
 export { LLMClient } from './llm-client';
 export type { LLMConfig } from './llm-client';
 export { BlueprintGenerator } from './blueprint-generator';
-export { ContractBuilder } from './contract-builder';
 export { EditPreservationSystem } from './edit-preservation';
 export type { EditConflict, ConflictResolution } from './edit-preservation';
 
