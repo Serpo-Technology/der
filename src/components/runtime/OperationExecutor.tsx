@@ -19,6 +19,8 @@ import { applyBindingTransforms } from '../../services/operations/transforms';
 export interface StateAccess {
   getData(key: string): unknown;
   setData(key: string, value: unknown): void;
+  /** The owning experience, for host stores scoped per app. */
+  getExperienceId?(): string;
 }
 
 /** Per-event context: the list item whose template fired the event, if any. */
@@ -122,6 +124,7 @@ export class OperationExecutor {
     return {
       getState: (key) => state.getData(key),
       setState: (key, value) => state.setData(key, value),
+      experienceId: state.getExperienceId?.(),
     };
   }
 

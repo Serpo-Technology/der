@@ -885,6 +885,7 @@ fn ensure_running(app: &tauri::AppHandle) -> Result<Arc<Mutex<SidecarBridge>>, S
 
 pub(crate) fn build_entry(
     app: &tauri::AppHandle,
+    experience_id: &str,
     contract: &Value,
     initial_data: Map<String, Value>,
 ) -> Result<(SessionEntry, Vec<Value>), String> {
@@ -892,6 +893,7 @@ pub(crate) fn build_entry(
     let dispatcher = HostDispatcher {
         app: app.clone(),
         parts,
+        experience_id: experience_id.to_string(),
     };
     let entry = open_session_core(
         contract,
@@ -922,7 +924,7 @@ pub fn open_native_for_experience(
     let initial_data = saved_state
         .and_then(|state| state.as_object().cloned())
         .unwrap_or_default();
-    let (entry, elements) = build_entry(app, &contract, initial_data)?;
+    let (entry, elements) = build_entry(app, experience_id, &contract, initial_data)?;
     let title = title.unwrap_or_else(|| {
         contract
             .get("name")
@@ -1033,6 +1035,7 @@ pub fn native_edit(app: &tauri::AppHandle, window_id: String, instruction: Strin
                 let preserved = bridge.lock().unwrap().state_of_experience(&experience_id);
                 let rebuilt = build_entry(
                     &app,
+                    &experience_id,
                     &outcome.contract,
                     preserved.unwrap_or_default(),
                 );
@@ -1148,7 +1151,7 @@ async fn land_edited_contract(
         .to_string();
     persist_created_experience(app, &experience_id, &contract, &description, now_iso, None).await;
     let preserved = bridge.lock().unwrap().state_of_experience(&experience_id);
-    let (entry, elements) = build_entry(app, &contract, preserved.unwrap_or_default())?;
+    let (entry, elements) = build_entry(app, &experience_id, &contract, preserved.unwrap_or_default())?;
     let outcome = {
         let mut guard = bridge.lock().unwrap();
         guard.replace_session(&experience_id, entry, elements, contract, false)
@@ -1718,7 +1721,7 @@ pub async fn native_update_experience_contract(
         let Some(preserved) = preserved else {
             return Ok(());
         };
-        let (entry, elements) = build_entry(&app, &contract, preserved)?;
+        let (entry, elements) = build_entry(&app, &experience_id, &contract, preserved)?;
         let outcome = {
             let mut guard = bridge.lock().unwrap();
             guard.replace_session(&experience_id, entry, elements, contract, false)

@@ -13,6 +13,10 @@ export class ExperienceStateManager {
   private state: ExperienceState;
   private callbacks: Set<StateChangeCallback> = new Set();
 
+  getExperienceId(): string {
+    return this.experienceId;
+  }
+
   constructor(private experienceId: string) {
     this.state = {
       data: {},

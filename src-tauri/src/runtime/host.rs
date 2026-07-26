@@ -25,6 +25,8 @@ pub struct PartRoute {
 pub struct HostDispatcher {
     pub app: tauri::AppHandle,
     pub parts: HashMap<String, PartRoute>,
+    /// The owning experience; per-app stores are confined to it.
+    pub experience_id: String,
 }
 
 impl OperationDispatcher for HostDispatcher {
@@ -40,6 +42,9 @@ impl OperationDispatcher for HostDispatcher {
             return self.dispatch_http_get(request);
         }
         if let Some(outcome) = self.dispatch_file_op(request) {
+            return outcome;
+        }
+        if let Some(outcome) = self.dispatch_store_op(request) {
             return outcome;
         }
         if let Some(implementation) = request.implementation {
@@ -119,6 +124,60 @@ impl HostDispatcher {
                 &text("subject"),
                 &text("text"),
             ),
+            _ => return None,
+        };
+        Some(result.and_then(as_outputs))
+    }
+
+    /// The per-app record store: collections confined to the owning
+    /// experience, shared with the webview's commands.
+    fn dispatch_store_op(
+        &self,
+        request: &DispatchRequest,
+    ) -> Option<Result<Map<String, Value>, String>> {
+        let text = |key: &str| {
+            request
+                .inputs
+                .get(key)
+                .map(super::value::js_to_string)
+                .unwrap_or_default()
+        };
+        let base = match crate::store::stores_dir(&self.app) {
+            Ok(dir) => dir,
+            Err(error) => return Some(Err(error)),
+        };
+        let result = match request.operation_name {
+            "store.put" => {
+                // The session hands dispatched inputs flat; assemble the
+                // record.* prefix here like the webview executor does.
+                let mut record = match request.inputs.get("record") {
+                    Some(Value::Object(map)) => map.clone(),
+                    _ => Map::new(),
+                };
+                for (name, value) in request.inputs.iter() {
+                    if let Some(field) = name.strip_prefix("record.") {
+                        record.insert(field.to_string(), value.clone());
+                    }
+                }
+                crate::store::put_core(&base, &self.experience_id, &text("collection"), &record, || {
+                    uuid::Uuid::new_v4().to_string()
+                })
+            }
+            "store.query" => crate::store::query_core(
+                &base,
+                &self.experience_id,
+                &text("collection"),
+                &text("field"),
+                request.inputs.get("equals").unwrap_or(&Value::Null),
+                &text("contains"),
+                &text("sortBy"),
+                &text("direction"),
+                &text("limit"),
+                &text("offset"),
+            ),
+            "store.remove" => {
+                crate::store::remove_core(&base, &self.experience_id, &text("collection"), &text("id"))
+            }
             _ => return None,
         };
         Some(result.and_then(as_outputs))

@@ -70,7 +70,7 @@ pub fn refresh_experience(app: &tauri::AppHandle, experience_id: &str) -> Result
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    let (mut entry, _) = super::sidecar::build_entry(app, &contract, initial_data)?;
+    let (mut entry, _) = super::sidecar::build_entry(app, experience_id, &contract, initial_data)?;
     let ran = run_timer_chains(&mut entry, &elements);
     if ran > 0 {
         let state = Value::Object(entry.session().state().clone());

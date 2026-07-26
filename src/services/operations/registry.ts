@@ -13,6 +13,8 @@ import type { OperationBinding, UIElement } from '../../types/contract';
 export interface OperationContext {
   getState(key: string): unknown;
   setState(key: string, value: unknown): void;
+  /** The owning experience, for host stores scoped per app. */
+  experienceId?: string;
 }
 
 export type BuiltinResult = Record<string, unknown>;
@@ -169,6 +171,19 @@ export function setMailProviders(providers: {
 }): void {
   mailProviders.list = providers.list;
   mailProviders.fetch = providers.fetch;
+}
+
+/** Test seam for the per-app record store; production always invokes. */
+const storeProviders: { put?: FileOpProvider; query?: FileOpProvider; remove?: FileOpProvider } =
+  {};
+export function setStoreProviders(providers: {
+  put?: FileOpProvider;
+  query?: FileOpProvider;
+  remove?: FileOpProvider;
+}): void {
+  storeProviders.put = providers.put;
+  storeProviders.query = providers.query;
+  storeProviders.remove = providers.remove;
 }
 
 export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
@@ -610,6 +625,145 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
         to: String(inputs.to ?? ''),
         subject: String(inputs.subject ?? ''),
         text: String(inputs.text ?? ''),
+      });
+    },
+  },
+  'store.put': {
+    name: 'store.put',
+    description:
+      'Saves a record permanently in one of this app\'s named collections. Fields arrive as record.<field> inputs; a record.id matching an existing record replaces it. Returns {record, count}.',
+    inputs: [
+      {
+        name: 'collection',
+        type: 'string',
+        required: true,
+        description: 'Collection name (letters, digits, dashes)',
+      },
+      {
+        name: 'record.<field>',
+        type: 'any',
+        required: true,
+        description: 'One input per stored field; id is generated when absent',
+      },
+    ],
+    outputs: [
+      { name: 'record', type: 'object', description: 'The stored record, id included' },
+      { name: 'count', type: 'number', description: 'Records in the collection after the save' },
+    ],
+    structuredPrefixes: ['record'],
+    howto:
+      'Use collections instead of list state when data must survive and grow: save on a button with record.<field> inputs from the form, then chain store.query on the same click to refresh the visible list. Edits are a store.put with the row\'s record.id.',
+    example: {
+      id: 'op-save-note',
+      operationName: 'store.put',
+      executionType: 'builtin',
+      inputs: [
+        { name: 'collection', source: 'constant', sourceId: 'notes' },
+        { name: 'record.text', source: 'ui-element', sourceId: 'note-input' },
+      ],
+      outputs: [{ name: 'reset', target: 'ui-element', targetId: 'note-input' }],
+      triggers: [],
+    },
+    execute: async (inputs, ctx) => {
+      const provider = storeProviders.put;
+      if (provider) return provider({ ...inputs, experienceId: ctx.experienceId });
+      return await invoke('store_put', {
+        experienceId: ctx.experienceId ?? '',
+        collection: String(inputs.collection ?? ''),
+        record: (inputs.record as Record<string, unknown>) ?? {},
+      });
+    },
+  },
+  'store.query': {
+    name: 'store.query',
+    description:
+      'Reads records from one of this app\'s collections, with an optional filter (equals or contains on one field), sort, and paging. Returns {items, count, total}.',
+    inputs: [
+      { name: 'collection', type: 'string', required: true, description: 'Collection name' },
+      {
+        name: 'field',
+        type: 'string',
+        required: false,
+        description: 'Field the filter reads; omit to keep every record',
+      },
+      {
+        name: 'equals',
+        type: 'any',
+        required: false,
+        description: 'Exact match for the field; empty keeps everything',
+      },
+      {
+        name: 'contains',
+        type: 'string',
+        required: false,
+        description: 'Case-insensitive substring for the field; empty keeps everything',
+      },
+      { name: 'sortBy', type: 'string', required: false, description: 'Field to sort by' },
+      {
+        name: 'direction',
+        type: 'string',
+        required: false,
+        description: '"asc" (default) or "desc"',
+      },
+      { name: 'limit', type: 'number', required: false, description: 'Most records to return' },
+      { name: 'offset', type: 'number', required: false, description: 'Records to skip' },
+    ],
+    outputs: [
+      { name: 'items', type: 'array', description: 'The matching records for a list element' },
+      { name: 'count', type: 'number', description: 'Records returned' },
+      { name: 'total', type: 'number', description: 'Matches before paging' },
+    ],
+    howto:
+      'Route "items" into state and bind a list to it; rows carry whatever fields store.put saved. Run it after every put and remove so the list stays fresh, and wire a search box through "contains" (bind "field" as a constant and "contains" from the input) on a Search button.',
+    example: {
+      id: 'op-load-notes',
+      operationName: 'store.query',
+      executionType: 'builtin',
+      inputs: [
+        { name: 'collection', source: 'constant', sourceId: 'notes' },
+        { name: 'sortBy', source: 'constant', sourceId: 'savedAt' },
+        { name: 'direction', source: 'constant', sourceId: 'desc' },
+      ],
+      outputs: [{ name: 'items', target: 'state', targetId: 'visible-notes' }],
+      triggers: [],
+    },
+    execute: async (inputs, ctx) => {
+      const provider = storeProviders.query;
+      if (provider) return provider({ ...inputs, experienceId: ctx.experienceId });
+      return await invoke('store_query', {
+        experienceId: ctx.experienceId ?? '',
+        collection: String(inputs.collection ?? ''),
+        field: String(inputs.field ?? '') || undefined,
+        equals: inputs.equals,
+        contains: String(inputs.contains ?? '') || undefined,
+        sortBy: String(inputs.sortBy ?? '') || undefined,
+        direction: String(inputs.direction ?? '') || undefined,
+        limit: String(inputs.limit ?? '') || undefined,
+        offset: String(inputs.offset ?? '') || undefined,
+      });
+    },
+  },
+  'store.remove': {
+    name: 'store.remove',
+    description:
+      'Deletes one record from a collection by its "id". Returns {removed, count}.',
+    inputs: [
+      { name: 'collection', type: 'string', required: true, description: 'Collection name' },
+      { name: 'id', type: 'string', required: true, description: 'The record id to delete' },
+    ],
+    outputs: [
+      { name: 'removed', type: 'boolean' },
+      { name: 'count', type: 'number', description: 'Records left in the collection' },
+    ],
+    howto:
+      'Wire it to a Delete button inside the list row, binding "id" from the row (source "item", sourceId "id"), and chain store.query afterwards so the list reflects the removal.',
+    execute: async (inputs, ctx) => {
+      const provider = storeProviders.remove;
+      if (provider) return provider({ ...inputs, experienceId: ctx.experienceId });
+      return await invoke('store_remove', {
+        experienceId: ctx.experienceId ?? '',
+        collection: String(inputs.collection ?? ''),
+        id: String(inputs.id ?? ''),
       });
     },
   },

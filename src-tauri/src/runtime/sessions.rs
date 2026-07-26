@@ -189,9 +189,14 @@ pub async fn runtime_open_session(
     state: tauri::State<'_, RuntimeSessionsState>,
     contract: Value,
     initial_data: Option<Map<String, Value>>,
+    experience_id: Option<String>,
 ) -> Result<SessionOpened, String> {
     let (fragment_defs, parts) = installed_vocabulary(&app);
-    let dispatcher = HostDispatcher { app: app.clone(), parts };
+    let dispatcher = HostDispatcher {
+        app: app.clone(),
+        parts,
+        experience_id: experience_id.unwrap_or_default(),
+    };
     let entry = open_session_core(
         &contract,
         initial_data.unwrap_or_default(),

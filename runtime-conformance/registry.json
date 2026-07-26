@@ -927,6 +927,188 @@
         "triggers": []
       }
     },
+    "store.put": {
+      "description": "Saves a record permanently in one of this app's named collections. Fields arrive as record.<field> inputs; a record.id matching an existing record replaces it. Returns {record, count}.",
+      "inputs": [
+        {
+          "name": "collection",
+          "type": "string",
+          "required": true,
+          "description": "Collection name (letters, digits, dashes)"
+        },
+        {
+          "name": "record.<field>",
+          "type": "any",
+          "required": true,
+          "description": "One input per stored field; id is generated when absent"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "record",
+          "type": "object"
+        },
+        {
+          "name": "count",
+          "type": "number"
+        }
+      ],
+      "structuredPrefixes": [
+        "record"
+      ],
+      "howto": "Use collections instead of list state when data must survive and grow: save on a button with record.<field> inputs from the form, then chain store.query on the same click to refresh the visible list. Edits are a store.put with the row's record.id.",
+      "example": {
+        "id": "op-save-note",
+        "operationName": "store.put",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "collection",
+            "source": "constant",
+            "sourceId": "notes"
+          },
+          {
+            "name": "record.text",
+            "source": "ui-element",
+            "sourceId": "note-input"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "reset",
+            "target": "ui-element",
+            "targetId": "note-input"
+          }
+        ],
+        "triggers": []
+      }
+    },
+    "store.query": {
+      "description": "Reads records from one of this app's collections, with an optional filter (equals or contains on one field), sort, and paging. Returns {items, count, total}.",
+      "inputs": [
+        {
+          "name": "collection",
+          "type": "string",
+          "required": true,
+          "description": "Collection name"
+        },
+        {
+          "name": "field",
+          "type": "string",
+          "required": false,
+          "description": "Field the filter reads; omit to keep every record"
+        },
+        {
+          "name": "equals",
+          "type": "any",
+          "required": false,
+          "description": "Exact match for the field; empty keeps everything"
+        },
+        {
+          "name": "contains",
+          "type": "string",
+          "required": false,
+          "description": "Case-insensitive substring for the field; empty keeps everything"
+        },
+        {
+          "name": "sortBy",
+          "type": "string",
+          "required": false,
+          "description": "Field to sort by"
+        },
+        {
+          "name": "direction",
+          "type": "string",
+          "required": false,
+          "description": "\"asc\" (default) or \"desc\""
+        },
+        {
+          "name": "limit",
+          "type": "number",
+          "required": false,
+          "description": "Most records to return"
+        },
+        {
+          "name": "offset",
+          "type": "number",
+          "required": false,
+          "description": "Records to skip"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "items",
+          "type": "array"
+        },
+        {
+          "name": "count",
+          "type": "number"
+        },
+        {
+          "name": "total",
+          "type": "number"
+        }
+      ],
+      "howto": "Route \"items\" into state and bind a list to it; rows carry whatever fields store.put saved. Run it after every put and remove so the list stays fresh, and wire a search box through \"contains\" (bind \"field\" as a constant and \"contains\" from the input) on a Search button.",
+      "example": {
+        "id": "op-load-notes",
+        "operationName": "store.query",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "collection",
+            "source": "constant",
+            "sourceId": "notes"
+          },
+          {
+            "name": "sortBy",
+            "source": "constant",
+            "sourceId": "savedAt"
+          },
+          {
+            "name": "direction",
+            "source": "constant",
+            "sourceId": "desc"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "items",
+            "target": "state",
+            "targetId": "visible-notes"
+          }
+        ],
+        "triggers": []
+      }
+    },
+    "store.remove": {
+      "description": "Deletes one record from a collection by its \"id\". Returns {removed, count}.",
+      "inputs": [
+        {
+          "name": "collection",
+          "type": "string",
+          "required": true,
+          "description": "Collection name"
+        },
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "description": "The record id to delete"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "removed",
+          "type": "boolean"
+        },
+        {
+          "name": "count",
+          "type": "number"
+        }
+      ],
+      "howto": "Wire it to a Delete button inside the list row, binding \"id\" from the row (source \"item\", sourceId \"id\"), and chain store.query afterwards so the list reflects the removal."
+    },
     "email.list": {
       "description": "Lists the latest emails from the configured mail account, newest first. Returns {messages, count}; each message has id, from, subject, date, and seen.",
       "inputs": [

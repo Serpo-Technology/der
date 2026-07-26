@@ -9,6 +9,7 @@ import {
   setEmailProvider,
   setFileOpProviders,
   setMailProviders,
+  setStoreProviders,
 } from '../../src/services/operations/registry';
 
 // A 2x1 png (red and blue pixels) for image scenarios.
@@ -58,11 +59,81 @@ const INBOX_FIXTURE = [
   },
 ];
 
+/** In-memory record store mirroring the host store's semantics: upsert by
+ * id, loose equals, case-insensitive contains, numeric-aware sort, paging. */
+function installStoreStub(): void {
+  const collections = new Map<string, Record<string, unknown>[]>();
+  let nextId = 1;
+  const str = (value: unknown): string =>
+    value === null || value === undefined ? '' : String(value);
+  setStoreProviders({
+    put: async (inputs) => {
+      const key = str(inputs.collection);
+      const records = collections.get(key) ?? [];
+      const record = { ...((inputs.record as Record<string, unknown>) ?? {}) };
+      if (record.id === undefined || record.id === null) {
+        record.id = `rec-${nextId++}`;
+      }
+      const index = records.findIndex((existing) => str(existing.id) === str(record.id));
+      if (index >= 0) records[index] = record;
+      else records.push(record);
+      collections.set(key, records);
+      return { record, count: records.length };
+    },
+    query: async (inputs) => {
+      const key = str(inputs.collection);
+      let records = [...(collections.get(key) ?? [])];
+      const field = str(inputs.field);
+      if (field) {
+        const equals = str(inputs.equals);
+        const contains = str(inputs.contains).toLowerCase();
+        if (equals) {
+          records = records.filter((record) => str(record[field]) === equals);
+        } else if (contains) {
+          records = records.filter((record) =>
+            str(record[field]).toLowerCase().includes(contains)
+          );
+        }
+      }
+      const sortBy = str(inputs.sortBy);
+      if (sortBy) {
+        const descending = str(inputs.direction).toLowerCase() === 'desc';
+        records.sort((a, b) => {
+          const left = a[sortBy];
+          const right = b[sortBy];
+          const ln = Number(left);
+          const rn = Number(right);
+          const ordering =
+            Number.isFinite(ln) && Number.isFinite(rn)
+              ? ln - rn
+              : str(left).localeCompare(str(right));
+          return descending ? -ordering : ordering;
+        });
+      }
+      const total = records.length;
+      const offset = Number.parseInt(str(inputs.offset), 10) || 0;
+      const limit = Number.parseInt(str(inputs.limit), 10) || 0;
+      let items = records.slice(offset);
+      if (limit > 0) items = items.slice(0, limit);
+      return { items, count: items.length, total };
+    },
+    remove: async (inputs) => {
+      const key = str(inputs.collection);
+      const records = collections.get(key) ?? [];
+      const before = records.length;
+      const kept = records.filter((record) => str(record.id) !== str(inputs.id));
+      collections.set(key, kept);
+      return { removed: kept.length !== before, count: kept.length };
+    },
+  });
+}
+
 export function setupFileStubs(
   file?: { name: string; mime: string; text?: string; base64?: string }
 ): void {
   saved = null;
   sent = null;
+  installStoreStub();
   setEmailProvider(async (inputs) => {
     sent = {
       to: String(inputs.to ?? ''),
@@ -122,4 +193,5 @@ export function clearFileStubs(): void {
   setFileOpProviders({});
   setEmailProvider(undefined);
   setMailProviders({});
+  setStoreProviders({});
 }

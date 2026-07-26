@@ -1606,6 +1606,83 @@
           }
         ]
       }
+    },
+    {
+      "id": "notes-archive",
+      "prompt": "A permanent notes archive: I type a note and save it, the list below shows every saved note, and a search field with a Search button narrows the list to matching notes",
+      "behavior": {
+        "steps": [
+          {
+            "do": "type",
+            "into": [
+              "note",
+              "text",
+              "new note"
+            ],
+            "value": "buy milk"
+          },
+          {
+            "do": "click",
+            "on": [
+              "save",
+              "add"
+            ]
+          },
+          {
+            "expect": "text",
+            "match": "buy milk"
+          },
+          {
+            "do": "type",
+            "into": [
+              "note",
+              "text",
+              "new note"
+            ],
+            "value": "call the bank"
+          },
+          {
+            "do": "click",
+            "on": [
+              "save",
+              "add"
+            ]
+          },
+          {
+            "expect": "text",
+            "match": "call the bank"
+          },
+          {
+            "expect": "rowCount",
+            "count": 2
+          },
+          {
+            "do": "type",
+            "into": [
+              "search",
+              "filter",
+              "find"
+            ],
+            "value": "milk"
+          },
+          {
+            "do": "click",
+            "on": [
+              "search",
+              "find",
+              "filter"
+            ]
+          },
+          {
+            "expect": "text",
+            "match": "buy milk"
+          },
+          {
+            "expect": "noText",
+            "match": "call the bank"
+          }
+        ]
+      }
     }
   ]
 }

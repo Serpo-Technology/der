@@ -301,6 +301,16 @@ and video tags in the webview, PDFKit and AVKit natively. Converter apps are cha
 these small bits (pick, read, convert, save) wired through state, proven end to end by
 the pdf-viewer, image-shrink, and md-to-pdf eval prompts with stubbed dialogs and real
 wasm.
+The per-app record store is the platform layer for data that outgrows the
+state map: `store.put` / `store.query` / `store.remove` (`src-tauri/src/store.rs`)
+keep JSON collections under `stores/<experienceId>/`, confined to the owning
+experience (the dispatcher carries the experience id; the webview executor
+passes it via the operation context). put upserts by id (generated when
+absent, structured `record.<field>` inputs), query filters one field (loose
+equals or case-insensitive contains, empty keeps everything, mirroring the
+transforms), sorts numeric-aware, and pages ({items, count, total}); rows
+carry whatever fields puts wrote, so the row-shape checker skips such lists.
+The notes-archive eval proves the class against an in-memory harness store.
 The `email.*` builtins are the same pattern for mail (`src-tauri/src/mail.rs`):
 `email.send` (lettre over rustls), and the receive side `email.list` / `email.fetch`
 (the imap crate over a rustls stream, implicit TLS only, usually port 993;
