@@ -3,7 +3,7 @@
   "abiVersion": 1,
   "id": "der-labs.starter-apps",
   "name": "Starter Apps",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "der-labs",
   "description": "Ready-made apps you can open and edit like any generated app.",
   "namespace": "apps",
@@ -421,6 +421,926 @@
         "styling": {
           "theme": "default"
         }
+      }
+    },
+    {
+      "name": "apps.calculator",
+      "title": "Calculator",
+      "description": "A button calculator: digit pad, plus minus times divide, equals, and clear, computing left to right as you go.",
+      "keywords": [
+        "calculator",
+        "calculate",
+        "math",
+        "arithmetic",
+        "numbers"
+      ],
+      "spec": {
+        "goal": "A working calculator with a digit pad, the four basic operators, equals, and clear",
+        "assumptions": [
+          "Operators compute left to right as they are pressed, like a simple desk calculator",
+          "After equals, pressing an operator continues from the result; C starts fresh"
+        ],
+        "openQuestions": []
+      },
+      "contract": {
+        "name": "calculator",
+        "version": "1.0.0",
+        "initialState": {
+          "entry": "",
+          "acc": "0",
+          "pending": "b"
+        },
+        "styling": {
+          "theme": "dark",
+          "accent": "cyan"
+        },
+        "elements": [
+          {
+            "id": "display",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "0",
+              "padding": "8",
+              "surface": "card",
+              "align": "end"
+            },
+            "children": [
+              {
+                "id": "display-entry",
+                "type": "text",
+                "properties": {
+                  "role": "title"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "entry"
+                  }
+                ],
+                "visibleWhen": {
+                  "source": "state",
+                  "sourceId": "entry",
+                  "operator": "notEmpty"
+                },
+                "eventBindings": []
+              },
+              {
+                "id": "display-result",
+                "type": "text",
+                "properties": {
+                  "role": "title",
+                  "tone": "accent"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "acc",
+                    "transforms": [
+                      {
+                        "type": "round",
+                        "parameters": {
+                          "decimals": 8
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "visibleWhen": {
+                  "source": "state",
+                  "sourceId": "entry",
+                  "operator": "empty"
+                },
+                "eventBindings": []
+              }
+            ],
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "row-top",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8"
+            },
+            "children": [
+              {
+                "id": "b-clear",
+                "type": "button",
+                "properties": {
+                  "text": "C",
+                  "variant": "danger"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-clear-entry"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-reset-acc"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-reset-pending"
+                  }
+                ],
+                "dataBindings": []
+              },
+              {
+                "id": "b-div",
+                "type": "button",
+                "properties": {
+                  "text": "\u00f7"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-eval"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-div"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-clear-entry"
+                  }
+                ],
+                "dataBindings": []
+              },
+              {
+                "id": "b-mul",
+                "type": "button",
+                "properties": {
+                  "text": "\u00d7"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-eval"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-mul"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-clear-entry"
+                  }
+                ],
+                "dataBindings": []
+              }
+            ],
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "row-789",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8"
+            },
+            "children": [
+              {
+                "id": "b-7",
+                "type": "button",
+                "properties": {
+                  "text": "7"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-d7"
+                  }
+                ],
+                "dataBindings": []
+              },
+              {
+                "id": "b-8",
+                "type": "button",
+                "properties": {
+                  "text": "8"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-d8"
+                  }
+                ],
+                "dataBindings": []
+              },
+              {
+                "id": "b-9",
+                "type": "button",
+                "properties": {
+                  "text": "9"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-d9"
+                  }
+                ],
+                "dataBindings": []
+              },
+              {
+                "id": "b-minus",
+                "type": "button",
+                "properties": {
+                  "text": "-"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-eval"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-minus"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-clear-entry"
+                  }
+                ],
+                "dataBindings": []
+              }
+            ],
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "row-456",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8"
+            },
+            "children": [
+              {
+                "id": "b-4",
+                "type": "button",
+                "properties": {
+                  "text": "4"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-d4"
+                  }
+                ],
+                "dataBindings": []
+              },
+              {
+                "id": "b-5",
+                "type": "button",
+                "properties": {
+                  "text": "5"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-d5"
+                  }
+                ],
+                "dataBindings": []
+              },
+              {
+                "id": "b-6",
+                "type": "button",
+                "properties": {
+                  "text": "6"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-d6"
+                  }
+                ],
+                "dataBindings": []
+              },
+              {
+                "id": "b-plus",
+                "type": "button",
+                "properties": {
+                  "text": "+"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-eval"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-plus"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-clear-entry"
+                  }
+                ],
+                "dataBindings": []
+              }
+            ],
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "row-123",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8"
+            },
+            "children": [
+              {
+                "id": "b-1",
+                "type": "button",
+                "properties": {
+                  "text": "1"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-d1"
+                  }
+                ],
+                "dataBindings": []
+              },
+              {
+                "id": "b-2",
+                "type": "button",
+                "properties": {
+                  "text": "2"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-d2"
+                  }
+                ],
+                "dataBindings": []
+              },
+              {
+                "id": "b-3",
+                "type": "button",
+                "properties": {
+                  "text": "3"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-d3"
+                  }
+                ],
+                "dataBindings": []
+              },
+              {
+                "id": "b-eq",
+                "type": "button",
+                "properties": {
+                  "text": "=",
+                  "variant": "primary"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-eval"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-clear-entry"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-continue"
+                  }
+                ],
+                "dataBindings": []
+              }
+            ],
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "row-0",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8"
+            },
+            "children": [
+              {
+                "id": "b-0",
+                "type": "button",
+                "properties": {
+                  "text": "0"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-d0"
+                  }
+                ],
+                "dataBindings": []
+              },
+              {
+                "id": "b-dot",
+                "type": "button",
+                "properties": {
+                  "text": "."
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-ddot"
+                  }
+                ],
+                "dataBindings": []
+              }
+            ],
+            "dataBindings": [],
+            "eventBindings": []
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-d0",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entry"
+              },
+              {
+                "name": "value",
+                "source": "state",
+                "sourceId": "entry",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "{{value}}0"
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-d1",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entry"
+              },
+              {
+                "name": "value",
+                "source": "state",
+                "sourceId": "entry",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "{{value}}1"
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-d2",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entry"
+              },
+              {
+                "name": "value",
+                "source": "state",
+                "sourceId": "entry",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "{{value}}2"
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-d3",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entry"
+              },
+              {
+                "name": "value",
+                "source": "state",
+                "sourceId": "entry",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "{{value}}3"
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-d4",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entry"
+              },
+              {
+                "name": "value",
+                "source": "state",
+                "sourceId": "entry",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "{{value}}4"
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-d5",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entry"
+              },
+              {
+                "name": "value",
+                "source": "state",
+                "sourceId": "entry",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "{{value}}5"
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-d6",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entry"
+              },
+              {
+                "name": "value",
+                "source": "state",
+                "sourceId": "entry",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "{{value}}6"
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-d7",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entry"
+              },
+              {
+                "name": "value",
+                "source": "state",
+                "sourceId": "entry",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "{{value}}7"
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-d8",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entry"
+              },
+              {
+                "name": "value",
+                "source": "state",
+                "sourceId": "entry",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "{{value}}8"
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-d9",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entry"
+              },
+              {
+                "name": "value",
+                "source": "state",
+                "sourceId": "entry",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "{{value}}9"
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-ddot",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entry"
+              },
+              {
+                "name": "value",
+                "source": "state",
+                "sourceId": "entry",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "{{value}}."
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-eval",
+            "operationName": "expr.evaluate",
+            "inputs": [
+              {
+                "name": "expression",
+                "source": "state",
+                "sourceId": "pending"
+              },
+              {
+                "name": "var.a",
+                "source": "state",
+                "sourceId": "acc",
+                "transforms": [
+                  {
+                    "type": "parseNumber",
+                    "parameters": {}
+                  }
+                ]
+              },
+              {
+                "name": "var.b",
+                "source": "state",
+                "sourceId": "entry",
+                "transforms": [
+                  {
+                    "type": "parseNumber",
+                    "parameters": {}
+                  }
+                ]
+              }
+            ],
+            "outputs": [
+              {
+                "name": "value",
+                "target": "state",
+                "targetId": "acc"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-plus",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "pending"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "a + b"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-minus",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "pending"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "a - b"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-mul",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "pending"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "a * b"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-div",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "pending"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "a / b"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-clear-entry",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "entry"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": ""
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-reset-acc",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "acc"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "0"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-reset-pending",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "pending"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "b"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-continue",
+            "operationName": "state.set",
+            "inputs": [
+              {
+                "name": "key",
+                "source": "constant",
+                "sourceId": "pending"
+              },
+              {
+                "name": "value",
+                "source": "constant",
+                "sourceId": "a"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ]
       }
     }
   ]

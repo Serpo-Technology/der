@@ -99,6 +99,31 @@
       }
     },
     {
+      "id": "calculator-buttons",
+      "prompt": "A proper calculator with digit buttons, plus minus times divide, equals, and a clear button",
+      "expectRecipe": "apps.calculator",
+      "behavior": {
+        "steps": [
+          { "do": "click", "on": ["7"] },
+          { "do": "click", "on": ["+"] },
+          { "do": "click", "on": ["3"] },
+          { "do": "click", "on": ["="] },
+          { "expect": "text", "match": "/\\b10\\b/" },
+          { "do": "click", "on": ["C", "clear"] },
+          { "expect": "noText", "match": "/\\b10\\b/" },
+          { "do": "click", "on": ["9"] },
+          { "do": "click", "on": ["×", "*"] },
+          { "do": "click", "on": ["6"] },
+          { "do": "click", "on": ["="] },
+          { "expect": "text", "match": "/\\b54\\b/" },
+          { "do": "click", "on": ["-"] },
+          { "do": "click", "on": ["4"] },
+          { "do": "click", "on": ["="] },
+          { "expect": "text", "match": "/\\b50\\b/" }
+        ]
+      }
+    },
+    {
       "id": "bmi",
       "prompt": "BMI calculator with weight in kilograms and height in meters",
       "behavior": {

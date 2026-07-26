@@ -77,8 +77,13 @@ fn committed_starter_bundle_verifies() {
     let verified = verify_bundle(&raw).expect("verifies");
     assert_eq!(verified.manifest.id, "der-labs.starter-apps");
     assert_eq!(verified.manifest.namespace, "apps");
-    assert_eq!(verified.manifest.recipes.len(), 1);
-    assert_eq!(verified.manifest.recipes[0].name, "apps.expense_tracker");
+    let names: Vec<&str> = verified
+        .manifest
+        .recipes
+        .iter()
+        .map(|recipe| recipe.name.as_str())
+        .collect();
+    assert_eq!(names, ["apps.expense_tracker", "apps.calculator"]);
     assert!(verified.wasm.is_empty());
 }
 
