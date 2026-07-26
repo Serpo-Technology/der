@@ -1,0 +1,143 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.imaging",
+  "name": "Imaging",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Image bits: probe dimensions, resize, and convert between png, jpeg, gif, webp, and bmp.",
+  "namespace": "image",
+  "capabilities": [
+    "io:large"
+  ],
+  "wasmSha256": "3bc45bef917934ca4cdba92a52bed3681f4f43b3543d44eb87d76be46d466b2a",
+  "createdAt": "2026-07-25T21:45:00Z",
+  "operations": [
+    {
+      "name": "image.info",
+      "description": "Probes an image. Input base64; returns {width, height, format}.",
+      "inputs": [
+        {
+          "name": "base64",
+          "type": "string",
+          "required": true,
+          "description": "Image bytes, base64 (file.read's base64 output)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "width",
+          "type": "number"
+        },
+        {
+          "name": "height",
+          "type": "number"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "description": "png | jpeg | gif | webp | bmp"
+        }
+      ],
+      "howto": "Chain after file.read to show what was opened; route the outputs into state for caption bindings."
+    },
+    {
+      "name": "image.resize",
+      "description": "Resizes an image to fit within maxWidth/maxHeight (aspect kept). Returns {base64, width, height, format, size}.",
+      "inputs": [
+        {
+          "name": "base64",
+          "type": "string",
+          "required": true,
+          "description": "Image bytes, base64"
+        },
+        {
+          "name": "maxWidth",
+          "type": "number",
+          "required": false,
+          "description": "Bound on width, px"
+        },
+        {
+          "name": "maxHeight",
+          "type": "number",
+          "required": false,
+          "description": "Bound on height, px"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "required": false,
+          "description": "Output format; omit to keep the source format"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "base64",
+          "type": "string",
+          "description": "Resized image bytes, base64"
+        },
+        {
+          "name": "width",
+          "type": "number"
+        },
+        {
+          "name": "height",
+          "type": "number"
+        },
+        {
+          "name": "format",
+          "type": "string"
+        },
+        {
+          "name": "size",
+          "type": "number",
+          "description": "Bytes"
+        }
+      ],
+      "howto": "The resize chain: file.pick (image) routes file to state, file.read routes base64 to state, image.resize takes it with maxWidth from a number input (parseNumber), file.save takes the output base64. Use parseNumber on numeric inputs."
+    },
+    {
+      "name": "image.convert",
+      "description": "Re-encodes an image as png, jpeg, gif, webp, or bmp. Returns {base64, width, height, format, size}.",
+      "inputs": [
+        {
+          "name": "base64",
+          "type": "string",
+          "required": true,
+          "description": "Image bytes, base64"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "required": true,
+          "description": "Target: png | jpeg | gif | webp | bmp"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "base64",
+          "type": "string",
+          "description": "Converted image bytes, base64"
+        },
+        {
+          "name": "width",
+          "type": "number"
+        },
+        {
+          "name": "height",
+          "type": "number"
+        },
+        {
+          "name": "format",
+          "type": "string"
+        },
+        {
+          "name": "size",
+          "type": "number",
+          "description": "Bytes"
+        }
+      ],
+      "howto": "Feed the format from a select with options png/jpeg/webp; chain file.save with a name built by a format transform, e.g. template \"converted.{{value}}\" over the chosen format."
+    }
+  ]
+}

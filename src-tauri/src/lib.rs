@@ -5,6 +5,7 @@ use tauri::utils::config::WebviewUrl;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod files;
 pub mod fragments;
 mod llm;
 mod oauth;
@@ -1344,6 +1345,8 @@ async fn open_experience_window(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .manage(files::FileGrants::default())
         .manage(oauth::PendingOauth::default())
         .manage(fragments::FragmentsState::new())
         .manage(runtime::sessions::RuntimeSessionsState::default())
@@ -1385,6 +1388,9 @@ pub fn run() {
         .on_menu_event(handle_menu_event)
         .invoke_handler(tauri::generate_handler![
             greet,
+            files::file_pick,
+            files::file_read,
+            files::file_save,
             read_repository_index,
             write_repository_index,
             read_component_manifest,

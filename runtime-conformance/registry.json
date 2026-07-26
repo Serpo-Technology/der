@@ -229,6 +229,22 @@
       ],
       "howto": "Set \"src\" and \"alt\"."
     },
+    "pdf": {
+      "description": "PDF viewer: renders the document its \"src\" points at.",
+      "knobs": [],
+      "bindableProps": [
+        "src"
+      ],
+      "howto": "Bind \"src\" from state fed by file.pick's \"url\" output (an Open button chains file.pick and routes url into state). Set \"emptyText\" for the before-open message."
+    },
+    "video": {
+      "description": "Video player with controls for the file its \"src\" points at.",
+      "knobs": [],
+      "bindableProps": [
+        "src"
+      ],
+      "howto": "Bind \"src\" from state fed by file.pick's \"url\" output, exactly like the pdf element."
+    },
     "link": {
       "description": "Hyperlink.",
       "knobs": [],
@@ -714,6 +730,102 @@
         }
       ],
       "howto": "Fetching real remote data ONLY; never for math on existing state (use expr.evaluate, stats, or transforms for that). A computed URL is a url input bound from an element or state with a format transform, e.g. transforms [{\"type\": \"format\", \"parameters\": {\"template\": \"https://host/search?q={{value}}\"}}]. Route the response into a state key and display it with pick/format."
+    },
+    "file.pick": {
+      "description": "Opens the system file picker. Returns {file, url, name, size, mime}: \"file\" is a token file.read consumes; \"url\" is what pdf, video, and image elements bind their src to.",
+      "inputs": [
+        {
+          "name": "kind",
+          "type": "string",
+          "required": false,
+          "description": "Filter: pdf | image | video | markdown | text; omit for any file"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "file",
+          "type": "string"
+        },
+        {
+          "name": "url",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "size",
+          "type": "number"
+        },
+        {
+          "name": "mime",
+          "type": "string"
+        }
+      ],
+      "howto": "Wire it to an Open button, route \"url\" into state for a viewer's src binding and \"name\" into state for a caption. Route \"file\" into state only when a converter needs the bytes via file.read. Cancelling the dialog stops the chain."
+    },
+    "file.read": {
+      "description": "Reads a picked file as base64. Input \"file\" is file.pick's token; returns {base64, name, mime, size} for compute parts to consume.",
+      "inputs": [
+        {
+          "name": "file",
+          "type": "string",
+          "required": true,
+          "description": "file.pick's \"file\" output"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "base64",
+          "type": "string"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "mime",
+          "type": "string"
+        },
+        {
+          "name": "size",
+          "type": "number"
+        }
+      ],
+      "howto": "Chain on the same click after file.pick: pick routes \"file\" into state, file.read takes it from state and routes \"base64\" (binary parts) or \"text\" (markdown and text parts) into state for the converter step. Only user-picked files are readable."
+    },
+    "file.save": {
+      "description": "Saves base64 data through the system save panel. Inputs: data (base64), name (suggested filename). Returns {saved, name}.",
+      "inputs": [
+        {
+          "name": "data",
+          "type": "string",
+          "required": true,
+          "description": "Base64 bytes to write"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "description": "Suggested filename"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "saved",
+          "type": "boolean"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "howto": "The last step of a converter chain: feed it the converter's base64 output from state and suggest a filename with the right extension. The user picks where it lands; cancelling stops the chain."
     },
     "todos.add": {
       "description": "Appends a todo {id, title, completed:false} to the 'todos' state array.",

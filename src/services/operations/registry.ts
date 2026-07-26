@@ -139,6 +139,19 @@ export function getOperationDef(name: string): BuiltinOperationDef | undefined {
   return BUILTIN_OPERATIONS[name] ?? FRAGMENT_OPERATIONS[name];
 }
 
+/** Test seam: harnesses stub the file dialogs; production always invokes. */
+type FileOpProvider = (inputs: Record<string, unknown>) => Promise<Record<string, unknown>>;
+const fileOpProviders: { pick?: FileOpProvider; read?: FileOpProvider; save?: FileOpProvider } = {};
+export function setFileOpProviders(providers: {
+  pick?: FileOpProvider;
+  read?: FileOpProvider;
+  save?: FileOpProvider;
+}): void {
+  fileOpProviders.pick = providers.pick;
+  fileOpProviders.read = providers.read;
+  fileOpProviders.save = providers.save;
+}
+
 export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
   'state.set': {
     name: 'state.set',
@@ -465,6 +478,79 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
     },
   },
 
+  'file.pick': {
+    name: 'file.pick',
+    description:
+      'Opens the system file picker. Returns {file, url, name, size, mime}: "file" is a token file.read consumes; "url" is what pdf, video, and image elements bind their src to.',
+    inputs: [
+      {
+        name: 'kind',
+        type: 'string',
+        required: false,
+        description: 'Filter: pdf | image | video | markdown | text; omit for any file',
+      },
+    ],
+    outputs: [
+      { name: 'file', type: 'string', description: 'Grant token for file.read' },
+      { name: 'url', type: 'string', description: 'Renderer URL for viewer src bindings' },
+      { name: 'name', type: 'string' },
+      { name: 'size', type: 'number' },
+      { name: 'mime', type: 'string' },
+    ],
+    howto:
+      'Wire it to an Open button, route "url" into state for a viewer\'s src binding and "name" into state for a caption. Route "file" into state only when a converter needs the bytes via file.read. Cancelling the dialog stops the chain.',
+    execute: async (inputs) => {
+      const provider = fileOpProviders.pick;
+      if (provider) return provider(inputs);
+      return await invoke('file_pick', { kind: String(inputs.kind ?? '') || undefined });
+    },
+  },
+  'file.read': {
+    name: 'file.read',
+    description:
+      'Reads a picked file as base64. Input "file" is file.pick\'s token; returns {base64, name, mime, size} for compute parts to consume.',
+    inputs: [
+      { name: 'file', type: 'string', required: true, description: "file.pick's \"file\" output" },
+    ],
+    outputs: [
+      { name: 'base64', type: 'string' },
+      { name: 'text', type: 'string', description: 'UTF-8 content for text files; null for binary' },
+      { name: 'name', type: 'string' },
+      { name: 'mime', type: 'string' },
+      { name: 'size', type: 'number' },
+    ],
+    howto:
+      'Chain on the same click after file.pick: pick routes "file" into state, file.read takes it from state and routes "base64" (binary parts) or "text" (markdown and text parts) into state for the converter step. Only user-picked files are readable.',
+    execute: async (inputs) => {
+      const provider = fileOpProviders.read;
+      if (provider) return provider(inputs);
+      return await invoke('file_read', { file: String(inputs.file ?? '') });
+    },
+  },
+  'file.save': {
+    name: 'file.save',
+    description:
+      'Saves base64 data through the system save panel. Inputs: data (base64), name (suggested filename). Returns {saved, name}.',
+    inputs: [
+      { name: 'data', type: 'string', required: true, description: 'Base64 bytes to write' },
+      { name: 'name', type: 'string', required: false, description: 'Suggested filename' },
+    ],
+    outputs: [
+      { name: 'saved', type: 'boolean' },
+      { name: 'name', type: 'string' },
+    ],
+    howto:
+      'The last step of a converter chain: feed it the converter\'s base64 output from state and suggest a filename with the right extension. The user picks where it lands; cancelling stops the chain.',
+    execute: async (inputs) => {
+      const provider = fileOpProviders.save;
+      if (provider) return provider(inputs);
+      return await invoke('file_save', {
+        data: String(inputs.data ?? ''),
+        name: String(inputs.name ?? '') || undefined,
+      });
+    },
+  },
+
   // Compat parts for previously saved contracts; hidden from the catalog.
   'todos.add': {
     name: 'todos.add',
@@ -679,6 +765,24 @@ export const ELEMENT_MANIFESTS: Record<string, ElementManifest> = {
     passthroughProps: ['src', 'alt', 'className'],
     bindableProps: ['src'],
     howto: 'Set "src" and "alt".',
+  },
+  pdf: {
+    type: 'pdf',
+    description: 'PDF viewer: renders the document its "src" points at.',
+    knobs: [],
+    passthroughProps: ['src', 'emptyText', 'className'],
+    bindableProps: ['src'],
+    howto:
+      'Bind "src" from state fed by file.pick\'s "url" output (an Open button chains file.pick and routes url into state). Set "emptyText" for the before-open message.',
+  },
+  video: {
+    type: 'video',
+    description: 'Video player with controls for the file its "src" points at.',
+    knobs: [],
+    passthroughProps: ['src', 'emptyText', 'className'],
+    bindableProps: ['src'],
+    howto:
+      'Bind "src" from state fed by file.pick\'s "url" output, exactly like the pdf element.',
   },
   link: {
     type: 'link',

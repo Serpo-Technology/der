@@ -15,6 +15,7 @@ import { repositoryService } from '../src/services/repository/repository-service
 import { ContractShape } from '../src/schemas/contract';
 import { registerRunnableParts, setRemoteStubs } from './harness/register-parts';
 import { runScenario, BehaviorScenario } from './harness/engine';
+import { setupFileStubs } from './harness/file-stubs';
 
 interface StoredResult {
   id: string;
@@ -60,6 +61,7 @@ describe(`behavior against ${resultsPath}`, () => {
     }
     it(entry.id, async () => {
       setRemoteStubs(scenario.stubs ?? {});
+      setupFileStubs(scenario.file);
       const contract = builder.finalizeShape(entry.contract as ContractShape);
       const { container, unmount } = render(
         <DynamicExperienceRenderer contract={contract} experienceId={`behave-${entry.id}`} />

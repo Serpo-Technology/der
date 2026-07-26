@@ -1,0 +1,117 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.docs",
+  "name": "Documents",
+  "version": "1.1.0",
+  "publisher": "der-labs",
+  "description": "Document conversion bits: markdown to HTML or plain text, and text or markdown to a real PDF.",
+  "namespace": "docs",
+  "capabilities": [],
+  "wasmSha256": "7c7d8059602a1ce90d3fc4133d19a11a357b66e1fde878dad83dc63f88b8da05",
+  "createdAt": "2026-07-25T21:45:00Z",
+  "operations": [
+    {
+      "name": "docs.markdownHtml",
+      "description": "Converts markdown to an HTML string. Returns {html}.",
+      "inputs": [
+        {
+          "name": "markdown",
+          "type": "string",
+          "required": true,
+          "description": "Markdown source text"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "html",
+          "type": "string",
+          "description": "Rendered HTML"
+        }
+      ],
+      "howto": "Feed \"markdown\" from a textarea or from file.read's base64 output decoded upstream; route \"html\" into state for display or for file.save."
+    },
+    {
+      "name": "docs.markdownText",
+      "description": "Flattens markdown to readable plain text (headings and list markers kept). Returns {text}.",
+      "inputs": [
+        {
+          "name": "markdown",
+          "type": "string",
+          "required": true,
+          "description": "Markdown source text"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "string",
+          "description": "Plain text"
+        }
+      ],
+      "howto": "Route \"text\" into state to preview a document without markup."
+    },
+    {
+      "name": "docs.textPdf",
+      "description": "Builds a real PDF from plain text (each line one PDF line, wrapped, paginated). Returns {base64, pages}; feed base64 to file.save.",
+      "inputs": [
+        {
+          "name": "text",
+          "type": "string",
+          "required": true,
+          "description": "Plain text content"
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": "Document title on the first page"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "base64",
+          "type": "string",
+          "description": "The PDF bytes, base64"
+        },
+        {
+          "name": "pages",
+          "type": "number",
+          "description": "Page count"
+        }
+      ],
+      "howto": "For markdown sources use docs.markdownPdf instead. Route \"base64\" into state and chain file.save with a name ending in .pdf."
+    },
+    {
+      "name": "docs.markdownPdf",
+      "description": "Builds a real PDF from markdown (headings sized, lists kept, wrapped, paginated). Returns {base64, pages}; feed base64 to file.save.",
+      "inputs": [
+        {
+          "name": "markdown",
+          "type": "string",
+          "required": true,
+          "description": "Markdown source text (file.read's \"text\" output for a picked .md file)"
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": "Document title on the first page"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "base64",
+          "type": "string",
+          "description": "The PDF bytes, base64"
+        },
+        {
+          "name": "pages",
+          "type": "number",
+          "description": "Page count"
+        }
+      ],
+      "howto": "The converter chain on one click: file.pick (markdown) routes \"file\" to state, file.read routes \"text\" to state, docs.markdownPdf binds \"markdown\" from that key and routes \"base64\" to state, file.save takes it with a name like \"notes.pdf\". Show \"pages\" in a caption."
+    }
+  ]
+}

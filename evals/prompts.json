@@ -99,6 +99,46 @@
       }
     },
     {
+      "id": "pdf-viewer",
+      "prompt": "A PDF viewer: an Open button that lets me pick a PDF file and shows it in the app, with the file name displayed above the viewer",
+      "behavior": {
+        "file": { "name": "guide.pdf", "mime": "application/pdf" },
+        "steps": [
+          { "do": "click", "on": ["open", "pick", "choose"] },
+          { "expect": "text", "match": "/guide\\.pdf/" },
+          { "expect": "viewer", "match": "/stub:/" }
+        ]
+      }
+    },
+    {
+      "id": "image-shrink",
+      "prompt": "An image shrinker: pick an image, enter a maximum width in pixels, resize it to fit, show the new dimensions, and save the result",
+      "behavior": {
+        "file": { "name": "photo.png", "mime": "image/png" },
+        "steps": [
+          { "do": "click", "on": ["open", "pick", "choose"], "optional": true },
+          { "do": "type", "into": ["width", "max"], "value": "1" },
+          { "do": "click", "on": ["resize", "shrink", "convert", "save"] },
+          { "do": "click", "on": ["save", "download"], "optional": true },
+          { "expect": "fileSaved", "dataPrefix": "iVBOR" }
+        ]
+      }
+    },
+    {
+      "id": "md-to-pdf",
+      "prompt": "A markdown to PDF converter: pick a markdown file, convert it to a PDF titled with the file name, show how many pages came out, and save the PDF",
+      "behavior": {
+        "file": { "name": "notes.md", "mime": "text/markdown", "text": "# Notes\n\nFirst paragraph of the document.\n\n- point one\n- point two" },
+        "steps": [
+          { "do": "click", "on": ["open", "pick", "choose"], "optional": true },
+          { "do": "click", "on": ["convert", "make", "create", "generate"] },
+          { "do": "click", "on": ["save", "download"], "optional": true },
+          { "expect": "fileSaved", "match": "/\\.pdf/", "dataPrefix": "JVBERi" },
+          { "expect": "text", "match": "/\\b1\\b/" }
+        ]
+      }
+    },
+    {
       "id": "calculator-buttons",
       "prompt": "A proper calculator with digit buttons, plus minus times divide, equals, and a clear button",
       "expectRecipe": "apps.calculator",

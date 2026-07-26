@@ -2,6 +2,8 @@
 // visibility is applied, bindings are values, rows are expanded; this file
 // only maps the element vocabulary and its knobs onto native controls.
 
+import AVKit
+import PDFKit
 import SwiftUI
 
 @MainActor
@@ -276,6 +278,8 @@ struct NodeView: View {
         case "divider": Divider()
         case "progress": ProgressView()
         case "image": ImageNode(node: node)
+        case "pdf": PdfNode(node: node)
+        case "video": VideoNode(node: node)
         case "link": LinkNode(node: node)
         default: FallbackNode(node: node)
         }
@@ -576,10 +580,81 @@ struct ImageNode: View {
             } placeholder: {
                 ProgressView()
             }
-            .frame(maxHeight: 240)
+            .frame(maxHeight: 320)
         } else {
             EmptyView()
         }
+    }
+}
+
+/// Placeholder shown by viewer elements before a file is opened.
+struct ViewerEmpty: View {
+    let text: String
+    @EnvironmentObject var model: TreeModel
+
+    var body: some View {
+        Text(text)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 120)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(model.borderColor, style: StrokeStyle(lineWidth: 1, dash: [5]))
+            )
+    }
+}
+
+private struct PdfKitView: NSViewRepresentable {
+    let url: URL
+
+    func makeNSView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.autoScales = true
+        view.document = PDFDocument(url: url)
+        return view
+    }
+
+    func updateNSView(_ view: PDFView, context: Context) {
+        if view.document?.documentURL != url {
+            view.document = PDFDocument(url: url)
+        }
+    }
+}
+
+struct PdfNode: View {
+    let node: ResolvedNode
+
+    var body: some View {
+        if let src = node.prop("src")?.stringValue, !src.isEmpty, let url = URL(string: src) {
+            PdfKitView(url: url)
+                .frame(minHeight: 420)
+        } else {
+            ViewerEmpty(text: node.prop("emptyText")?.stringValue ?? "Open a PDF to view it")
+        }
+    }
+}
+
+struct VideoNode: View {
+    let node: ResolvedNode
+    @State private var player: AVPlayer?
+    @State private var currentSrc = ""
+
+    var body: some View {
+        let src = node.prop("src")?.stringValue ?? ""
+        if src.isEmpty {
+            ViewerEmpty(text: node.prop("emptyText")?.stringValue ?? "Open a video to play it")
+        } else {
+            VideoPlayer(player: player)
+                .frame(minHeight: 280)
+                .onAppear { syncPlayer(src) }
+                .onChange(of: src) { value in syncPlayer(value) }
+        }
+    }
+
+    private func syncPlayer(_ src: String) {
+        guard src != currentSrc, let url = URL(string: src) else { return }
+        currentSrc = src
+        player = AVPlayer(url: url)
     }
 }
 

@@ -31,6 +31,23 @@
       "bundleBytes": 113700
     },
     {
+      "id": "der-labs.docs",
+      "name": "Documents",
+      "version": "1.1.0",
+      "publisher": "der-labs",
+      "namespace": "docs",
+      "description": "Document conversion bits: markdown to HTML or plain text, and text or markdown to a real PDF.",
+      "operations": [
+        "docs.markdownHtml",
+        "docs.markdownText",
+        "docs.textPdf",
+        "docs.markdownPdf"
+      ],
+      "bundleUrl": "der-labs.docs.derpart",
+      "bundleSha256": "1b9b3633d2078ddd3b56218144e311fa303a871d6348dd73a38f28bc4e3cc13c",
+      "bundleBytes": 406428
+    },
+    {
       "id": "der-labs.expr-evaluate",
       "name": "Expressions",
       "version": "1.1.2",
@@ -57,6 +74,22 @@
       "bundleUrl": "der-labs.frankfurter.derpart",
       "bundleSha256": "404a88045e0fe18979154ea3c494efee164239b5cca177fe81035dbb79ac93c0",
       "bundleBytes": 3252
+    },
+    {
+      "id": "der-labs.imaging",
+      "name": "Imaging",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "image",
+      "description": "Image bits: probe dimensions, resize, and convert between png, jpeg, gif, webp, and bmp.",
+      "operations": [
+        "image.info",
+        "image.resize",
+        "image.convert"
+      ],
+      "bundleUrl": "der-labs.imaging.derpart",
+      "bundleSha256": "66f2dcec0710569afebb08b9d646a56531ff79d9806be9230ef2f640ba0b3f06",
+      "bundleBytes": 1109580
     },
     {
       "id": "der-labs.openweather",

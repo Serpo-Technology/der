@@ -217,7 +217,8 @@ row templates bind item fields onto row buttons.
 Contracts may carry `initialState`. Constants can carry a typed `value` field (booleans/numbers);
 `sourceId` stays the legacy string form. Elements support declarative `visibleWhen` conditions
 (single or AND array; operators truthy/falsy/empty/notEmpty/equals/notEquals/gt/gte/lt/lte, with
-optional transform pipelines). Manifest knobs map to `type-knob-value` CSS classes via
+optional transform pipelines; the comparison `value` is a literal or a live reference in the
+transform-parameter grammar, resolved by both resolvers). Manifest knobs map to `type-knob-value` CSS classes via
 `applyKnobs` in the renderer (invalid enum values normalize to the manifest default; `form`
 elements take the container knobs). `contract.styling` picks an app-level look:
 `theme` (`STYLE_THEMES` in the registry: default/dark/paper/terminal) and optional `accent`,
@@ -276,9 +277,23 @@ treat part operations exactly like builtins (the model still emits `executionTyp
 Parts and the signing tool live in `fragments/` as standalone crates (NOT src-tauri workspace
 members); committed signed bundles keep `cargo test` hermetic; rebuilding needs
 `rustup target add wasm32-unknown-unknown`. Current library: expr-evaluate and dates and
-stats-summary (compute), frankfurter and openweather and coingecko and wikipedia
-(integrations), ui-basics (entry_row, stat_tile, and the self-wired stopwatch pack),
-starter-apps (the apps.expense_tracker recipe, taken verbatim from the proven eval corpus).
+stats-summary and docs (markdownHtml/markdownText/textPdf/markdownPdf over a minimal
+PDF writer) and imaging (info/resize/convert over the image crate, declaring `io:large`)
+(compute), frankfurter and openweather and coingecko and wikipedia (integrations),
+ui-basics (entry_row, stat_tile, and the self-wired stopwatch pack), starter-apps (the
+apps.expense_tracker and apps.calculator recipes, proven in the eval corpus). Compute
+parts may declare the `io:large` capability (consented at install review) to raise the
+wasm budgets to 32 MiB inputs, 512 MiB memory, and tenfold fuel for media payloads.
+User-mediated file IO is a builtin layer in `src-tauri/src/files.rs`, host-owned like
+http.get: `file.pick` opens the system picker and grants a session token plus a
+renderer URL (the asset protocol scope for the webview; the bridge rewrites granted
+asset URLs to file URLs for the panel), `file.read` returns base64 plus UTF-8 text for
+granted tokens only, and `file.save` writes solely through the save panel. Viewer
+elements `pdf` and `video` (plus `image`) bind `src` from pick's `url` output: embed
+and video tags in the webview, PDFKit and AVKit natively. Converter apps are chains of
+these small bits (pick, read, convert, save) wired through state, proven end to end by
+the pdf-viewer, image-shrink, and md-to-pdf eval prompts with stubbed dialogs and real
+wasm.
 
 ### Runtime kernel conformance
 

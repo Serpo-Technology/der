@@ -1,0 +1,266 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "image-shrink",
+      "wallMs": 8063,
+      "completionTokens": 1211,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "image.resize",
+        "basics.entry_row"
+      ],
+      "contract": {
+        "name": "image-shrinker",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "root",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "12",
+              "align": "center",
+              "padding": "12"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "open-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Open Image",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-open"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-read"
+                  }
+                ]
+              },
+              {
+                "id": "width-entry",
+                "type": "basics.entry_row",
+                "properties": {
+                  "label": "Max width (px)",
+                  "buttonText": "Resize",
+                  "operationId": "op-resize"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "preview-img",
+                "type": "image",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "src",
+                    "source": "state",
+                    "sourceId": "resizedBase64"
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "width-text",
+                "type": "text",
+                "properties": {
+                  "role": "caption"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "newWidth",
+                    "transforms": [
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "Width: {{value}} px"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "height-text",
+                "type": "text",
+                "properties": {
+                  "role": "caption"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "newHeight",
+                    "transforms": [
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "Height: {{value}} px"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "save-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Save Image",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-save"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-open",
+            "operationName": "file.pick",
+            "inputs": [
+              {
+                "name": "kind",
+                "source": "constant",
+                "sourceId": "image"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "file",
+                "target": "state",
+                "targetId": "fileToken"
+              },
+              {
+                "name": "name",
+                "target": "state",
+                "targetId": "originalName"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-read",
+            "operationName": "file.read",
+            "inputs": [
+              {
+                "name": "file",
+                "source": "state",
+                "sourceId": "fileToken"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "base64",
+                "target": "state",
+                "targetId": "originalBase64"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-resize",
+            "operationName": "image.resize",
+            "inputs": [
+              {
+                "name": "base64",
+                "source": "state",
+                "sourceId": "originalBase64"
+              },
+              {
+                "name": "maxWidth",
+                "source": "ui-element",
+                "sourceId": "width-entry-input",
+                "transforms": [
+                  {
+                    "type": "parseNumber",
+                    "parameters": {}
+                  }
+                ]
+              }
+            ],
+            "outputs": [
+              {
+                "name": "base64",
+                "target": "state",
+                "targetId": "resizedBase64"
+              },
+              {
+                "name": "width",
+                "target": "state",
+                "targetId": "newWidth"
+              },
+              {
+                "name": "height",
+                "target": "state",
+                "targetId": "newHeight"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-save",
+            "operationName": "file.save",
+            "inputs": [
+              {
+                "name": "data",
+                "source": "state",
+                "sourceId": "resizedBase64"
+              },
+              {
+                "name": "name",
+                "source": "state",
+                "sourceId": "originalName",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "resized-{{value}}"
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [
+              {
+                "name": "saved",
+                "target": "state",
+                "targetId": "saved"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    }
+  ]
+}

@@ -163,6 +163,27 @@ export function isVisible(element: UIElement, state: ViewState, scope?: ItemScop
   return conditions.every((condition) => evaluateCondition(condition, state, scope));
 }
 
+/**
+ * A condition's comparison value may be a literal or a reference object in
+ * the transform-parameter grammar ({"source": "state"|"element"|"constant"});
+ * models write both, so both resolve.
+ */
+function resolveConditionValue(raw: unknown, state: ViewState): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const ref = raw as { source?: unknown; sourceId?: unknown; value?: unknown };
+  if (typeof ref.source !== 'string') return raw;
+  switch (ref.source) {
+    case 'state':
+      return state.data[String(ref.sourceId ?? '')];
+    case 'element':
+      return state.data[`element_${String(ref.sourceId ?? '')}`];
+    case 'constant':
+      return ref.value !== undefined ? ref.value : ref.sourceId;
+    default:
+      return raw;
+  }
+}
+
 function evaluateCondition(
   condition: VisibilityCondition,
   state: ViewState,
@@ -176,6 +197,7 @@ function evaluateCondition(
     lookup: (source, sourceId) =>
       state.data[source === 'element' ? `element_${sourceId}` : sourceId],
   });
+  const against = resolveConditionValue(condition.value, state);
 
   switch (condition.operator) {
     case 'truthy':
@@ -191,17 +213,17 @@ function evaluateCondition(
         ? value.length > 0
         : !(value === null || value === undefined || String(value) === '');
     case 'equals':
-      return looseEquals(value, condition.value);
+      return looseEquals(value, against);
     case 'notEquals':
-      return !looseEquals(value, condition.value);
+      return !looseEquals(value, against);
     case 'gt':
-      return Number(value) > Number(condition.value);
+      return Number(value) > Number(against);
     case 'gte':
-      return Number(value) >= Number(condition.value);
+      return Number(value) >= Number(against);
     case 'lt':
-      return Number(value) < Number(condition.value);
+      return Number(value) < Number(against);
     case 'lte':
-      return Number(value) <= Number(condition.value);
+      return Number(value) <= Number(against);
     default:
       return true;
   }

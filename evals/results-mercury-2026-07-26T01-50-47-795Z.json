@@ -1,0 +1,229 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "md-to-pdf",
+      "wallMs": 3637,
+      "completionTokens": 1097,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "docs.markdownPdf"
+      ],
+      "contract": {
+        "name": "markdown-to-pdf-converter",
+        "version": "1.0.0",
+        "initialState": {
+          "fileToken": "",
+          "fileName": "",
+          "markdownText": "",
+          "pdfBase64": "",
+          "pdfPages": 0
+        },
+        "elements": [
+          {
+            "id": "app-container",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "12",
+              "align": "start"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "convert-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Convert Markdown to PDF",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-pick"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-read"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-pdf"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-save"
+                  }
+                ]
+              },
+              {
+                "id": "file-name",
+                "type": "text",
+                "properties": {
+                  "role": "subtitle"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "fileName"
+                  }
+                ],
+                "eventBindings": [],
+                "visibleWhen": {
+                  "source": "state",
+                  "sourceId": "fileName",
+                  "operator": "truthy"
+                }
+              },
+              {
+                "id": "page-count",
+                "type": "text",
+                "properties": {
+                  "role": "caption"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "pdfPages",
+                    "transforms": [
+                      {
+                        "type": "format",
+                        "parameters": {
+                          "template": "Pages: {{value}}"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "eventBindings": [],
+                "visibleWhen": {
+                  "source": "state",
+                  "sourceId": "pdfPages",
+                  "operator": "gt",
+                  "value": {
+                    "source": "constant",
+                    "sourceId": "0",
+                    "value": 0
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-pick",
+            "operationName": "file.pick",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "file",
+                "target": "state",
+                "targetId": "fileToken"
+              },
+              {
+                "name": "name",
+                "target": "state",
+                "targetId": "fileName"
+              }
+            ],
+            "triggers": [],
+            "executionType": "builtin"
+          },
+          {
+            "id": "op-read",
+            "operationName": "file.read",
+            "inputs": [
+              {
+                "name": "file",
+                "source": "state",
+                "sourceId": "fileToken"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "text",
+                "target": "state",
+                "targetId": "markdownText"
+              }
+            ],
+            "triggers": [],
+            "executionType": "builtin"
+          },
+          {
+            "id": "op-pdf",
+            "operationName": "docs.markdownPdf",
+            "inputs": [
+              {
+                "name": "markdown",
+                "source": "state",
+                "sourceId": "markdownText"
+              },
+              {
+                "name": "title",
+                "source": "state",
+                "sourceId": "fileName"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "base64",
+                "target": "state",
+                "targetId": "pdfBase64"
+              },
+              {
+                "name": "pages",
+                "target": "state",
+                "targetId": "pdfPages"
+              }
+            ],
+            "triggers": [],
+            "executionType": "builtin"
+          },
+          {
+            "id": "op-save",
+            "operationName": "file.save",
+            "inputs": [
+              {
+                "name": "data",
+                "source": "state",
+                "sourceId": "pdfBase64"
+              },
+              {
+                "name": "name",
+                "source": "state",
+                "sourceId": "fileName",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "{{value}}.pdf"
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "triggers": [],
+            "executionType": "builtin"
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "fail",
+      "behaviorError": "Error: Step 5 {\"expect\":\"text\",\"match\":\"/\\\\b1\\\\b/\"}: Expected visible text matching \"/\\\\b1\\\\b/\"; got: Convert Markdown to PDF notes.md"
+    }
+  ]
+}

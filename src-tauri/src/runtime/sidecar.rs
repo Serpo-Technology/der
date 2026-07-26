@@ -39,10 +39,15 @@ pub struct WindowSession {
 /// so native windows persist per-app data exactly like webview windows.
 pub type StateChanged = Box<dyn Fn(&str, &Map<String, Value>) + Send>;
 
+/// Host presentation step over outgoing trees (granted asset URLs become
+/// file URLs the native views can open).
+pub type TreeRewriter = Box<dyn Fn(&mut Vec<Value>) + Send>;
+
 pub struct SidecarBridge {
     windows: HashMap<String, WindowSession>,
     transport: Box<dyn SidecarTransport>,
     on_change: Option<StateChanged>,
+    tree_rewriter: Option<TreeRewriter>,
     /// Experiences whose assembly window the user closed mid-generation;
     /// further previews stay away, the finished app still opens.
     assembly_dismissed: std::collections::HashSet<String>,
@@ -55,11 +60,23 @@ impl SidecarBridge {
             transport,
             on_change: None,
             assembly_dismissed: std::collections::HashSet::new(),
+            tree_rewriter: None,
         }
     }
 
     pub fn set_on_change(&mut self, on_change: StateChanged) {
         self.on_change = Some(on_change);
+    }
+
+    pub fn set_tree_rewriter(&mut self, rewriter: TreeRewriter) {
+        self.tree_rewriter = Some(rewriter);
+    }
+
+    fn rewritten(&self, mut tree: Vec<Value>) -> Vec<Value> {
+        if let Some(rewriter) = &self.tree_rewriter {
+            rewriter(&mut tree);
+        }
+        tree
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -73,7 +90,7 @@ impl SidecarBridge {
         contract: Value,
         assembling: bool,
     ) -> Result<(), String> {
-        let tree = resolve_entry_view(&entry, &elements);
+        let tree = self.rewritten(resolve_entry_view(&entry, &elements));
         let (theme, accent, background) = contract_look(&contract);
         self.transport.send(&json!({
             "cmd": "open",
@@ -298,7 +315,7 @@ impl SidecarBridge {
             .windows
             .get(window_id)
             .ok_or_else(|| format!("No native window {}", window_id))?;
-        let tree = resolve_entry_view(&window.entry, &window.elements);
+        let tree = self.rewritten(resolve_entry_view(&window.entry, &window.elements));
         let assembling = window.assembling;
         // Edits can change the look; every update re-states it.
         let (theme, accent, background) = contract_look(&window.contract);
@@ -312,6 +329,69 @@ impl SidecarBridge {
             "background": background,
         }))
     }
+}
+
+/// Granted asset URLs become file URLs the native views can open; anything
+/// not in the grant table stays as it is (the webview's protocol scope and
+/// this table enforce the same boundary).
+fn rewrite_granted_srcs(app: &tauri::AppHandle, tree: &mut Vec<Value>) {
+    fn decode_percent(encoded: &str) -> Option<String> {
+        let bytes = encoded.as_bytes();
+        let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+        let mut index = 0;
+        while index < bytes.len() {
+            if bytes[index] == b'%' && index + 2 < bytes.len() {
+                let hex = std::str::from_utf8(&bytes[index + 1..index + 3]).ok()?;
+                out.push(u8::from_str_radix(hex, 16).ok()?);
+                index += 3;
+            } else {
+                out.push(bytes[index]);
+                index += 1;
+            }
+        }
+        String::from_utf8(out).ok()
+    }
+    fn walk(app: &tauri::AppHandle, nodes: &mut Vec<Value>) {
+        for node in nodes {
+            let src = node
+                .get("props")
+                .and_then(|props| props.get("src"))
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            if let Some(src) = src {
+                if let Some(encoded) = src.strip_prefix("asset://localhost/") {
+                    if let Some(path) = decode_percent(encoded) {
+                        let granted = app
+                            .state::<crate::files::FileGrants>()
+                            .is_granted_path(std::path::Path::new(&path));
+                        if granted {
+                            if let Some(props) =
+                                node.get_mut("props").and_then(Value::as_object_mut)
+                            {
+                                props.insert(
+                                    "src".to_string(),
+                                    Value::String(format!("file://{}", path)),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(children) = node.get_mut("children").and_then(Value::as_array_mut) {
+                walk(app, children);
+            }
+            if let Some(rows) = node.get_mut("rows").and_then(Value::as_array_mut) {
+                for row in rows {
+                    if let Some(children) =
+                        row.get_mut("children").and_then(Value::as_array_mut)
+                    {
+                        walk(app, children);
+                    }
+                }
+            }
+        }
+    }
+    walk(app, tree);
 }
 
 /// The app-level look a contract declares: theme, accent, and free-form
@@ -574,6 +654,11 @@ fn ensure_running(app: &tauri::AppHandle) -> Result<Arc<Mutex<SidecarBridge>>, S
             eprintln!("Failed to save native app state: {}", error);
         }
     }));
+    let rewrite_app = app.clone();
+    bridge
+        .lock()
+        .unwrap()
+        .set_tree_rewriter(Box::new(move |tree| rewrite_granted_srcs(&rewrite_app, tree)));
 
     let reader_bridge = bridge.clone();
     let reader_app = app.clone();

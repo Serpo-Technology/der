@@ -37,6 +37,8 @@ const UI_COMPONENTS = {
   'list': ListComponent,
   'form': FormComponent,
   'image': ImageComponent,
+  'pdf': PdfComponent,
+  'video': VideoComponent,
   'link': LinkComponent,
   'select': SelectComponent,
   'checkbox': CheckboxComponent,
@@ -441,6 +443,27 @@ function FormComponent({ children, ...props }: any) {
 
 function ImageComponent({ src, alt, ...props }: any) {
   return <img src={src} alt={alt} {...props} />;
+}
+
+function PdfComponent({ src, emptyText, ...props }: any) {
+  if (!src) {
+    return <div className="der-viewer-empty">{emptyText || 'Open a PDF to view it'}</div>;
+  }
+  return (
+    <embed
+      src={src}
+      type="application/pdf"
+      style={{ width: '100%', minHeight: 420, flex: 1 }}
+      {...props}
+    />
+  );
+}
+
+function VideoComponent({ src, emptyText, ...props }: any) {
+  if (!src) {
+    return <div className="der-viewer-empty">{emptyText || 'Open a video to play it'}</div>;
+  }
+  return <video src={src} controls style={{ width: '100%', maxHeight: 480 }} {...props} />;
 }
 
 function LinkComponent({ href, children, ...props }: any) {

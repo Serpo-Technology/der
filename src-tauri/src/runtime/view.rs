@@ -287,7 +287,37 @@ fn evaluate_condition(condition: &Value, ctx: &ViewContext, scope: Option<&Scope
         _ => (read.clone().unwrap_or(Value::Null), read.is_none()),
     };
 
-    let wanted = condition.get("value").unwrap_or(&Value::Null);
+    // The comparison value may be a literal or a reference object in the
+    // transform-parameter grammar; models write both, so both resolve. A
+    // reference to a missing key is the webview's undefined: NaN in numeric
+    // comparisons, never 0.
+    let raw_wanted = condition.get("value").unwrap_or(&Value::Null);
+    let (resolved_wanted, wanted_undefined): (Value, bool) =
+        match raw_wanted.get("source").and_then(Value::as_str) {
+            Some("state") => {
+                let key = raw_wanted.get("sourceId").and_then(Value::as_str).unwrap_or("");
+                match ctx.state.get(key) {
+                    Some(value) => (value.clone(), false),
+                    None => (Value::Null, true),
+                }
+            }
+            Some("element") => {
+                let key = raw_wanted.get("sourceId").and_then(Value::as_str).unwrap_or("");
+                match ctx.state.get(&format!("element_{}", key)) {
+                    Some(value) => (value.clone(), false),
+                    None => (Value::Null, true),
+                }
+            }
+            Some("constant") => match raw_wanted.get("value") {
+                Some(value) => (value.clone(), false),
+                None => match raw_wanted.get("sourceId") {
+                    Some(value) => (value.clone(), false),
+                    None => (Value::Null, true),
+                },
+            },
+            _ => (raw_wanted.clone(), false),
+        };
+    let wanted = &resolved_wanted;
     let number = |v: &Value, undefined: bool| -> f64 {
         if undefined {
             f64::NAN
@@ -310,10 +340,10 @@ fn evaluate_condition(condition: &Value, ctx: &ViewContext, scope: Option<&Scope
         },
         Some("equals") => loose_equals(&value, wanted),
         Some("notEquals") => !loose_equals(&value, wanted),
-        Some("gt") => number(&value, was_undefined) > js_to_number(wanted),
-        Some("gte") => number(&value, was_undefined) >= js_to_number(wanted),
-        Some("lt") => number(&value, was_undefined) < js_to_number(wanted),
-        Some("lte") => number(&value, was_undefined) <= js_to_number(wanted),
+        Some("gt") => number(&value, was_undefined) > number(wanted, wanted_undefined),
+        Some("gte") => number(&value, was_undefined) >= number(wanted, wanted_undefined),
+        Some("lt") => number(&value, was_undefined) < number(wanted, wanted_undefined),
+        Some("lte") => number(&value, was_undefined) <= number(wanted, wanted_undefined),
         _ => true,
     }
 }

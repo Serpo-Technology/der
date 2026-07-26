@@ -1247,6 +1247,56 @@ const VIEW_CASES: ViewCase[] = [
     state: { zeroed: null, mode: 'on', ...VIEW_ROWS_STATE },
   },
   {
+    name: 'condition values resolve reference objects like transform params',
+    elements: [
+      {
+        id: 'const-ref',
+        type: 'text',
+        properties: { content: 'typed zero' },
+        visibleWhen: {
+          source: 'state',
+          sourceId: 'pages',
+          operator: 'gt',
+          value: { source: 'constant', sourceId: '0', value: 0 },
+        },
+      },
+      {
+        id: 'state-ref',
+        type: 'text',
+        properties: { content: 'beats limit' },
+        visibleWhen: {
+          source: 'state',
+          sourceId: 'pages',
+          operator: 'gte',
+          value: { source: 'state', sourceId: 'limit' },
+        },
+      },
+      {
+        id: 'element-ref',
+        type: 'text',
+        properties: { content: 'matches picked' },
+        visibleWhen: {
+          source: 'state',
+          sourceId: 'mode',
+          operator: 'equals',
+          value: { source: 'element', sourceId: 'mode-in' },
+        },
+      },
+      {
+        id: 'missing-ref',
+        type: 'text',
+        properties: { content: 'never' },
+        visibleWhen: {
+          source: 'state',
+          sourceId: 'pages',
+          operator: 'gt',
+          value: { source: 'state', sourceId: 'ghost-limit' },
+        },
+      },
+    ],
+    state: { pages: 3, limit: 2, mode: 'dark', 'element_mode-in': 'dark' },
+  },
+  {
     name: 'fragment instances expand and resolve against state',
     elements: [
       {

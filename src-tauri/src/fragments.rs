@@ -33,6 +33,8 @@ const MAX_INPUT_BYTES: usize = 1 << 20;
 const MAX_OUTPUT_BYTES: u32 = 4 << 20;
 const MAX_OPERATIONS: usize = 64;
 const MEM_LIMIT_BYTES: usize = 64 << 20;
+const MAX_INPUT_BYTES_LARGE: usize = 32 << 20;
+const MEM_LIMIT_BYTES_LARGE: usize = 512 << 20;
 const FUEL_BUDGET: u64 = 500_000_000;
 const EPOCH_TICK_MS: u64 = 100;
 const EPOCH_DEADLINE_TICKS: u64 = 20; // roughly two seconds of wall clock
@@ -479,11 +481,12 @@ pub fn verify_bundle(raw: &[u8]) -> FragmentResult<VerifiedBundle> {
         .as_ref()
         .map(|service| format!("net:{}", service.base_url));
     for capability in &manifest.capabilities {
-        if Some(capability) != allowed_capability.as_ref() {
+        let io_large = capability == "io:large" && !manifest.wasm_sha256.is_empty();
+        if !io_large && Some(capability) != allowed_capability.as_ref() {
             return Err(fail(
                 FragmentErrorKind::VerifyFailed,
                 format!(
-                    "Capability \"{}\" is not allowed; integration parts may declare exactly net:<service base URL>",
+                    "Capability \"{}\" is not allowed; integration parts may declare exactly net:<service base URL>, and compute parts io:large",
                     capability
                 ),
             ));
@@ -742,6 +745,7 @@ fn check_abi(module: &Module) -> FragmentResult<()> {
 
 struct StoreData {
     grow_denied: bool,
+    mem_limit: usize,
 }
 
 impl wasmtime::ResourceLimiter for StoreData {
@@ -751,7 +755,7 @@ impl wasmtime::ResourceLimiter for StoreData {
         desired: usize,
         _maximum: Option<usize>,
     ) -> wasmtime::Result<bool> {
-        if desired > MEM_LIMIT_BYTES {
+        if desired > self.mem_limit {
             self.grow_denied = true;
             return Ok(false);
         }
@@ -913,14 +917,29 @@ pub fn execute_in_module(
     let envelope = serde_json::json!({ "operation": operation, "inputs": inputs });
     let request = serde_json::to_vec(&envelope)
         .map_err(|e| fail(FragmentErrorKind::Io, e.to_string()))?;
-    if request.len() > MAX_INPUT_BYTES {
-        return Err(fail(FragmentErrorKind::InputTooLarge, "Operation inputs exceed 1 MiB"));
+    // Parts that declared io:large at install (and were consented to in the
+    // review) get media-sized budgets; everything else keeps the tight ones.
+    let large_io = loaded
+        .manifest
+        .capabilities
+        .iter()
+        .any(|capability| capability == "io:large");
+    let (input_cap, input_cap_text, mem_limit, fuel) = if large_io {
+        (MAX_INPUT_BYTES_LARGE, "32 MiB", MEM_LIMIT_BYTES_LARGE, FUEL_BUDGET * 10)
+    } else {
+        (MAX_INPUT_BYTES, "1 MiB", MEM_LIMIT_BYTES, FUEL_BUDGET)
+    };
+    if request.len() > input_cap {
+        return Err(fail(
+            FragmentErrorKind::InputTooLarge,
+            format!("Operation inputs exceed {}", input_cap_text),
+        ));
     }
 
-    let mut store = Store::new(engine, StoreData { grow_denied: false });
+    let mut store = Store::new(engine, StoreData { grow_denied: false, mem_limit });
     store.limiter(|data| data);
     store
-        .set_fuel(FUEL_BUDGET)
+        .set_fuel(fuel)
         .map_err(|e| fail(FragmentErrorKind::Io, e.to_string()))?;
     store.set_epoch_deadline(EPOCH_DEADLINE_TICKS);
 

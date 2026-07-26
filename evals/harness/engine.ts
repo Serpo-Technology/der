@@ -17,15 +17,21 @@ export interface BehaviorStep {
   value?: string;
   ms?: number;
   optional?: boolean;
-  expect?: 'text' | 'noText' | 'rowCount';
+  expect?: 'text' | 'noText' | 'rowCount' | 'viewer' | 'fileSaved';
   match?: string;
   count?: number;
+  /** fileSaved: the saved base64 must start with this (a magic-byte check). */
+  dataPrefix?: string;
 }
 
 export interface BehaviorScenario {
   stubs?: Record<string, Record<string, unknown>>;
+  /** The file the stubbed picker answers with. */
+  file?: { name: string; mime: string; text?: string };
   steps: BehaviorStep[];
 }
+
+import { lastSavedFile } from './file-stubs';
 
 const norm = (s: string | null | undefined): string => (s ?? '').trim().toLowerCase();
 
@@ -216,6 +222,37 @@ async function runOne(step: BehaviorStep, root: HTMLElement): Promise<void> {
         if (n !== step.count) {
           throw new Error(
             `Expected ${step.count} rows, found ${n}; page: ${text().slice(0, 300)}`
+          );
+        }
+      }, { timeout: 4000 });
+    } else if (step.expect === 'viewer') {
+      // A media element wired up: some embed/video/img carries a src.
+      const matches = toMatcher(step.match ?? '');
+      await waitFor(() => {
+        const sources = Array.from(
+          root.querySelectorAll<HTMLElement>('embed, video, img')
+        ).map((node) => node.getAttribute('src') ?? '');
+        if (!sources.some((src) => src.length > 0 && matches(src))) {
+          throw new Error(
+            `Expected a viewer with src matching ${JSON.stringify(step.match)}; sources: ${JSON.stringify(sources)}`
+          );
+        }
+      }, { timeout: 4000 });
+    } else if (step.expect === 'fileSaved') {
+      const matches = toMatcher(step.match ?? '');
+      await waitFor(() => {
+        const saved = lastSavedFile();
+        if (!saved) {
+          throw new Error('Expected file.save to have run; nothing was saved');
+        }
+        if (step.match && !matches(saved.name)) {
+          throw new Error(
+            `Expected the saved name to match ${JSON.stringify(step.match)}; got: ${saved.name}`
+          );
+        }
+        if (step.dataPrefix && !saved.data.startsWith(step.dataPrefix)) {
+          throw new Error(
+            `Expected saved data starting with ${step.dataPrefix}; got: ${saved.data.slice(0, 24)}`
           );
         }
       }, { timeout: 4000 });

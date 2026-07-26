@@ -39,6 +39,9 @@ impl OperationDispatcher for HostDispatcher {
         if request.operation_name == "http.get" {
             return self.dispatch_http_get(request);
         }
+        if let Some(outcome) = self.dispatch_file_op(request) {
+            return outcome;
+        }
         if let Some(implementation) = request.implementation {
             if implementation.get("endpoint").is_some() {
                 return self.dispatch_remote(request.inputs, implementation);
@@ -88,6 +91,28 @@ impl HostDispatcher {
         ))
         .map_err(|error| error.message)?;
         as_outputs(data)
+    }
+
+    /// The user-mediated file IO layer: dialogs and grant-confined reads,
+    /// shared with the webview's commands.
+    fn dispatch_file_op(
+        &self,
+        request: &DispatchRequest,
+    ) -> Option<Result<Map<String, Value>, String>> {
+        let text = |key: &str| {
+            request
+                .inputs
+                .get(key)
+                .map(super::value::js_to_string)
+                .unwrap_or_default()
+        };
+        let result = match request.operation_name {
+            "file.pick" => crate::files::pick_core(&self.app, &text("kind")),
+            "file.read" => crate::files::read_core(&self.app, &text("file")),
+            "file.save" => crate::files::save_core(&self.app, &text("data"), &text("name")),
+            _ => return None,
+        };
+        Some(result.and_then(as_outputs))
     }
 
     /// Mirrors the webview's http.get builtin: the url input becomes a GET
