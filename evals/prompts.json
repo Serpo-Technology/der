@@ -1683,6 +1683,45 @@
           }
         ]
       }
+    },
+    {
+      "id": "markdown-preview",
+      "prompt": "A markdown previewer: I write markdown in a large text box, press Preview, and see the rendered result with real headings and bold text",
+      "behavior": {
+        "steps": [
+          {
+            "do": "type",
+            "into": [
+              "markdown",
+              "text",
+              "write"
+            ],
+            "value": "# Trip plan\n\nPack **warm** clothes."
+          },
+          {
+            "do": "click",
+            "on": [
+              "preview",
+              "render",
+              "show"
+            ]
+          },
+          {
+            "expect": "selector",
+            "selector": ".der-html-content h1",
+            "min": 1
+          },
+          {
+            "expect": "text",
+            "match": "Trip plan"
+          },
+          {
+            "expect": "selector",
+            "selector": ".der-html-content strong, .der-html-content b",
+            "min": 1
+          }
+        ]
+      }
     }
   ]
 }

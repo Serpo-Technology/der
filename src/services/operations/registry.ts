@@ -1082,6 +1082,16 @@ export const ELEMENT_MANIFESTS: Record<string, ElementManifest> = {
     howto:
       'Bind "src" from state fed by file.pick\'s "url" output (an Open button chains file.pick and routes url into state). Set "emptyText" for the before-open message.',
   },
+  html: {
+    type: 'html',
+    description:
+      'Rich-content viewer: renders the sanitized HTML string bound to "content" (email bodies, converted markdown). Scripts and interactive parts never run.',
+    knobs: [],
+    passthroughProps: ['content', 'emptyText', 'className'],
+    bindableProps: ['content'],
+    howto:
+      'Bind "content" from state holding an HTML string, e.g. docs.markdownHtml\'s "html" output for live markdown previews. For plain text use a text element instead; set "emptyText" for the before-content message.',
+  },
   document: {
     type: 'document',
     description:

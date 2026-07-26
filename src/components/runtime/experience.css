@@ -622,3 +622,50 @@
   text-decoration: underline;
   padding: 0;
 }
+
+.der-html-content {
+  overflow-y: auto;
+  line-height: 1.5;
+  min-height: 0;
+}
+
+.der-html-content h1,
+.der-html-content h2,
+.der-html-content h3 {
+  margin: 0.6em 0 0.3em;
+}
+
+.der-html-content p {
+  margin: 0.4em 0;
+}
+
+.der-html-content pre,
+.der-html-content code {
+  background: var(--der-surface-2, rgba(127, 127, 127, 0.12));
+  border-radius: 4px;
+}
+
+.der-html-content pre {
+  padding: 8px 10px;
+  overflow-x: auto;
+}
+
+.der-html-content a {
+  color: var(--der-accent, inherit);
+  text-decoration: underline;
+  cursor: default;
+}
+
+.der-html-content img {
+  max-width: 100%;
+}
+
+.der-html-content table {
+  border-collapse: collapse;
+}
+
+.der-html-content th,
+.der-html-content td {
+  border: 1px solid var(--der-border, rgba(127, 127, 127, 0.3));
+  padding: 4px 8px;
+}

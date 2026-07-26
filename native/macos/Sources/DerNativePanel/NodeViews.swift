@@ -7,6 +7,7 @@ import Charts
 import PDFKit
 import Quartz
 import SwiftUI
+import WebKit
 
 @MainActor
 final class TreeModel: ObservableObject {
@@ -282,6 +283,7 @@ struct NodeView: View {
         case "image": ImageNode(node: node)
         case "chart": ChartNode(node: node)
         case "pdf": PdfNode(node: node)
+        case "html": HtmlNode(node: node)
         case "document": DocumentNode(node: node)
         case "video": VideoNode(node: node)
         case "link": LinkNode(node: node)
@@ -718,6 +720,65 @@ struct MagnifierControls: View {
         .padding(6)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 7))
         .padding(8)
+    }
+}
+
+/// Rich content in a sealed web view: JavaScript off, every navigation
+/// cancelled, so the HTML string is display only.
+private struct SealedHtmlView: NSViewRepresentable {
+    let html: String
+
+    final class Delegate: NSObject, WKNavigationDelegate {
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            // The initial loadHTMLString arrives as .other with a nil
+            // request URL scheme handled by about:blank; everything the
+            // content itself tries to open is cancelled.
+            if navigationAction.navigationType == .other,
+                webView.url == nil || webView.url?.absoluteString == "about:blank"
+            {
+                decisionHandler(.allow)
+                return
+            }
+            decisionHandler(.cancel)
+        }
+    }
+
+    func makeCoordinator() -> Delegate { Delegate() }
+
+    func makeNSView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+        let view = WKWebView(frame: .zero, configuration: configuration)
+        view.navigationDelegate = context.coordinator
+        view.setValue(false, forKey: "drawsBackground")
+        view.loadHTMLString(styled(html), baseURL: nil)
+        return view
+    }
+
+    func updateNSView(_ view: WKWebView, context: Context) {
+        view.loadHTMLString(styled(html), baseURL: nil)
+    }
+
+    private func styled(_ body: String) -> String {
+        "<meta charset=\"utf-8\"><style>body{font: 13px -apple-system, sans-serif; color: CanvasText; margin: 8px;} a{pointer-events: none;}</style>" + body
+    }
+}
+
+struct HtmlNode: View {
+    let node: ResolvedNode
+
+    var body: some View {
+        let content = node.prop("content")?.stringValue ?? ""
+        if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ViewerEmpty(text: node.prop("emptyText")?.stringValue ?? "Nothing to show yet")
+        } else {
+            SealedHtmlView(html: content)
+                .frame(minHeight: 220)
+        }
     }
 }
 

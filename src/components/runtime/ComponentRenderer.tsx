@@ -21,6 +21,7 @@ import {
   ResolvedNode,
   resolveViewTree,
 } from '../../services/runtime-view/resolve-view';
+import { sanitizeHtml } from '../../services/runtime-view/sanitize-html';
 import type { ItemScope } from '../../services/runtime-view/resolve-view';
 import type { EventContext } from './OperationExecutor';
 
@@ -39,6 +40,7 @@ const UI_COMPONENTS = {
   'image': ImageComponent,
   'chart': ChartComponent,
   'pdf': PdfComponent,
+  'html': HtmlComponent,
   'document': DocumentComponent,
   'video': VideoComponent,
   'link': LinkComponent,
@@ -537,6 +539,21 @@ function ChartComponent({ data, x, y, emptyText, className, ...props }: any) {
         </text>
       ))}
     </svg>
+  );
+}
+
+function HtmlComponent({ content, emptyText, className, ...props }: any) {
+  const text = typeof content === 'string' ? content : '';
+  if (!text.trim()) {
+    return <div className="der-viewer-empty">{emptyText || 'Nothing to show yet'}</div>;
+  }
+  return (
+    <div
+      className={`der-html-content${className ? ` ${className}` : ''}`}
+      // Sanitized above: formatting only, nothing executable survives.
+      dangerouslySetInnerHTML={{ __html: sanitizeHtml(text) }}
+      {...props}
+    />
   );
 }
 

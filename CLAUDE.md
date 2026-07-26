@@ -297,7 +297,12 @@ renderer URL (the asset protocol scope for the webview; the bridge rewrites gran
 asset URLs to file URLs for the panel), `file.read` returns base64 plus UTF-8 text for
 granted tokens only, and `file.save` writes solely through the save panel. Viewer
 elements `pdf` and `video` (plus `image`) bind `src` from pick's `url` output: embed
-and video tags in the webview, PDFKit and AVKit natively. Converter apps are chains of
+and video tags in the webview, PDFKit and AVKit natively. The `html` element is the
+rich-content viewer: its bound `content` string renders through an allowlist
+sanitizer in the webview (`sanitize-html.ts`: formatting tags only, links keep text
+and tooltip but never navigate, images data:/https only) and through a sealed
+WKWebView natively (JavaScript off, every navigation cancelled); markdown previews
+chain docs.markdownHtml into it (the markdown-preview eval). Converter apps are chains of
 these small bits (pick, read, convert, save) wired through state, proven end to end by
 the pdf-viewer, image-shrink, and md-to-pdf eval prompts with stubbed dialogs and real
 wasm.
