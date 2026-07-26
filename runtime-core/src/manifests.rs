@@ -11,7 +11,7 @@ static REGISTRY: OnceLock<Value> = OnceLock::new();
 
 pub fn registry() -> &'static Value {
     REGISTRY.get_or_init(|| {
-        serde_json::from_str(include_str!("../../../runtime-conformance/registry.json"))
+        serde_json::from_str(include_str!("../../runtime-conformance/registry.json"))
             .expect("registry snapshot parses")
     })
 }

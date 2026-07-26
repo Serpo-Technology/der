@@ -288,7 +288,7 @@ fn evaluate_node(node: &Node, row: &Map<String, Value>) -> Result<f64, String> {
                 "abs" => Ok(values[0].abs()),
                 "floor" => Ok(values[0].floor()),
                 "ceil" => Ok(values[0].ceil()),
-                "round" => Ok(crate::runtime::value::js_math_round(values[0])),
+                "round" => Ok(crate::value::js_math_round(values[0])),
                 "min" => Ok(values[0].min(values[1])),
                 "max" => Ok(values[0].max(values[1])),
                 "pow" => Ok(values[0].powf(values[1])),

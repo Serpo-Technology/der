@@ -32,3 +32,7 @@ fragments/*/target/
 llama.cpp/
 native/macos/.build/
 src-tauri/binaries/
+
+# Kernel crates: build output stays local, the dist wasm artifact is committed
+runtime-core/target/
+runtime-wasm/target/

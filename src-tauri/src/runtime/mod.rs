@@ -1,25 +1,16 @@
-//! The experience runtime kernel: transform and row-expression semantics
-//! implemented over JSON values. The webview runtime implements the same
-//! kernel in TypeScript; the conformance vectors in runtime-conformance/
-//! hold the two to identical behavior, JavaScript edge cases included, so
-//! every renderer backend computes exactly what the webview computes.
+//! The runtime surface of the desktop core. The semantic kernel lives in
+//! the der-runtime crate (host-free, builds native and for wasm32) and is
+//! re-exported here so every existing path keeps working; this module adds
+//! the host: the dispatcher over parts and platform IO, live sessions, the
+//! native panel bridge, management plumbing, and background refresh.
 
-pub mod compose;
-pub mod env;
-pub mod expression;
+pub use der_runtime::{
+    compose, env, expression, llm_schema, manifests, operations, prompt, session, streaming,
+    templates, transforms, validation, value, view,
+};
+
 pub mod host;
-pub mod llm_schema;
 pub mod manage;
-pub mod manifests;
-pub mod prompt;
 pub mod schedule;
-pub mod operations;
-pub mod session;
 pub mod sessions;
 pub mod sidecar;
-pub mod streaming;
-pub mod templates;
-pub mod transforms;
-pub mod validation;
-pub mod value;
-pub mod view;

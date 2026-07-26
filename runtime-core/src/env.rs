@@ -43,6 +43,7 @@ impl RuntimeEnv for ScriptedEnv {
 /// Real entropy and the real clock, for live sessions.
 pub struct SystemEnv;
 
+#[cfg(not(target_arch = "wasm32"))]
 impl RuntimeEnv for SystemEnv {
     fn next_id(&mut self) -> String {
         uuid::Uuid::new_v4().to_string()
