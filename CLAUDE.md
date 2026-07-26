@@ -440,7 +440,12 @@ blueprint projection (`compose::derive_blueprint`) whose edited plan regenerates
 contract through `compose::generate_from_blueprint` (blueprint mode over the same loop),
 both landing with state preserved. The home reads the detailed bookmarks list, refreshes
 without raising its window (`raise` on the home message; only explicit opens front it),
-and shows example prompt chips when the create field is empty. The panel is the app's face on macOS: regular activation policy (Dock and
+and shows example prompt chips when the create field is empty. First run is guided:
+the home message carries `llmReady` (`settings::llm_ready`: subscription signed in,
+an API key for the provider, or a local base URL) and while false the header shows a
+setup card pointing at Settings with creation disabled; every settings save, key
+change, and sign-in refreshes the home so the card clears the moment a model works.
+Bookmark rows also expose the background-refresh toggle in their context menu. The panel is the app's face on macOS: regular activation policy (Dock and
 menu bar identity from the DER.app bundle, so the packaged app shows the DER name and
 icon), a full menu bar (Settings, Parts, Home, New App, Edit, Window) whose picks travel
 as bridge events, Dock reopen shows the home, and quitting sends `quitApp` so the core

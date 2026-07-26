@@ -13,10 +13,13 @@ final class HomeModel: ObservableObject {
     @Published var note: String?
     @Published var isBuilding = false
     @Published var buildFailed = false
+    /// False until a model provider is set up; the header shows the setup
+    /// card instead of the create field.
+    @Published var llmReady = true
 
     func create() {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty, llmReady else { return }
         Outbound.shared.send(["event": "create", "prompt": trimmed])
         prompt = ""
         buildFailed = false
@@ -172,6 +175,30 @@ struct HomeView: View {
         .onAppear { promptFocused = true }
     }
 
+    /// First run: creating needs a model, so the card walks straight to it.
+    private var setupCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Connect a model to start creating")
+                .font(.headline)
+            Text("Sign in with your Claude subscription, add an API key, or point DER at a local model. Apps you create run on your own account.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Open Settings") { model.openSettings() }
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.accentColor.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.accentColor.opacity(0.35))
+                )
+        )
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
@@ -180,6 +207,9 @@ struct HomeView: View {
                 Text("Describe an app. Watch it assemble.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+            }
+            if !model.llmReady {
+                setupCard
             }
             VStack(alignment: .leading, spacing: 8) {
                 ZStack(alignment: .topLeading) {
@@ -219,6 +249,7 @@ struct HomeView: View {
                         .foregroundStyle(.tertiary)
                     Spacer()
                     Button("Create") { model.create() }
+                        .disabled(!model.llmReady)
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
                         .disabled(

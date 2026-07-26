@@ -43,6 +43,7 @@ final class PanelWindows: NSObject, NSWindowDelegate {
             homeModel.bookmarks = message.bookmarks ?? []
             homeModel.recipes = message.recipes ?? []
             homeModel.recents = message.recents ?? []
+            homeModel.llmReady = message.llmReady ?? true
             // Refreshes update in place; only explicit opens front the home.
             if message.raise ?? true {
                 showHome()

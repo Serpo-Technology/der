@@ -277,6 +277,9 @@ public struct InboundMessage: Decodable, Sendable {
     public let assembling: Bool?
     /// Home refreshes leave focus alone; explicit opens raise the window.
     public let raise: Bool?
+    /// Whether the configured model provider can answer; gates the create
+    /// field behind the setup card.
+    public let llmReady: Bool?
     // Editor snapshots.
     public let experienceId: String?
     public let name: String?

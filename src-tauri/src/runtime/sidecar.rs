@@ -193,12 +193,14 @@ impl SidecarBridge {
     /// DER's own native surface: a prompt, the kept apps, recent creations,
     /// and the ready-made apps installed parts ship. `raise` fronts the home
     /// window; refreshes leave whatever the user is looking at alone.
+    #[allow(clippy::too_many_arguments)]
     pub fn send_home(
         &mut self,
         bookmarks: &[Value],
         recipes: &[Value],
         recents: &[Value],
         raise: bool,
+        llm_ready: bool,
     ) -> Result<(), String> {
         self.transport.lock().unwrap().send(&json!({
             "cmd": "home",
@@ -206,6 +208,7 @@ impl SidecarBridge {
             "recipes": recipes,
             "recents": recents,
             "raise": raise,
+            "llmReady": llm_ready,
         }))
     }
 
@@ -1424,10 +1427,13 @@ fn send_native_home(app: &tauri::AppHandle, raise: bool) {
             .collect();
         let recipes = installed_recipes(&app);
         let recents = recent_experiences(&app);
+        let llm_ready = crate::settings::llm_ready(&app);
         match ensure_running(&app) {
             Ok(bridge) => {
-                if let Err(error) =
-                    bridge.lock().unwrap().send_home(&bookmarks, &recipes, &recents, raise)
+                if let Err(error) = bridge
+                    .lock()
+                    .unwrap()
+                    .send_home(&bookmarks, &recipes, &recents, raise, llm_ready)
                 {
                     eprintln!("Failed to show the native home: {}", error);
                 }

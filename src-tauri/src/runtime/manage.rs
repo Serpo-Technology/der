@@ -264,6 +264,7 @@ pub async fn handle_action(app: &tauri::AppHandle, event: &Value) {
             };
             let snapshot = settings_snapshot(app, Some((note.0, &note.1)));
             sidecar::send_panel_message(app, &snapshot);
+            sidecar::refresh_native_home(app);
         }
         "settingsSetKey" => {
             let outcome =
@@ -275,6 +276,7 @@ pub async fn handle_action(app: &tauri::AppHandle, event: &Value) {
             };
             let snapshot = settings_snapshot(app, Some((note.0, &note.1)));
             sidecar::send_panel_message(app, &snapshot);
+            sidecar::refresh_native_home(app);
         }
         "settingsClearKey" => {
             let outcome =
@@ -285,6 +287,7 @@ pub async fn handle_action(app: &tauri::AppHandle, event: &Value) {
             };
             let snapshot = settings_snapshot(app, Some((note.0, &note.1)));
             sidecar::send_panel_message(app, &snapshot);
+            sidecar::refresh_native_home(app);
         }
         "oauthStart" => {
             let pending = app.state::<crate::oauth::PendingOauth>();
@@ -311,6 +314,7 @@ pub async fn handle_action(app: &tauri::AppHandle, event: &Value) {
             };
             let snapshot = settings_snapshot(app, Some((note.0, &note.1)));
             sidecar::send_panel_message(app, &snapshot);
+            sidecar::refresh_native_home(app);
         }
         "integrationSave" => {
             let target = Some(text("target")).filter(|t| !t.trim().is_empty());

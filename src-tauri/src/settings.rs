@@ -141,6 +141,25 @@ pub struct IntegrationCredentialView {
     pub fields: Option<std::collections::BTreeMap<String, String>>,
 }
 
+/// True when the configured provider can actually answer: signed in for the
+/// Claude subscription, a stored key for API providers, a base URL for
+/// local. The native home gates its create field on this.
+pub fn llm_ready(app: &AppHandle) -> bool {
+    let settings = load_settings(app);
+    let credentials = load_credentials(app);
+    match settings.provider.as_str() {
+        "claude-subscription" => credentials.claude_oauth.is_some(),
+        "local" => settings
+            .base_url
+            .as_deref()
+            .is_some_and(|url| !url.trim().is_empty()),
+        provider => credentials
+            .api_keys
+            .get(provider)
+            .is_some_and(|key| !key.trim().is_empty()),
+    }
+}
+
 #[tauri::command]
 pub fn list_integration_credentials(app: AppHandle) -> Vec<IntegrationCredentialView> {
     let mut views: Vec<IntegrationCredentialView> = load_integrations(&app)
