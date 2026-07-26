@@ -1,0 +1,78 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.mailer",
+  "name": "Mailer",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Email sending through the Resend API: your apps send real mail with your own API key.",
+  "namespace": "mail",
+  "capabilities": [
+    "net:https://api.resend.com"
+  ],
+  "wasmSha256": "",
+  "createdAt": "2026-07-25T23:55:00Z",
+  "service": {
+    "baseUrl": "https://api.resend.com",
+    "credentials": [
+      {
+        "name": "api-key",
+        "kind": "bearer",
+        "label": "Resend API key (resend.com, free tier works)"
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "mail.send",
+      "description": "Sends an email. Inputs from, to, subject, text; returns {id} on acceptance.",
+      "inputs": [
+        {
+          "name": "from",
+          "type": "string",
+          "required": true,
+          "description": "Sender, e.g. \"App <onboarding@resend.dev>\" (resend.dev senders work without domain setup)"
+        },
+        {
+          "name": "to",
+          "type": "string",
+          "required": true,
+          "description": "Recipient address"
+        },
+        {
+          "name": "subject",
+          "type": "string",
+          "required": true,
+          "description": "Subject line"
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "required": true,
+          "description": "Plain-text body"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "id",
+          "type": "string",
+          "description": "The provider's message id"
+        }
+      ],
+      "remote": {
+        "endpoint": "/emails",
+        "method": "POST",
+        "body": {
+          "from": "{from}",
+          "to": "{to}",
+          "subject": "{subject}",
+          "text": "{text}"
+        },
+        "project": {
+          "id": "id"
+        }
+      },
+      "howto": "Bind from/to/subject/text from inputs (a constant \"from\" like \"My App <onboarding@resend.dev>\" is fine); run on a Send button and show the returned id or a sent note. The API key is added once in the part's settings. For a zero-setup alternative, a link element with a mailto: href (format slots build it: mailto:{{value}}?subject={{subj}}) opens the user's own mail app instead."
+    }
+  ]
+}

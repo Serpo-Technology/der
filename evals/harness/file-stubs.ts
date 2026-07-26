@@ -21,12 +21,14 @@ export function lastSavedFile(): SavedFile | null {
   return saved;
 }
 
-export function setupFileStubs(file?: { name: string; mime: string; text?: string }): void {
+export function setupFileStubs(
+  file?: { name: string; mime: string; text?: string; base64?: string }
+): void {
   saved = null;
   const fixture = file ?? { name: 'sample.txt', mime: 'text/plain', text: 'sample' };
-  const base64 = fixture.text
-    ? Buffer.from(fixture.text, 'utf8').toString('base64')
-    : TINY_PNG_BASE64;
+  const base64 =
+    fixture.base64 ??
+    (fixture.text ? Buffer.from(fixture.text, 'utf8').toString('base64') : TINY_PNG_BASE64);
   setFileOpProviders({
     pick: async () => ({
       file: 'stub-file-token',

@@ -55,6 +55,7 @@ fn handle(ptr: i32, len: i32) -> Vec<u8> {
         "docs.markdownText" => markdown_text(inputs),
         "docs.textPdf" => text_pdf(inputs, false),
         "docs.markdownPdf" => text_pdf(inputs, true),
+        "docs.docxText" => docx_text(inputs),
         other => err_response(&format!("unknown operation {}", other)),
     }
 }
@@ -178,6 +179,131 @@ fn text_pdf(inputs: &Map<String, Value>, markdown_mode: bool) -> Vec<u8> {
     };
     let bytes = build_pdf(&title, &lines);
     ok_response(json!({ "base64": base64_encode(&bytes), "pages": pdf_page_count(&bytes) }))
+}
+
+/// Word documents are zip archives; the text lives in word/document.xml.
+/// Paragraphs become lines, tabs and breaks become whitespace, and every
+/// other tag drops away.
+fn docx_text(inputs: &Map<String, Value>) -> Vec<u8> {
+    let data = match inputs.get("base64") {
+        Some(Value::String(text)) => text,
+        _ => return err_response("base64 must be a string; feed it file.read's base64 output"),
+    };
+    let Some(bytes) = decode_base64(data) else {
+        return err_response("base64 does not decode");
+    };
+    if bytes.len() > 24 * 1024 * 1024 {
+        return err_response("the document is larger than 24 MB");
+    }
+    let mut archive = match zip::ZipArchive::new(std::io::Cursor::new(bytes)) {
+        Ok(archive) => archive,
+        Err(_) => return err_response("the data is not a .docx file (not a zip archive)"),
+    };
+    let mut xml = String::new();
+    {
+        use std::io::Read;
+        let mut entry = match archive.by_name("word/document.xml") {
+            Ok(entry) => entry,
+            Err(_) => return err_response("the archive has no word/document.xml; is this a .docx?"),
+        };
+        if entry.read_to_string(&mut xml).is_err() {
+            return err_response("the document xml does not decompress");
+        }
+    }
+
+    let mut out = String::new();
+    let mut chars = xml.chars().peekable();
+    let mut tag = String::new();
+    let mut in_tag = false;
+    while let Some(c) = chars.next() {
+        if in_tag {
+            if c == '>' {
+                in_tag = false;
+                let name: String = tag
+                    .trim_start_matches('/')
+                    .split([' ', '/'])
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
+                match name.as_str() {
+                    "w:p" if tag.starts_with('/') => out.push('\n'),
+                    "w:tab" => out.push('\t'),
+                    "w:br" => out.push('\n'),
+                    _ => {}
+                }
+                tag.clear();
+            } else {
+                tag.push(c);
+            }
+            continue;
+        }
+        if c == '<' {
+            in_tag = true;
+            continue;
+        }
+        // Entity decoding for the common five.
+        if c == '&' {
+            let mut entity = String::new();
+            for next in chars.by_ref() {
+                if next == ';' {
+                    break;
+                }
+                entity.push(next);
+                if entity.len() > 8 {
+                    break;
+                }
+            }
+            match entity.as_str() {
+                "amp" => out.push('&'),
+                "lt" => out.push('<'),
+                "gt" => out.push('>'),
+                "quot" => out.push('"'),
+                "apos" => out.push('\''),
+                _ => {}
+            }
+            continue;
+        }
+        out.push(c);
+    }
+    let text = out
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string();
+    ok_response(json!({ "text": text, "length": text.len() }))
+}
+
+fn decode_base64(text: &str) -> Option<Vec<u8>> {
+    fn value_of(byte: u8) -> Option<u32> {
+        match byte {
+            b'A'..=b'Z' => Some((byte - b'A') as u32),
+            b'a'..=b'z' => Some((byte - b'a' + 26) as u32),
+            b'0'..=b'9' => Some((byte - b'0' + 52) as u32),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+    let cleaned: Vec<u8> = text.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
+    let stripped: &[u8] = match cleaned.iter().position(|&b| b == b'=') {
+        Some(index) => &cleaned[..index],
+        None => &cleaned,
+    };
+    let mut out = Vec::with_capacity(stripped.len() * 3 / 4);
+    let mut buffer: u32 = 0;
+    let mut bits = 0;
+    for &byte in stripped {
+        let value = value_of(byte)?;
+        buffer = (buffer << 6) | value;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buffer >> bits) as u8);
+        }
+    }
+    Some(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -452,5 +578,29 @@ mod tests {
         inputs.insert("text".into(), json!(long));
         let out: Value = serde_json::from_slice(&text_pdf(&inputs, false)).unwrap();
         assert!(out["ok"]["pages"].as_u64().unwrap() >= 2);
+    }
+}
+
+#[cfg(test)]
+mod docx_tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn docx_text_extracts_paragraphs() {
+        let xml = r#"<?xml version="1.0"?><w:document><w:body><w:p><w:r><w:t>Hello &amp; welcome</w:t></w:r></w:p><w:p><w:r><w:t>Second</w:t><w:tab/><w:t>column</w:t></w:r></w:p></w:body></w:document>"#;
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        writer
+            .start_file("word/document.xml", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(xml.as_bytes()).unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+
+        let mut inputs = Map::new();
+        inputs.insert("base64".into(), json!(base64_encode(&bytes)));
+        let out: Value = serde_json::from_slice(&docx_text(&inputs)).unwrap();
+        let text = out["ok"]["text"].as_str().unwrap();
+        assert!(text.contains("Hello & welcome"));
+        assert!(text.contains("Second\tcolumn"));
     }
 }

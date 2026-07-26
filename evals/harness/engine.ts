@@ -30,7 +30,7 @@ export interface BehaviorStep {
 export interface BehaviorScenario {
   stubs?: Record<string, Record<string, unknown>>;
   /** The file the stubbed picker answers with. */
-  file?: { name: string; mime: string; text?: string };
+  file?: { name: string; mime: string; text?: string; base64?: string };
   steps: BehaviorStep[];
 }
 

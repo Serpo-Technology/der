@@ -248,12 +248,21 @@
       "howto": "Bind \"data\" from a state array; \"x\" names the label field and \"y\" the numeric field (defaults \"key\" and \"sum\", exactly what groupSum emits). Category totals: transforms [{\"type\": \"groupSum\", \"parameters\": {\"by\": \"category\", \"field\": \"amount\"}}] on the data binding. Per-row computed values chain deriveField first."
     },
     "pdf": {
-      "description": "PDF viewer: renders the document its \"src\" points at.",
+      "description": "PDF viewer with zoom: renders the document its \"src\" points at.",
       "knobs": [],
       "bindableProps": [
         "src"
       ],
       "howto": "Bind \"src\" from state fed by file.pick's \"url\" output (an Open button chains file.pick and routes url into state). Set \"emptyText\" for the before-open message."
+    },
+    "document": {
+      "description": "Document viewer for office files and more (docx, xlsx, pptx, pdf, images), rendering whatever its \"src\" points at.",
+      "knobs": [],
+      "bindableProps": [
+        "src",
+        "name"
+      ],
+      "howto": "Bind \"src\" from file.pick's \"url\" output and \"name\" from its \"name\" output. Use file.pick with no kind filter (or kind \"pdf\") so any document can be chosen. For pdf-only apps prefer the pdf element."
     },
     "video": {
       "description": "Video player with controls for the file its \"src\" points at.",
@@ -264,9 +273,12 @@
       "howto": "Bind \"src\" from state fed by file.pick's \"url\" output, exactly like the pdf element."
     },
     "link": {
-      "description": "Hyperlink.",
+      "description": "Hyperlink; mailto links open the user's mail app.",
       "knobs": [],
-      "howto": "Set \"href\" and \"text\"."
+      "bindableProps": [
+        "href"
+      ],
+      "howto": "Set \"href\" and \"text\". A compose-email link needs no mail service: bind href from an input with a format like {\"template\": \"mailto:{{value}}?subject={{subj}}\", \"subj\": {\"source\": \"element\", \"sourceId\": \"subject-in\"}}. For real in-app sending use mail.send when the Mailer part is installed."
     },
     "select": {
       "description": "Dropdown, auto-controlled by the runtime.",

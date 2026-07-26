@@ -26,3 +26,8 @@ strip = true
 version = "0.13"
 default-features = false
 features = ["html"]
+
+[dependencies.zip]
+version = "2"
+default-features = false
+features = ["deflate"]

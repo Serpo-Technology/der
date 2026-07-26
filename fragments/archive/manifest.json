@@ -1,0 +1,114 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.archive",
+  "name": "Archives",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Zip archives: list what is inside, extract entries, and build archives from named content.",
+  "namespace": "zip",
+  "capabilities": [
+    "io:large"
+  ],
+  "wasmSha256": "3c3d385620061e031cd04035eafe4458244b17ae660970b4bc49a8a191fac136",
+  "createdAt": "2026-07-25T23:40:00Z",
+  "operations": [
+    {
+      "name": "zip.list",
+      "description": "Lists a zip archive's entries. Returns {entries: [{name, size, compressed}], count}.",
+      "inputs": [
+        {
+          "name": "base64",
+          "type": "string",
+          "required": true,
+          "description": "Archive bytes, base64 (file.read's base64 output)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "entries",
+          "type": "array",
+          "description": "Entry objects with name, size, compressed"
+        },
+        {
+          "name": "count",
+          "type": "number"
+        }
+      ],
+      "howto": "Chain after file.pick + file.read; route \"entries\" into state and bind a list element's items to it (rows read item fields name and size)."
+    },
+    {
+      "name": "zip.extract",
+      "description": "Extracts one entry. Inputs base64 + name; returns {base64, text, name, size} (text null for binary entries).",
+      "inputs": [
+        {
+          "name": "base64",
+          "type": "string",
+          "required": true,
+          "description": "Archive bytes, base64"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "Entry name from zip.list (item field \"name\" works)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "base64",
+          "type": "string",
+          "description": "Entry bytes, base64"
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "description": "UTF-8 content for text entries; null for binary"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "size",
+          "type": "number"
+        }
+      ],
+      "howto": "A per-row Extract button passes the row's name via {\"source\": \"item\", \"sourceId\": \"name\"}; chain file.save with the extracted base64 to land it on disk."
+    },
+    {
+      "name": "zip.create",
+      "description": "Builds a zip from entries [{name, base64 or text}]. Returns {base64, size, count}; feed base64 to file.save.",
+      "inputs": [
+        {
+          "name": "entries",
+          "type": "array",
+          "required": true,
+          "description": "Array of {name, base64 | text} objects"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "description": "Unused; name the file at file.save"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "base64",
+          "type": "string",
+          "description": "Archive bytes, base64"
+        },
+        {
+          "name": "size",
+          "type": "number"
+        },
+        {
+          "name": "count",
+          "type": "number"
+        }
+      ],
+      "howto": "Bind \"entries\" from a state array your app builds (list.append rows with name and text fields work as-is); chain file.save with a .zip name."
+    }
+  ]
+}

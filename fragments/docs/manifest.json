@@ -3,12 +3,14 @@
   "abiVersion": 1,
   "id": "der-labs.docs",
   "name": "Documents",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "publisher": "der-labs",
   "description": "Document conversion bits: markdown to HTML or plain text, and text or markdown to a real PDF.",
   "namespace": "docs",
-  "capabilities": [],
-  "wasmSha256": "7c7d8059602a1ce90d3fc4133d19a11a357b66e1fde878dad83dc63f88b8da05",
+  "capabilities": [
+    "io:large"
+  ],
+  "wasmSha256": "6e12179f287fca4f07ad81dfb4a5e78aa1dadefa6a2c2fa4eb59368adb18e30c",
   "createdAt": "2026-07-25T21:45:00Z",
   "operations": [
     {
@@ -112,6 +114,30 @@
         }
       ],
       "howto": "The converter chain on one click: file.pick (markdown) routes \"file\" to state, file.read routes \"text\" to state, docs.markdownPdf binds \"markdown\" from that key and routes \"base64\" to state, file.save takes it with a name like \"notes.pdf\". Show \"pages\" in a caption."
+    },
+    {
+      "name": "docs.docxText",
+      "description": "Extracts the text of a Word document (.docx): paragraphs become lines. Returns {text, length}.",
+      "inputs": [
+        {
+          "name": "base64",
+          "type": "string",
+          "required": true,
+          "description": "The .docx bytes, base64 (file.read's base64 output)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "string",
+          "description": "The document text"
+        },
+        {
+          "name": "length",
+          "type": "number"
+        }
+      ],
+      "howto": "The office converter chain: file.pick -> file.read -> docs.docxText routes \"text\" into state for display, for docs.textPdf (a docx to PDF converter), or for file.save as .txt."
     }
   ]
 }

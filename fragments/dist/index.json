@@ -2,6 +2,22 @@
   "formatVersion": 1,
   "parts": [
     {
+      "id": "der-labs.archive",
+      "name": "Archives",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "zip",
+      "description": "Zip archives: list what is inside, extract entries, and build archives from named content.",
+      "operations": [
+        "zip.list",
+        "zip.extract",
+        "zip.create"
+      ],
+      "bundleUrl": "der-labs.archive.derpart",
+      "bundleSha256": "2babd286bb8face981112ac0a65f04fb4ab00cba120574b42bdb7d5af29d18bb",
+      "bundleBytes": 445232
+    },
+    {
       "id": "der-labs.coingecko",
       "name": "Crypto prices",
       "version": "1.0.0",
@@ -33,7 +49,7 @@
     {
       "id": "der-labs.docs",
       "name": "Documents",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "publisher": "der-labs",
       "namespace": "docs",
       "description": "Document conversion bits: markdown to HTML or plain text, and text or markdown to a real PDF.",
@@ -41,11 +57,12 @@
         "docs.markdownHtml",
         "docs.markdownText",
         "docs.textPdf",
-        "docs.markdownPdf"
+        "docs.markdownPdf",
+        "docs.docxText"
       ],
       "bundleUrl": "der-labs.docs.derpart",
-      "bundleSha256": "1b9b3633d2078ddd3b56218144e311fa303a871d6348dd73a38f28bc4e3cc13c",
-      "bundleBytes": 406428
+      "bundleSha256": "37feda01390414af4dc5df807a00a0aec146482bca91bdc20781289d7ca826da",
+      "bundleBytes": 542200
     },
     {
       "id": "der-labs.expr-evaluate",
@@ -90,6 +107,20 @@
       "bundleUrl": "der-labs.imaging.derpart",
       "bundleSha256": "66f2dcec0710569afebb08b9d646a56531ff79d9806be9230ef2f640ba0b3f06",
       "bundleBytes": 1109580
+    },
+    {
+      "id": "der-labs.mailer",
+      "name": "Mailer",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "mail",
+      "description": "Email sending through the Resend API: your apps send real mail with your own API key.",
+      "operations": [
+        "mail.send"
+      ],
+      "bundleUrl": "der-labs.mailer.derpart",
+      "bundleSha256": "6baaf95af635cff223d4fe7fbb846a2d5c0d3be9d15c8fd364b1c7a4e8f9307c",
+      "bundleBytes": 3268
     },
     {
       "id": "der-labs.openweather",

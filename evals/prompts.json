@@ -360,6 +360,54 @@
       }
     },
     {
+      "id": "docx-to-pdf",
+      "prompt": "A Word to PDF converter: pick a .docx file, show its text, and save it as a PDF",
+      "behavior": {
+        "file": {
+          "name": "report.docx",
+          "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "base64": "UEsDBBQAAAAIAIi9+VyRzx8FvQAAACkBAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbH2QvQ7CMAyEXyXKiqgLAwNqywCswMALWKlbIpofJebv7XEBMTAw2t/d+eRqdXeDulLKNvhaz4pSr5rq+IiUlRCfa31ijkuAbE7kMBchkhfSheSQZUw9RDRn7AnmZbkAEzyT5ymPGbqpNtThZWC1vcv6fUXsWq3fuvFUrTHGwRpkwTBSaKq9lEq2JXXAxDt0ooJbSC20wVycOIv/MVff/nSdhq6zhr7+MS2mYChn63s3FF/i0PrJpwe8ntE8AVBLAwQUAAAACACIvflcZM57daMAAAD6AAAAEQAAAHdvcmQvZG9jdW1lbnQueG1sbY9LDsIwDESvEuUAdWHBournDHCDkJo2UuMEJ2np7UlACAmxeZY9mhm5HR52EStyMI46eahqOfTt1oxOJ4sURZYpNFsn5xh9AxD0jFaFynmkrN0cWxXzyhNsjkfPTmMIhia7wLGuT2CVIVkir27cy/QFXBD7c1IckZddhGSt4r2Fci7kF/2v44IrUkIxMW6CjMbsjbMJ4v6Oqv4kwKccvo/1T1BLAQIUAxQAAAAIAIi9+VyRzx8FvQAAACkBAAATAAAAAAAAAAAAAACAAQAAAABbQ29udGVudF9UeXBlc10ueG1sUEsBAhQDFAAAAAgAiL35XGTOe3WjAAAA+gAAABEAAAAAAAAAAAAAAIAB7gAAAHdvcmQvZG9jdW1lbnQueG1sUEsFBgAAAAACAAIAgAAAAMABAAAAAA=="
+        },
+        "steps": [
+          {
+            "do": "click",
+            "on": [
+              "open",
+              "pick",
+              "choose"
+            ],
+            "optional": true
+          },
+          {
+            "do": "click",
+            "on": [
+              "convert",
+              "save",
+              "make"
+            ],
+            "optional": true
+          },
+          {
+            "expect": "text",
+            "match": "/Quarterly summary/"
+          },
+          {
+            "do": "click",
+            "on": [
+              "save",
+              "download"
+            ],
+            "optional": true
+          },
+          {
+            "expect": "fileSaved",
+            "match": "/\\.pdf/",
+            "dataPrefix": "JVBERi"
+          }
+        ]
+      }
+    },
+    {
       "id": "spending-chart",
       "prompt": "A spending tracker: I log expenses with a category and amount, and a bar chart shows the total per category, plus the overall total as a number",
       "behavior": {

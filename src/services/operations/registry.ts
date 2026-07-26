@@ -785,12 +785,22 @@ export const ELEMENT_MANIFESTS: Record<string, ElementManifest> = {
   },
   pdf: {
     type: 'pdf',
-    description: 'PDF viewer: renders the document its "src" points at.',
+    description: 'PDF viewer with zoom: renders the document its "src" points at.',
     knobs: [],
     passthroughProps: ['src', 'emptyText', 'className'],
     bindableProps: ['src'],
     howto:
       'Bind "src" from state fed by file.pick\'s "url" output (an Open button chains file.pick and routes url into state). Set "emptyText" for the before-open message.',
+  },
+  document: {
+    type: 'document',
+    description:
+      'Document viewer for office files and more (docx, xlsx, pptx, pdf, images), rendering whatever its "src" points at.',
+    knobs: [],
+    passthroughProps: ['src', 'name', 'emptyText', 'className'],
+    bindableProps: ['src', 'name'],
+    howto:
+      'Bind "src" from file.pick\'s "url" output and "name" from its "name" output. Use file.pick with no kind filter (or kind "pdf") so any document can be chosen. For pdf-only apps prefer the pdf element.',
   },
   video: {
     type: 'video',
@@ -803,10 +813,12 @@ export const ELEMENT_MANIFESTS: Record<string, ElementManifest> = {
   },
   link: {
     type: 'link',
-    description: 'Hyperlink.',
+    description: "Hyperlink; mailto links open the user's mail app.",
     knobs: [],
     passthroughProps: ['href', 'text', 'className'],
-    howto: 'Set "href" and "text".',
+    bindableProps: ['href'],
+    howto:
+      'Set "href" and "text". A compose-email link needs no mail service: bind href from an input with a format like {"template": "mailto:{{value}}?subject={{subj}}", "subj": {"source": "element", "sourceId": "subject-in"}}. For real in-app sending use mail.send when the Mailer part is installed.',
   },
   select: {
     type: 'select',

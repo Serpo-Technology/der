@@ -197,6 +197,10 @@ pub struct RemoteSpec {
     /// numerals). Missing paths yield null.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<std::collections::BTreeMap<String, String>>,
+    /// POST body fields; values may hold {input} placeholders. Sent as a
+    /// JSON object.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -1738,6 +1742,19 @@ pub async fn execute_part_remote_core(
             .map(|(key, template)| (key.clone(), substitute_placeholders(template, input_map)))
             .collect();
         request = request.query(&pairs);
+    }
+    if let Some(body) = &remote.body {
+        if method != "POST" {
+            return Err(fail(FragmentErrorKind::Io, "A body needs the POST method"));
+        }
+        let mut object = serde_json::Map::new();
+        for (key, template) in body {
+            object.insert(
+                key.clone(),
+                Value::String(substitute_placeholders(template, input_map)),
+            );
+        }
+        request = request.json(&Value::Object(object));
     }
 
     // Part-scoped secrets, stored as part:<id>:<credential name>.

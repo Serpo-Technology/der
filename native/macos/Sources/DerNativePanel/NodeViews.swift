@@ -5,6 +5,7 @@
 import AVKit
 import Charts
 import PDFKit
+import Quartz
 import SwiftUI
 
 @MainActor
@@ -281,6 +282,7 @@ struct NodeView: View {
         case "image": ImageNode(node: node)
         case "chart": ChartNode(node: node)
         case "pdf": PdfNode(node: node)
+        case "document": DocumentNode(node: node)
         case "video": VideoNode(node: node)
         case "link": LinkNode(node: node)
         default: FallbackNode(node: node)
@@ -675,6 +677,7 @@ struct ViewerEmpty: View {
 
 private struct PdfKitView: NSViewRepresentable {
     let url: URL
+    @Binding var magnification: CGFloat
 
     func makeNSView(context: Context) -> PDFView {
         let view = PDFView()
@@ -686,19 +689,98 @@ private struct PdfKitView: NSViewRepresentable {
     func updateNSView(_ view: PDFView, context: Context) {
         if view.document?.documentURL != url {
             view.document = PDFDocument(url: url)
+            view.autoScales = true
         }
+        if magnification > 0 {
+            if abs(view.scaleFactor - magnification) > 0.01 {
+                view.scaleFactor = magnification
+            }
+        } else if !view.autoScales {
+            view.autoScales = true
+        }
+    }
+}
+
+/// The magnifier strip shared by document surfaces.
+struct MagnifierControls: View {
+    let zoomIn: () -> Void
+    let zoomOut: () -> Void
+    let reset: () -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button(action: zoomOut) { Image(systemName: "minus.magnifyingglass") }
+            Button(action: reset) { Image(systemName: "1.magnifyingglass") }
+            Button(action: zoomIn) { Image(systemName: "plus.magnifyingglass") }
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .padding(6)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 7))
+        .padding(8)
     }
 }
 
 struct PdfNode: View {
     let node: ResolvedNode
+    @State private var magnification: CGFloat = 0
 
     var body: some View {
         if let src = node.prop("src")?.stringValue, !src.isEmpty, let url = URL(string: src) {
-            PdfKitView(url: url)
+            PdfKitView(url: url, magnification: $magnification)
                 .frame(minHeight: 420)
+                .overlay(alignment: .bottomTrailing) {
+                    MagnifierControls(
+                        zoomIn: { magnification = max(magnification, 1) * 1.25 },
+                        zoomOut: { magnification = max(magnification, 1) / 1.25 },
+                        reset: { magnification = 0 }
+                    )
+                }
         } else {
             ViewerEmpty(text: node.prop("emptyText")?.stringValue ?? "Open a PDF to view it")
+        }
+    }
+}
+
+/// QuickLook previews whatever macOS can: docx, xlsx, pptx, pdf, images.
+private struct QuickLookView: NSViewRepresentable {
+    let url: URL
+
+    func makeNSView(context: Context) -> QLPreviewView {
+        let view = QLPreviewView(frame: .zero, style: .normal) ?? QLPreviewView()
+        view.previewItem = url as NSURL
+        return view
+    }
+
+    func updateNSView(_ view: QLPreviewView, context: Context) {
+        if (view.previewItem as? NSURL) as URL? != url {
+            view.previewItem = url as NSURL
+        }
+    }
+}
+
+struct DocumentNode: View {
+    let node: ResolvedNode
+    @State private var scale: CGFloat = 1
+
+    var body: some View {
+        let src = node.prop("src")?.stringValue ?? ""
+        if src.isEmpty {
+            ViewerEmpty(text: node.prop("emptyText")?.stringValue ?? "Open a document to view it")
+        } else if let url = URL(string: src) {
+            QuickLookView(url: url)
+                .scaleEffect(scale, anchor: .top)
+                .frame(minHeight: 440)
+                .clipped()
+                .overlay(alignment: .bottomTrailing) {
+                    MagnifierControls(
+                        zoomIn: { scale = min(scale * 1.25, 4) },
+                        zoomOut: { scale = max(scale / 1.25, 0.5) },
+                        reset: { scale = 1 }
+                    )
+                }
+        } else {
+            ViewerEmpty(text: "The document location is not readable")
         }
     }
 }

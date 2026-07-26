@@ -39,6 +39,7 @@ const UI_COMPONENTS = {
   'image': ImageComponent,
   'chart': ChartComponent,
   'pdf': PdfComponent,
+  'document': DocumentComponent,
   'video': VideoComponent,
   'link': LinkComponent,
   'select': SelectComponent,
@@ -550,6 +551,27 @@ function PdfComponent({ src, emptyText, ...props }: any) {
       style={{ width: '100%', minHeight: 420, flex: 1 }}
       {...props}
     />
+  );
+}
+
+/** The webview face renders pdf and images inline; office formats get an
+ * honest handoff (the native face previews them via QuickLook). */
+function DocumentComponent({ src, name, emptyText, ...props }: any) {
+  if (!src) {
+    return <div className="der-viewer-empty">{emptyText || 'Open a document to view it'}</div>;
+  }
+  const label = typeof name === 'string' && name ? name : String(src);
+  const lower = label.toLowerCase();
+  if (lower.endsWith('.pdf')) {
+    return <PdfComponent src={src} {...props} />;
+  }
+  if (/\.(png|jpe?g|gif|webp|bmp)$/.test(lower)) {
+    return <ImageComponent src={src} alt={label} {...props} />;
+  }
+  return (
+    <div className="der-viewer-empty">
+      {label}: this format previews in DER's native window; use file.save to keep a copy here.
+    </div>
   );
 }
 
