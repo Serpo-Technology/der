@@ -66,6 +66,7 @@ pub fn settings_snapshot(app: &tauri::AppHandle, note: Option<(&str, &str)>) -> 
         "cmd": "settings",
         "view": view,
         "integrations": integrations,
+        "smtp": crate::mail::redacted_view(app),
     });
     if let Some((kind, text)) = note {
         message["noteKind"] = json!(kind);
@@ -324,6 +325,27 @@ pub async fn handle_action(app: &tauri::AppHandle, event: &Value) {
             let snapshot = settings_snapshot(app, Some((note.0, &note.1)));
             sidecar::send_panel_message(app, &snapshot);
         }
+        "smtpSave" => {
+            let port = event
+                .get("port")
+                .and_then(Value::as_str)
+                .and_then(|value| value.trim().parse::<u16>().ok())
+                .or_else(|| event.get("port").and_then(Value::as_u64).map(|value| value as u16));
+            let config = crate::mail::SmtpConfig {
+                host: text("host"),
+                port,
+                username: text("username"),
+                password: text("password"),
+                security: text("security"),
+                from: text("from"),
+            };
+            let note = match crate::mail::save_keeping_password(app, config) {
+                Ok(_) => ("info", "Email settings saved".to_string()),
+                Err(error) => ("error", error),
+            };
+            let snapshot = settings_snapshot(app, Some((note.0, &note.1)));
+            sidecar::send_panel_message(app, &snapshot);
+        }
         "integrationDelete" => {
             let outcome = crate::settings::delete_integration_credential(app.clone(), text("name"));
             let note = match outcome {
@@ -465,6 +487,7 @@ pub fn is_management_event(name: &str) -> bool {
             | "oauthFinish"
             | "integrationSave"
             | "integrationDelete"
+            | "smtpSave"
             | "openParts"
             | "partsFetchRegistry"
             | "partsInstallRegistry"

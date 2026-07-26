@@ -3,9 +3,9 @@
   "abiVersion": 1,
   "id": "der-labs.mailer",
   "name": "Mailer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "der-labs",
-  "description": "Email sending through the Resend API: your apps send real mail with your own API key.",
+  "description": "Email sending through the Resend API for apps built around that service; for ordinary sending the email.send builtin uses the account in Settings.",
   "namespace": "mail",
   "capabilities": [
     "net:https://api.resend.com"
@@ -72,7 +72,7 @@
           "id": "id"
         }
       },
-      "howto": "Bind from/to/subject/text from inputs (a constant \"from\" like \"My App <onboarding@resend.dev>\" is fine); run on a Send button and show the returned id or a sent note. The API key is added once in the part's settings. For a zero-setup alternative, a link element with a mailto: href (format slots build it: mailto:{{value}}?subject={{subj}}) opens the user's own mail app instead."
+      "howto": "Use only when the app is specifically about the Resend API; for ordinary \"email this somewhere\" apps prefer the email.send builtin, which uses the account from Settings and needs no key. Here all four inputs are required: bind from as a constant like \"My App <onboarding@resend.dev>\" (a verified sender), and the single output is \"id\", the acceptance id to show as the sent note. The API key is added once in the part's settings."
     }
   ]
 }

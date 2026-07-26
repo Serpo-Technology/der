@@ -174,6 +174,15 @@ public struct IntegrationShape: Decodable, Sendable, Identifiable {
     public var id: String { name }
 }
 
+public struct SmtpShape: Decodable, Sendable {
+    public let host: String
+    public let port: Int?
+    public let username: String
+    public let hasPassword: Bool
+    public let security: String
+    public let from: String
+}
+
 public struct PartOperationShape: Decodable, Sendable, Identifiable {
     public let name: String?
     public let description: String?
@@ -274,6 +283,7 @@ public struct InboundMessage: Decodable, Sendable {
     // Management snapshots.
     public let view: SettingsViewShape?
     public let integrations: [IntegrationShape]?
+    public let smtp: SmtpShape?
     public let authorizeUrl: String?
     public let note: String?
     public let noteKind: String?

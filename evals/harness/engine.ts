@@ -17,7 +17,7 @@ export interface BehaviorStep {
   value?: string;
   ms?: number;
   optional?: boolean;
-  expect?: 'text' | 'noText' | 'rowCount' | 'viewer' | 'fileSaved' | 'selector';
+  expect?: 'text' | 'noText' | 'rowCount' | 'viewer' | 'fileSaved' | 'emailSent' | 'selector';
   match?: string;
   count?: number;
   /** fileSaved: the saved base64 must start with this (a magic-byte check). */
@@ -34,7 +34,7 @@ export interface BehaviorScenario {
   steps: BehaviorStep[];
 }
 
-import { lastSavedFile } from './file-stubs';
+import { lastSavedFile, lastSentEmail } from './file-stubs';
 
 const norm = (s: string | null | undefined): string => (s ?? '').trim().toLowerCase();
 
@@ -265,6 +265,20 @@ async function runOne(step: BehaviorStep, root: HTMLElement): Promise<void> {
         if (step.dataPrefix && !saved.data.startsWith(step.dataPrefix)) {
           throw new Error(
             `Expected saved data starting with ${step.dataPrefix}; got: ${saved.data.slice(0, 24)}`
+          );
+        }
+      }, { timeout: 4000 });
+    } else if (step.expect === 'emailSent') {
+      const matches = toMatcher(step.match ?? '');
+      await waitFor(() => {
+        const mail = lastSentEmail();
+        if (!mail) {
+          throw new Error('Expected email.send to have run; nothing was sent');
+        }
+        const surface = `${mail.to} ${mail.subject} ${mail.text}`;
+        if (step.match && !matches(surface)) {
+          throw new Error(
+            `Expected the sent email to match ${JSON.stringify(step.match)}; got: ${surface.slice(0, 120)}`
           );
         }
       }, { timeout: 4000 });

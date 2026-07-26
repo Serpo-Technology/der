@@ -1505,6 +1505,59 @@
           }
         ]
       }
+    },
+    {
+      "id": "contact-email",
+      "prompt": "A feedback form for my workshop: name, email, and a message box; sending emails it to hello@example.net with the person's details in the body and shows a thank-you note",
+      "behavior": {
+        "steps": [
+          {
+            "do": "type",
+            "into": [
+              "name",
+              "your name"
+            ],
+            "value": "Ada"
+          },
+          {
+            "do": "type",
+            "into": [
+              "email",
+              "your email",
+              "reply"
+            ],
+            "value": "ada@example.org"
+          },
+          {
+            "do": "type",
+            "into": [
+              "message",
+              "feedback",
+              "comments"
+            ],
+            "value": "great workshop"
+          },
+          {
+            "do": "click",
+            "on": [
+              "send",
+              "submit"
+            ]
+          },
+          {
+            "expect": "emailSent",
+            "match": "/hello@example\\.net/"
+          },
+          {
+            "expect": "emailSent",
+            "match": "/great workshop/"
+          },
+          {
+            "expect": "text",
+            "match": "/thank/i"
+          }
+        ]
+      }
     }
   ]
 }

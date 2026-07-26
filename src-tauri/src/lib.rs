@@ -7,6 +7,7 @@ use serde_json::Value;
 
 pub mod files;
 pub mod fragments;
+pub mod mail;
 mod llm;
 mod oauth;
 pub mod runtime;
@@ -1410,6 +1411,9 @@ pub fn run() {
             files::file_pick,
             files::file_read,
             files::file_save,
+            mail::email_send,
+            mail::smtp_get,
+            mail::smtp_save,
             read_repository_index,
             write_repository_index,
             read_component_manifest,

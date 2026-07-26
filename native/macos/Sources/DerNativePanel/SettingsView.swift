@@ -29,6 +29,14 @@ final class SettingsModel: ObservableObject {
     @Published var newNotes = ""
     @Published var newSecret = ""
 
+    @Published var smtpHost = ""
+    @Published var smtpPort = ""
+    @Published var smtpUsername = ""
+    @Published var smtpPassword = ""
+    @Published var smtpSecurity = "starttls"
+    @Published var smtpFrom = ""
+    @Published var smtpHasPassword = false
+
     func apply(_ message: InboundMessage) {
         if let view = message.view {
             providers = view.providers
@@ -42,6 +50,15 @@ final class SettingsModel: ObservableObject {
         }
         if let integrations = message.integrations {
             self.integrations = integrations
+        }
+        if let smtp = message.smtp {
+            smtpHost = smtp.host
+            smtpPort = smtp.port.map { String($0) } ?? ""
+            smtpUsername = smtp.username
+            smtpSecurity = smtp.security
+            smtpFrom = smtp.from
+            smtpHasPassword = smtp.hasPassword
+            smtpPassword = ""
         }
         if let url = message.authorizeUrl {
             authorizeUrl = url
@@ -104,6 +121,18 @@ final class SettingsModel: ObservableObject {
 
     func deleteIntegration(_ name: String) {
         Outbound.shared.send(["event": "integrationDelete", "name": name])
+    }
+
+    func saveSmtp() {
+        Outbound.shared.send([
+            "event": "smtpSave",
+            "host": smtpHost.trimmingCharacters(in: .whitespaces),
+            "port": smtpPort.trimmingCharacters(in: .whitespaces),
+            "username": smtpUsername.trimmingCharacters(in: .whitespaces),
+            "password": smtpPassword,
+            "security": smtpSecurity,
+            "from": smtpFrom.trimmingCharacters(in: .whitespaces),
+        ])
     }
 }
 
@@ -238,6 +267,36 @@ struct SettingsView: View {
                                         || model.newSecret.isEmpty
                                         || model.newBaseUrl.trimmingCharacters(in: .whitespaces).isEmpty
                                 )
+                        }
+                    }
+                    .padding(6)
+                }
+
+                GroupBox("Email (SMTP)") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Apps that send email use this account. The password stays on this Mac and mail only goes through this server.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        HStack {
+                            TextField("Server (smtp.example.net)", text: $model.smtpHost)
+                            TextField("Port", text: $model.smtpPort)
+                                .frame(width: 70)
+                            Picker("", selection: $model.smtpSecurity) {
+                                Text("STARTTLS").tag("starttls")
+                                Text("TLS").tag("tls")
+                            }
+                            .frame(width: 110)
+                        }
+                        TextField("Username", text: $model.smtpUsername)
+                        SecureField(
+                            model.smtpHasPassword ? "Password (saved; type to replace)" : "Password",
+                            text: $model.smtpPassword
+                        )
+                        TextField("From (Me <me@example.net>)", text: $model.smtpFrom)
+                        HStack {
+                            Spacer()
+                            Button("Save") { model.saveSmtp() }
+                                .buttonStyle(.borderedProminent)
                         }
                     }
                     .padding(6)

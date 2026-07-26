@@ -111,16 +111,16 @@
     {
       "id": "der-labs.mailer",
       "name": "Mailer",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "publisher": "der-labs",
       "namespace": "mail",
-      "description": "Email sending through the Resend API: your apps send real mail with your own API key.",
+      "description": "Email sending through the Resend API for apps built around that service; for ordinary sending the email.send builtin uses the account in Settings.",
       "operations": [
         "mail.send"
       ],
       "bundleUrl": "der-labs.mailer.derpart",
-      "bundleSha256": "6baaf95af635cff223d4fe7fbb846a2d5c0d3be9d15c8fd364b1c7a4e8f9307c",
-      "bundleBytes": 3268
+      "bundleSha256": "7be4a893890af506f0f0d643db742791dd75f8cfbb6854112216ee6bff5fd887",
+      "bundleBytes": 3420
     },
     {
       "id": "der-labs.openweather",

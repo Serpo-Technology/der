@@ -152,6 +152,12 @@ export function setFileOpProviders(providers: {
   fileOpProviders.save = providers.save;
 }
 
+/** Test seam for the host-owned mail path, same shape as the file dialogs. */
+const emailProviders: { send?: FileOpProvider } = {};
+export function setEmailProvider(send?: FileOpProvider): void {
+  emailProviders.send = send;
+}
+
 export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
   'state.set': {
     name: 'state.set',
@@ -547,6 +553,50 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       return await invoke('file_save', {
         data: String(inputs.data ?? ''),
         name: String(inputs.name ?? '') || undefined,
+      });
+    },
+  },
+  'email.send': {
+    name: 'email.send',
+    description:
+      'Sends a plain-text email through the mail server the user configured in DER Settings. Inputs: to, subject, text, optional from. Returns {sent, to}.',
+    inputs: [
+      { name: 'to', type: 'string', required: true, description: 'Recipient address' },
+      { name: 'subject', type: 'string', required: true, description: 'Subject line' },
+      { name: 'text', type: 'string', required: true, description: 'Plain-text message body' },
+      {
+        name: 'from',
+        type: 'string',
+        required: false,
+        description: 'Sender address; omit to use the default from Settings',
+      },
+    ],
+    outputs: [
+      { name: 'sent', type: 'boolean' },
+      { name: 'to', type: 'string', description: 'The recipient the message went to' },
+    ],
+    howto:
+      'Wire a Send button: bind "to", "subject", and "text" from the form inputs, composing the body with format when the app collects separate fields. Leave "from" unbound; the configured account supplies it. Route "sent" into state and gate a confirmation text on it with visibleWhen truthy. Sending fails with a clear message until the user adds their mail server in Settings.',
+    example: {
+      id: 'op-send-note',
+      operationName: 'email.send',
+      executionType: 'builtin',
+      inputs: [
+        { name: 'to', source: 'constant', sourceId: 'team@example.net' },
+        { name: 'subject', source: 'constant', sourceId: 'New note' },
+        { name: 'text', source: 'ui-element', sourceId: 'note-input' },
+      ],
+      outputs: [{ name: 'sent', target: 'state', targetId: 'note-sent' }],
+      triggers: [],
+    },
+    execute: async (inputs) => {
+      const provider = emailProviders.send;
+      if (provider) return provider(inputs);
+      return await invoke('email_send', {
+        from: String(inputs.from ?? '') || undefined,
+        to: String(inputs.to ?? ''),
+        subject: String(inputs.subject ?? ''),
+        text: String(inputs.text ?? ''),
       });
     },
   },

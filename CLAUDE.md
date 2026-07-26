@@ -105,10 +105,11 @@ survives a reload unless persisted.
 ### Frontend/backend boundary
 
 The frontend reaches Rust through `@tauri-apps/api` `invoke`. `src-tauri/src/lib.rs` registers the
-commands (storage, `execute_operation`, window/tray control) plus three newer modules: `llm.rs`
+commands (storage, `execute_operation`, window/tray control) plus the newer modules: `llm.rs`
 (the `llm_chat` command that performs all LLM HTTP via reqwest), `settings.rs` (LLM settings and
-credentials under `app_data_dir/settings/`, redacted reads), and `oauth.rs` (Claude subscription
-PKCE sign-in and token refresh). `execute_operation`'s `remote` branch performs real HTTP
+credentials under `app_data_dir/settings/`, redacted reads), `oauth.rs` (Claude subscription
+PKCE sign-in and token refresh), and `mail.rs` (SMTP config storage and the `email_send`/
+`smtp_get`/`smtp_save` commands). `execute_operation`'s `remote` branch performs real HTTP
 (`{name}` endpoint substitution, GET query / JSON body, and named integration credentials:
 `implementation.auth` references a credential stored under `settings/integrations.json`
 (bearer/header/query kinds, a required service base URL the secret is CONFINED to, and optional
@@ -277,9 +278,11 @@ treat part operations exactly like builtins (the model still emits `executionTyp
 Parts and the signing tool live in `fragments/` as standalone crates (NOT src-tauri workspace
 members); committed signed bundles keep `cargo test` hermetic; rebuilding needs
 `rustup target add wasm32-unknown-unknown`. Current library: expr-evaluate and dates and
-stats-summary and docs (markdownHtml/markdownText/textPdf/markdownPdf over a minimal
-PDF writer) and imaging (info/resize/convert over the image crate, declaring `io:large`)
-(compute), frankfurter and openweather and coingecko and wikipedia (integrations),
+stats-summary and docs (markdownHtml/markdownText/textPdf/markdownPdf/docxText over a
+minimal PDF writer) and imaging (info/resize/convert over the image crate, declaring
+`io:large`) and archive (zip.list/extract/create) and qr (qr.encode, built in C against
+the open ABI) (compute), frankfurter and openweather and coingecko and wikipedia
+and mailer (Resend) (integrations),
 ui-basics (entry_row, stat_tile, and the self-wired stopwatch pack), starter-apps (the
 apps.expense_tracker and apps.calculator recipes, proven in the eval corpus). Compute
 parts may declare the `io:large` capability (consented at install review) to raise the
@@ -294,6 +297,18 @@ and video tags in the webview, PDFKit and AVKit natively. Converter apps are cha
 these small bits (pick, read, convert, save) wired through state, proven end to end by
 the pdf-viewer, image-shrink, and md-to-pdf eval prompts with stubbed dialogs and real
 wasm.
+`email.send` is the same pattern for mail (`src-tauri/src/mail.rs`, lettre over
+rustls): the SMTP server, account, and password live under `settings/smtp.json`
+(saved from either face's Settings; the panel and webview only see a redacted view
+with `hasPassword`, and an empty password on save keeps the stored one), contracts
+supply only to/subject/text (optional from falls back to the configured sender), and
+sending fails with a setup pointer until the user adds a server. SMTP is raw TCP, so
+no part kind can carry it: wasm parts import nothing and integration parts only get
+the confined HTTPS core, which is why it sits in the host platform layer next to the
+file dialogs. The mailer part (Resend API) stays the service-specific alternative and
+its howto defers ordinary sending to the builtin; mailto links remain the zero-setup
+path. The contact-email eval proves the composition class with a stubbed transport
+(`emailSent` expect on recipient, body, and the gated confirmation).
 
 ### Runtime kernel conformance
 
@@ -367,7 +382,8 @@ built programmatically in setup only outside native mode; `tauri.conf.json` decl
 windows), and everything the native face needs is native. `runtime/manage.rs` serves the
 management surfaces over the panel protocol as snapshot messages and action events, pure
 plumbing over the existing cores: LLM settings and redacted credentials, the Claude PKCE
-sign-in, integration credentials, the parts registry (saved URL under
+sign-in, integration credentials, the SMTP account (redacted snapshot plus `smtpSave`),
+the parts registry (saved URL under
 `settings/registry.json`, update badges), the two-phase install review (stage summary with
 publisher fingerprint pinning and downgrade consent, then commit), part removal, part
 secrets, and recipe opens. Native app windows carry a bottom edit bar

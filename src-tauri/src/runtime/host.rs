@@ -110,6 +110,13 @@ impl HostDispatcher {
             "file.pick" => crate::files::pick_core(&self.app, &text("kind")),
             "file.read" => crate::files::read_core(&self.app, &text("file")),
             "file.save" => crate::files::save_core(&self.app, &text("data"), &text("name")),
+            "email.send" => crate::mail::send_core(
+                &self.app,
+                &text("from"),
+                &text("to"),
+                &text("subject"),
+                &text("text"),
+            ),
             _ => return None,
         };
         Some(result.and_then(as_outputs))
