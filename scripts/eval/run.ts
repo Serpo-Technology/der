@@ -12,28 +12,55 @@
  * table, with behavior verdicts merged into the same file.
  */
 
-import { readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { ContractBuilder } from '../../src/services/ai-interpreter/contract-builder';
-import { repositoryService } from '../../src/services/repository/repository-service';
-import { registerBuiltins } from '../../src/services/repository/builtins';
-import { extractJson } from '../../src/services/ai-interpreter/llm-json';
-import {
-  ComposedResponseSchema,
-  checkAgainstManifests,
-  formatManifestErrors,
-  formatZodError,
-} from '../../src/schemas/contract';
-import type { ContractShape } from '../../src/schemas/contract';
-import { loadDistParts } from '../diffusion-probe/load-parts';
-import {
-  FRAGMENT_ELEMENTS,
-  FRAGMENT_OPERATIONS,
-  FRAGMENT_RECIPES,
-} from '../../src/services/operations/registry';
-import { resolveRecipeShape } from '../../src/services/recipes/recipe-check';
+import { instantiateKernel, KernelInstance } from '../../src/services/runtime-core/wasm-kernel';
+
+// Prompt rendering and judging run in the runtime kernel's wasm build: the
+// exact prompt bytes and repair-round checker the app ships.
+let kernel: KernelInstance;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function kcall(operation: string, payload: Record<string, unknown> = {}): any {
+  return kernel.run({ operation, ...payload });
+}
+
+interface KernelVocabulary {
+  fragmentDefs: Record<string, unknown>;
+  partOperations: Record<string, unknown>;
+  credentials: unknown[];
+  recipes: Record<string, unknown>;
+}
+
+/** The installed vocabulary straight from the signed bundles on disk, the
+ * same manifests the app's core loads. */
+function loadVocabulary(dir: string): { vocab: KernelVocabulary; partNames: string[] } {
+  const vocab: KernelVocabulary = {
+    fragmentDefs: {},
+    partOperations: {},
+    credentials: [],
+    recipes: {},
+  };
+  const partNames: string[] = [];
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith('.derpart')) continue;
+    const envelope = JSON.parse(readFileSync(join(dir, file), 'utf8'));
+    const manifest = JSON.parse(Buffer.from(envelope.manifestB64, 'base64').toString('utf8'));
+    for (const op of manifest.operations ?? []) {
+      vocab.partOperations[op.name] = op;
+      partNames.push(op.name);
+    }
+    for (const fragment of manifest.uiFragments ?? []) {
+      vocab.fragmentDefs[fragment.name] = fragment;
+      partNames.push(fragment.name);
+    }
+    for (const recipe of manifest.recipes ?? []) {
+      vocab.recipes[recipe.name] = recipe;
+    }
+  }
+  return { vocab, partNames };
+}
 
 console.warn = () => {};
 console.error = () => {};
@@ -134,76 +161,58 @@ async function generate(
   };
 }
 
+let evalVocabulary: KernelVocabulary = {
+  fragmentDefs: {},
+  partOperations: {},
+  credentials: [],
+  recipes: {},
+};
+let evalPartNames: string[] = [];
+
 function judge(
   raw: string,
   expectRecipe?: string
 ): Omit<EvalResult, 'id' | 'wallMs' | 'completionTokens'> {
-  let candidate: unknown;
-  try {
-    candidate = JSON.parse(extractJson(raw));
-  } catch (error) {
-    return { verdict: 'unparseable', errors: String(error).slice(0, 200) };
-  }
-  const parsed = ComposedResponseSchema.safeParse(candidate);
-  if (!parsed.success) {
-    return { verdict: 'schema', errors: formatZodError(parsed.error).slice(0, 300) };
-  }
-
-  if (parsed.data.recipe !== undefined) {
-    const name = parsed.data.recipe;
-    if (name !== expectRecipe) {
-      return {
-        verdict: 'recipe-mismatch',
-        recipe: name,
-        errors: expectRecipe
-          ? `reused ${name}, expected ${expectRecipe}`
-          : `reused ${name} where composing was expected`,
-      };
-    }
-    const def = FRAGMENT_RECIPES[name];
-    const resolved = def ? resolveRecipeShape(def) : undefined;
-    if (!resolved?.shape || resolved.problems.length > 0) {
-      return {
-        verdict: 'manifest',
-        recipe: name,
-        errors: (resolved?.problems.join('\n') ?? `no installed recipe ${name}`).slice(0, 300),
-      };
-    }
-    // The recipe's stored shape goes through the behavior stage like any
-    // composed contract: reuse must also behave as this prompt demands.
-    return { verdict: 'pass', recipe: name, adjustments: 0, contract: def.contract };
-  }
-
-  if (expectRecipe) {
-    return {
-      verdict: 'no-reuse',
-      errors: `composed a contract where recipe ${expectRecipe} was expected`,
-    };
-  }
-  const result = checkAgainstManifests(parsed.data.contract as ContractShape);
-  const serialized = JSON.stringify(parsed.data.contract);
-  const partNames = [...Object.keys(FRAGMENT_OPERATIONS), ...Object.keys(FRAGMENT_ELEMENTS)];
-  const fragmentsUsed = partNames.filter((name) => serialized.includes(`"${name}"`));
-  if (result.errors.length > 0) {
-    return {
-      verdict: 'manifest',
-      errors: formatManifestErrors(result.errors).slice(0, 300),
-      fragmentsUsed,
-    };
-  }
-  return {
-    verdict: 'pass',
-    adjustments: result.warnings.length,
-    fragmentsUsed,
-    contract: parsed.data.contract as unknown,
+  const reply = kcall('capture.judgeComposed', {
+    raw,
+    ...evalVocabulary,
+    ...(expectRecipe !== undefined ? { expectRecipe } : {}),
+  }) as {
+    verdict: EvalResult['verdict'];
+    errors?: string;
+    recipe?: string;
+    adjustments?: number;
+    contract?: unknown;
   };
+  const out: Omit<EvalResult, 'id' | 'wallMs' | 'completionTokens'> = {
+    verdict: reply.verdict,
+  };
+  if (reply.errors !== undefined) out.errors = reply.errors.slice(0, 300);
+  if (reply.recipe !== undefined) out.recipe = reply.recipe;
+  if (reply.adjustments !== undefined) out.adjustments = reply.adjustments;
+  if (reply.contract !== undefined && reply.contract !== null) {
+    out.contract = reply.contract;
+    const serialized = JSON.stringify(reply.contract);
+    const fragmentsUsed = evalPartNames.filter((name) => serialized.includes(`"${name}"`));
+    if (reply.verdict === 'manifest' || fragmentsUsed.length > 0 || reply.verdict === 'pass') {
+      out.fragmentsUsed = fragmentsUsed;
+    }
+  } else if (reply.verdict === 'manifest' && reply.recipe === undefined) {
+    out.fragmentsUsed = evalPartNames.filter((name) => raw.includes(`"${name}"`));
+  }
+  return out;
 }
 
 async function main() {
   const { baseUrl, model, key, label } = resolveProvider();
-  await registerBuiltins(repositoryService);
-  loadDistParts('fragments/dist');
-  const builder = new ContractBuilder(repositoryService);
+  kernel = await instantiateKernel(readFileSync('runtime-wasm/dist/der_runtime_kernel.wasm'));
+  const loaded = loadVocabulary('fragments/dist');
+  evalVocabulary = loaded.vocab;
+  evalPartNames = loaded.partNames;
+  const sections = kcall('capture.promptSections') as { create: string };
+  const promptBase = kcall('capture.promptBase', { ...evalVocabulary, compact: false })
+    .base as string;
+  const systemPrompt = `${promptBase}\n\n${sections.create}`;
   const only = arg('--only');
   const cases = (JSON.parse(readFileSync('evals/prompts.json', 'utf8')) as { prompts: EvalCase[] })
     .prompts.filter((c) => !only || c.id === only);
@@ -213,10 +222,10 @@ async function main() {
 
   const results: EvalResult[] = [];
   for (const evalCase of cases) {
-    const { system, user } = await builder.renderCreatePrompt(evalCase.prompt);
+    const user = `Build an app for this request:\n\n${evalCase.prompt}`;
     const started = Date.now();
     try {
-      const { content, completionTokens } = await generate(baseUrl, model, key, system, user);
+      const { content, completionTokens } = await generate(baseUrl, model, key, systemPrompt, user);
       results.push({
         id: evalCase.id,
         wallMs: Date.now() - started,

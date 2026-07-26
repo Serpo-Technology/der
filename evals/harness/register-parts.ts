@@ -33,6 +33,19 @@ export const PART_ROUTES = new Map<
 /** Raw uiFragments defs by name, the shape the kernel's resolver expands. */
 export const FRAGMENT_DEFS: Record<string, unknown> = {};
 
+/** Raw manifest operation defs and recipes, the kernel vocabulary shape. */
+export const RAW_PART_OPS: Record<string, unknown> = {};
+export const RAW_RECIPES: Record<string, unknown> = {};
+
+export function kernelVocabulary(): Record<string, unknown> {
+  return {
+    fragmentDefs: FRAGMENT_DEFS,
+    partOperations: RAW_PART_OPS,
+    credentials: [],
+    recipes: RAW_RECIPES,
+  };
+}
+
 export function registerRunnableParts(dir: string): void {
   for (const file of readdirSync(dir)) {
     if (!file.endsWith('.derpart')) continue;
@@ -44,7 +57,11 @@ export function registerRunnableParts(dir: string): void {
       ? new Uint8Array(Buffer.from(envelope.wasmB64, 'base64'))
       : null;
     const compiled = wasmBytes ? new WebAssembly.Module(wasmBytes as BufferSource) : undefined;
+    for (const recipe of manifest.recipes ?? []) {
+      RAW_RECIPES[recipe.name] = recipe;
+    }
     for (const op of manifest.operations ?? []) {
+      RAW_PART_OPS[op.name] = op;
       PART_ROUTES.set(op.name, {
         remote: Boolean(op.remote),
         module: op.remote ? undefined : compiled,

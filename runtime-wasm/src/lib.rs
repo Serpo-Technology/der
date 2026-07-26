@@ -449,11 +449,105 @@ fn run_operation(request: &Value) -> Result<Value, String> {
             };
             Ok(json!({ "outcome": outcome_json, "calls": llm.calls }))
         }
+        "capture.judgeComposed" => {
+            let vocab = der_runtime::vectors::compose_vocabulary(request);
+            let expect_recipe = request.get("expectRecipe").and_then(Value::as_str);
+            let mut noop = |_value: &mut Value| Vec::<String>::new();
+            let parsed = der_runtime::llm_schema::parse_validated_json(
+                &text("raw"),
+                &der_runtime::llm_schema::SchemaKind::Composed,
+                &mut noop,
+            );
+            let mut value = match parsed {
+                der_runtime::llm_schema::ParseVerdict::Problem(problem) => {
+                    let verdict = if problem.starts_with("The response was not parseable JSON:") {
+                        "unparseable"
+                    } else {
+                        "schema"
+                    };
+                    return Ok(json!({ "verdict": verdict, "errors": problem }));
+                }
+                der_runtime::llm_schema::ParseVerdict::Ok(value) => value,
+            };
+            if let Some(name) = value.get("recipe").and_then(Value::as_str).map(str::to_string) {
+                if Some(name.as_str()) != expect_recipe {
+                    let errors = match expect_recipe {
+                        Some(expected) => format!("reused {}, expected {}", name, expected),
+                        None => format!("reused {} where composing was expected", name),
+                    };
+                    return Ok(json!({
+                        "verdict": "recipe-mismatch",
+                        "recipe": name,
+                        "errors": errors,
+                    }));
+                }
+                let (problems, _warnings) =
+                    der_runtime::compose::check_composed_candidate(&mut value, &vocab);
+                if !problems.is_empty() {
+                    return Ok(json!({
+                        "verdict": "manifest",
+                        "recipe": name,
+                        "errors": problems.join("\n"),
+                    }));
+                }
+                let contract = vocab
+                    .recipes
+                    .get(&name)
+                    .and_then(|def| def.get("contract"))
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                return Ok(json!({
+                    "verdict": "pass",
+                    "recipe": name,
+                    "adjustments": 0,
+                    "contract": contract,
+                }));
+            }
+            if let Some(expected) = expect_recipe {
+                return Ok(json!({
+                    "verdict": "no-reuse",
+                    "errors": format!("composed a contract where recipe {} was expected", expected),
+                }));
+            }
+            let mut contract = value.get("contract").cloned().unwrap_or(Value::Null);
+            let outcome = check_against_manifests(
+                &mut contract,
+                &vocab.fragment_defs,
+                &vocab.part_operations,
+                &vocab.credentials,
+            );
+            if !outcome.errors.is_empty() {
+                return Ok(json!({
+                    "verdict": "manifest",
+                    "errors": der_runtime::compose::format_manifest_errors(&outcome.errors),
+                }));
+            }
+            Ok(json!({
+                "verdict": "pass",
+                "adjustments": outcome.warnings.len(),
+                "contract": contract,
+            }))
+        }
         "vectors.runFamily" => {
             let family = text("family");
             let fixtures = request.get("fixtures").cloned().unwrap_or(Value::Null);
             let failures = run_family(&family, &fixtures)?;
             Ok(json!({ "failures": failures }))
+        }
+        "contract.check" => {
+            // The human checker: structural schema then the manifest gate,
+            // with the same string verdicts as the runtime_check_contract
+            // command in the desktop core.
+            let vocab = der_runtime::vectors::compose_vocabulary(request);
+            let raw =
+                serde_json::to_string(request.get("contract").unwrap_or(&Value::Null))
+                    .map_err(|error| error.to_string())?;
+            let verdict = der_runtime::compose::check_contract_json(&raw, &vocab);
+            Ok(json!({
+                "shape": verdict.shape,
+                "errors": verdict.errors,
+                "warnings": verdict.warnings,
+            }))
         }
         "validate.check" => {
             let mut contract = request.get("contract").cloned().unwrap_or(Value::Null);
@@ -509,7 +603,7 @@ fn run_operation(request: &Value) -> Result<Value, String> {
                 Some(config) if config.is_object() => scripted_env(config),
                 _ => Box::new(HostEnv),
             };
-            let mut entry = open_session_core(
+            let entry = open_session_core(
                 &contract,
                 initial_data,
                 fragment_defs,

@@ -376,6 +376,62 @@ pub async fn runtime_edit_contract(
     })
 }
 
+/// The checker as a command: the webview's editors and importers validate
+/// contracts here instead of carrying their own checker.
+#[tauri::command]
+pub async fn runtime_check_contract(
+    app: tauri::AppHandle,
+    contract: Value,
+) -> Result<Value, String> {
+    let vocab = compose_vocabulary(&app);
+    let verdict = super::compose::check_contract_json(
+        &serde_json::to_string(&contract).map_err(|error| error.to_string())?,
+        &vocab,
+    );
+    Ok(serde_json::json!({
+        "shape": verdict.shape,
+        "errors": verdict.errors,
+        "warnings": verdict.warnings,
+    }))
+}
+
+/// Finalization as a command: stored shapes normalize without a model call
+/// (recipe opens, imports, the eval harness's finalize).
+#[tauri::command]
+pub async fn runtime_finalize_contract(
+    app: tauri::AppHandle,
+    shape: Value,
+    description: Option<String>,
+) -> Result<Value, String> {
+    let vocab = compose_vocabulary(&app);
+    let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    Ok(super::compose::finalize_contract_shape(
+        &shape,
+        description.as_deref(),
+        &now_iso,
+        &vocab,
+    ))
+}
+
+/// Streaming draft extraction as a command, for the webview's assembly
+/// previews.
+#[tauri::command]
+pub async fn runtime_extract_streaming(accumulated: String) -> Result<Value, String> {
+    Ok(match super::streaming::extract_streaming_contract(&accumulated) {
+        Some(contract) => contract,
+        None => Value::Null,
+    })
+}
+
+/// The blueprint projection as a command.
+#[tauri::command]
+pub async fn runtime_derive_blueprint(
+    contract: Value,
+    description: String,
+) -> Result<Value, String> {
+    Ok(super::compose::derive_blueprint(&contract, &description))
+}
+
 /// Blueprint-mode regeneration host-side, for the webview's blueprint tab.
 #[tauri::command]
 pub async fn runtime_generate_from_blueprint(

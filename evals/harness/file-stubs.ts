@@ -6,13 +6,6 @@
  * wasm kernel's host_call.
  */
 
-import {
-  setEmailProvider,
-  setFileOpProviders,
-  setMailProviders,
-  setStoreProviders,
-} from '../../src/services/operations/registry';
-
 // A 2x1 png (red and blue pixels) for image scenarios.
 const TINY_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAADklEQVR4nGP4z8AAQv8BD/kD/YURmXYAAAAASUVORK5CYII=';
@@ -215,29 +208,10 @@ export function setupFileStubs(file?: Fixture): void {
   fixture = file ?? { name: 'sample.txt', mime: 'text/plain', text: 'sample' };
   collections = new Map();
   nextRecordId = 1;
-  setStoreProviders({
-    put: async (inputs) => storeCore('store.put', inputs),
-    query: async (inputs) => storeCore('store.query', inputs),
-    remove: async (inputs) => storeCore('store.remove', inputs),
-  });
-  setEmailProvider(async (inputs) => sendCore(inputs));
-  setMailProviders({
-    list: async () => mailListCore(),
-    fetch: async (inputs) => mailFetchCore(inputs),
-  });
-  setFileOpProviders({
-    pick: async () => pickCore(),
-    read: async () => readCore(),
-    save: async (inputs) => saveCore(inputs),
-  });
 }
 
 export function clearFileStubs(): void {
   saved = null;
   sent = null;
   collections = new Map();
-  setFileOpProviders({});
-  setEmailProvider(undefined);
-  setMailProviders({});
-  setStoreProviders({});
 }

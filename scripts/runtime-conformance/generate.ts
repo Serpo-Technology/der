@@ -43,21 +43,6 @@ import {
   setIntegrationCredentials,
 } from '../../src/services/operations/registry';
 import type { IntegrationCredentialView, RecipeDef } from '../../src/services/operations/registry';
-import {
-  BLUEPRINT_PROMPT_SECTION,
-  CREATE_PROMPT_SECTION,
-  EDIT_PROMPT_SECTION,
-  buildBasePrompt,
-  checkComposedCandidate,
-  finalizeContractShape,
-  renderCatalogText,
-} from '../../src/services/ai-interpreter/contract-builder';
-import {
-  generateValidatedJson,
-  parseValidatedJson,
-} from '../../src/services/ai-interpreter/llm-json';
-import type { LLMClient } from '../../src/services/ai-interpreter/llm-client';
-import { expandUiFragment, expandPackOperations } from '../../src/services/fragments/ui-fragments';
 import { FRAGMENT_ELEMENTS, UiFragmentDef } from '../../src/services/operations/registry';
 import type { Contract, OperationBinding, UIElement } from '../../src/types/contract';
 

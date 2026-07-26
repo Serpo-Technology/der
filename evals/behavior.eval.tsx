@@ -10,11 +10,12 @@ import { render } from '@testing-library/react';
 import React from 'react';
 import { readFileSync, readdirSync } from 'node:fs';
 import { CoreExperienceRenderer } from '../src/components/runtime/CoreExperienceRenderer';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { instantiateKernel, KernelInstance } from '../src/services/runtime-core/wasm-kernel';
+import { kernelVocabulary } from './harness/register-parts';
 import { setSessionTransport } from '../src/services/runtime-core/session-client';
 import { createKernelTransport } from './harness/kernel-transport';
-import { ContractBuilder } from '../src/services/ai-interpreter/contract-builder';
-import { repositoryService } from '../src/services/repository/repository-service';
-import { ContractShape } from '../src/schemas/contract';
 import { registerRunnableParts, setRemoteStubs } from './harness/register-parts';
 import { runScenario, BehaviorScenario } from './harness/engine';
 import { setupFileStubs } from './harness/file-stubs';
@@ -50,7 +51,25 @@ const scenarios = new Map(
 );
 
 registerRunnableParts('fragments/dist');
-const builder = new ContractBuilder(repositoryService);
+
+// Stored shapes normalize through the kernel's finalize, the same
+// normalization the app applies before rendering.
+let finalizeKernel: KernelInstance;
+async function finalizeShape(shape: unknown): Promise<unknown> {
+  if (!finalizeKernel) {
+    finalizeKernel = await instantiateKernel(
+      readFileSync(join(__dirname, '../runtime-wasm/dist/der_runtime_kernel.wasm'))
+    );
+  }
+  return (
+    finalizeKernel.run({
+      operation: 'capture.finalize',
+      ...kernelVocabulary(),
+      shape,
+      nowIso: new Date().toISOString(),
+    }) as { contract: unknown }
+  ).contract;
+}
 
 describe(`behavior against ${resultsPath}`, () => {
   for (const entry of stored.results) {
@@ -67,7 +86,7 @@ describe(`behavior against ${resultsPath}`, () => {
       // Contracts execute in the runtime kernel's wasm build, the same
       // semantics the desktop core ships; React stays the presentation.
       setSessionTransport(await createKernelTransport());
-      const contract = builder.finalizeShape(entry.contract as ContractShape);
+      const contract = (await finalizeShape(entry.contract)) as never;
       const { container, unmount } = render(
         <CoreExperienceRenderer contract={contract} experienceId={`behave-${entry.id}`} />
       );

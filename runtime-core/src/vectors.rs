@@ -6,9 +6,7 @@
 use serde_json::{Map, Value};
 
 use crate::compose::{
-    check_composed_candidate, finalize_contract_shape, format_manifest_errors,
-    generate_validated_json, ComposeLlm, ComposeVocabulary, GenerateOptions, LlmReply,
-    LlmSendOptions, SystemBlockSpec,
+    finalize_contract_shape, generate_validated_json, GenerateOptions, SystemBlockSpec,
 };
 use crate::env::ScriptedEnv;
 use crate::expression::parse_row_expression;
