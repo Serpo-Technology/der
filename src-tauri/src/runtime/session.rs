@@ -137,9 +137,19 @@ impl Session {
     /// Runs operation ids in order with the chain rule: the first failure
     /// stops the rest, earlier state writes stand. Returns the failed id.
     pub fn run_chain(&mut self, operation_ids: &[String], item: Option<&Value>) -> Option<String> {
+        self.run_chain_detailed(operation_ids, item)
+            .map(|(operation_id, _)| operation_id)
+    }
+
+    /// run_chain with the failure message, for clients that show errors.
+    pub fn run_chain_detailed(
+        &mut self,
+        operation_ids: &[String],
+        item: Option<&Value>,
+    ) -> Option<(String, String)> {
         for operation_id in operation_ids {
-            if self.run_operation(operation_id, item).is_err() {
-                return Some(operation_id.clone());
+            if let Err(error) = self.run_operation(operation_id, item) {
+                return Some((operation_id.clone(), error));
             }
         }
         None

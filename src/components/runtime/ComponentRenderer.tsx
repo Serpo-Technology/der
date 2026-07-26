@@ -101,6 +101,19 @@ export class ComponentRenderer {
     return this.renderResolved(nodes[0], onOperationExecute, options);
   }
 
+  /**
+   * Renders an already-resolved node (a tree from the runtime core's
+   * sessions). Same presentation as renderElement without the local
+   * resolution step; thin protocol clients feed core trees through here.
+   */
+  renderResolvedNode(
+    node: ResolvedNode,
+    onOperationExecute: OperationExecuteHandler,
+    options: RenderOptions = {}
+  ): React.ReactElement {
+    return this.renderResolved(node, onOperationExecute, options);
+  }
+
   private renderResolved(
     node: ResolvedNode,
     onOperationExecute: OperationExecuteHandler,

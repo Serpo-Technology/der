@@ -293,12 +293,13 @@ impl SidecarBridge {
                 let failed = window
                     .entry
                     .session_mut()
-                    .run_chain(&operation_ids, item.as_ref());
-                if let Some(operation_id) = failed {
+                    .run_chain_detailed(&operation_ids, item.as_ref());
+                if let Some((operation_id, message)) = failed {
                     self.transport.lock().unwrap().send(&json!({
                         "cmd": "operationFailed",
                         "windowId": window_id,
                         "operationId": operation_id,
+                        "message": message,
                     }))?;
                 }
                 self.notify_change(&window_id);

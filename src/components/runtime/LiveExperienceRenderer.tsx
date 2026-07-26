@@ -7,6 +7,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Contract } from '../../types/contract';
 import { ExperienceState } from '../../types/experience';
 import { DynamicExperienceRenderer } from './DynamicExperienceRenderer';
+import { CoreExperienceRenderer } from './CoreExperienceRenderer';
+import { contractUsesLocalCode } from '../../services/runtime-core/session-client';
+import { isTauriRuntime } from '../../services/tauri/TauriCommandService';
 import { useRealTimeUpdater, UpdateStrategy, RealTimeUpdateOptions } from './RealTimeUpdater';
 import { dynamicExperienceRuntimeService } from './DynamicExperienceRuntimeService';
 
@@ -145,15 +148,28 @@ export const LiveExperienceRenderer: React.FC<LiveExperienceRendererProps> = ({
         </div>
       )}
 
-      {/* Main experience renderer */}
-      <DynamicExperienceRenderer
-        key={renderKey}
-        contract={currentContract}
-        experienceId={experienceId}
-        initialData={initialData}
-        onStateChange={handleStateChange}
-        onError={handleError}
-      />
+      {/* Main experience renderer: the runtime core's session when it can
+          serve this contract, the local TS runtime for the legacy
+          local-code escape hatch and for runs outside Tauri (evals). */}
+      {isTauriRuntime() && !contractUsesLocalCode(currentContract) ? (
+        <CoreExperienceRenderer
+          key={renderKey}
+          contract={currentContract}
+          experienceId={experienceId}
+          initialData={initialData}
+          onStateChange={handleStateChange}
+          onError={handleError}
+        />
+      ) : (
+        <DynamicExperienceRenderer
+          key={renderKey}
+          contract={currentContract}
+          experienceId={experienceId}
+          initialData={initialData}
+          onStateChange={handleStateChange}
+          onError={handleError}
+        />
+      )}
     </div>
   );
 };

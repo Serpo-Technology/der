@@ -373,7 +373,21 @@ handler wiring); `runtime/view.rs` plus `runtime/templates.rs` are the Rust twin
 identical trees by the template and view vectors under the protocol's JSON-value semantics
 (object keys holding null and absent keys are equivalent; missing state reads stay distinct
 from null in numeric comparisons). A resolved tree plus the session is everything a renderer
-backend needs; the webview is the reference consumer. The dispatcher seam
+backend needs. The webview's standalone experience windows are themselves
+protocol clients now: `CoreExperienceRenderer` (over
+`src/services/runtime-core/session-client.ts`, a FIFO-serialized invoke
+wrapper mirroring stdio ordering) opens a core session, renders its resolved
+trees through the same React presentation (`ComponentRenderer.renderResolvedNode`),
+dispatches chains one operation per call so the chain-stop rule stays with
+the core (EventOutcome carries the failure message for the error strip), and
+overlays local control values over async echoes until a dispatch lands.
+`LiveExperienceRenderer` picks it whenever the contract is core-servable;
+the local TS runtime remains for the legacy `implementation.code` escape
+hatch, for runs outside Tauri, and as the eval harness's engine. This is the
+first step of a settled convergence: the Rust core is becoming the single
+semantics implementation (eventually compiled to wasm for a browser face),
+with TypeScript keeping presentation; the TS kernel retires only after the
+eval harness rebases onto the core. The dispatcher seam
 (`runtime/session.rs` trait, `runtime/host.rs` implementation) routes non-builtin operations
 to the machinery that already runs them: wasm parts in the wasmtime host, integration part
 remotes through the signed service path, contract remotes and `http.get` through the shared

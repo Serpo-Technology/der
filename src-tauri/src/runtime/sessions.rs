@@ -179,6 +179,8 @@ pub struct SessionOpened {
 #[serde(rename_all = "camelCase")]
 pub struct EventOutcome {
     pub failed: Option<String>,
+    /// The failed operation's error message, for the client's error strip.
+    pub error: Option<String>,
     pub tree: Vec<Value>,
     pub state: Map<String, Value>,
 }
@@ -266,11 +268,16 @@ pub async fn runtime_dispatch_event(
             let (entry, elements) = entries
                 .get_mut(&session_id)
                 .ok_or_else(|| format!("No open session {}", session_id))?;
-            let failed = entry
+            let outcome = entry
                 .session_mut()
-                .run_chain(&operation_ids, item.as_ref());
+                .run_chain_detailed(&operation_ids, item.as_ref());
+            let (failed, error) = match outcome {
+                Some((operation_id, message)) => (Some(operation_id), Some(message)),
+                None => (None, None),
+            };
             Ok(EventOutcome {
                 failed,
+                error,
                 tree: resolve_entry_view(entry, elements),
                 state: entry.session().state().clone(),
             })
