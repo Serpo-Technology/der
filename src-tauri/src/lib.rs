@@ -402,6 +402,20 @@ fn runtime_native_mode() -> bool {
     native_mode()
 }
 
+/// Removes a saved experience and its per-app state (the Recent list's
+/// delete); bookmarks are separate records with their own removal.
+pub(crate) fn delete_experience_record(app: &AppHandle, experience_id: &str) {
+    let Ok(app_data_dir) = app.path().app_data_dir() else {
+        return;
+    };
+    let record = app_data_dir.join("experiences").join(format!("{}.json", experience_id));
+    let state = app_data_dir
+        .join("experience_states")
+        .join(format!("{}.json", experience_id));
+    let _ = fs::remove_file(record);
+    let _ = fs::remove_file(state);
+}
+
 fn read_experience_state(app: &AppHandle, experience_id: &str) -> Option<Value> {
     let app_data_dir = app.path().app_data_dir().ok()?;
     let state_file = app_data_dir

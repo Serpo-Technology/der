@@ -441,8 +441,26 @@ function FormComponent({ children, ...props }: any) {
   return <form {...props}>{children}</form>;
 }
 
+/** Models route converter output (raw base64) straight into image src;
+ * recognize the common formats and synthesize the data URL. */
+function imageSource(src: unknown): string | undefined {
+  if (typeof src !== 'string' || src.length === 0) return undefined;
+  if (/^[a-z]+:/i.test(src) || src.startsWith('/') || src.startsWith('#')) return src;
+  const magic: Array<[string, string]> = [
+    ['iVBOR', 'image/png'],
+    ['/9j/', 'image/jpeg'],
+    ['R0lGOD', 'image/gif'],
+    ['UklGR', 'image/webp'],
+    ['Qk', 'image/bmp'],
+  ];
+  for (const [prefix, mime] of magic) {
+    if (src.startsWith(prefix)) return `data:${mime};base64,${src}`;
+  }
+  return src;
+}
+
 function ImageComponent({ src, alt, ...props }: any) {
-  return <img src={src} alt={alt} {...props} />;
+  return <img src={imageSource(src)} alt={alt} {...props} />;
 }
 
 function PdfComponent({ src, emptyText, ...props }: any) {

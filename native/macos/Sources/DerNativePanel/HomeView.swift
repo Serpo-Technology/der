@@ -59,6 +59,10 @@ final class HomeModel: ObservableObject {
         Outbound.shared.send(["event": "bookmarkRemove", "id": bookmark.id])
     }
 
+    func deleteRecent(_ recent: HomeRecent) {
+        Outbound.shared.send(["event": "recentDelete", "id": recent.id])
+    }
+
     func openSettings() {
         Outbound.shared.send(["event": "openSettings"])
     }
@@ -88,9 +92,13 @@ struct HomeView: View {
                     if !model.bookmarks.isEmpty {
                         section("Your apps") {
                             ForEach(model.bookmarks) { bookmark in
-                                HomeRow(title: bookmark.name, subtitle: nil) {
-                                    model.open(bookmark)
-                                }
+                                HomeRow(
+                                    title: bookmark.name,
+                                    subtitle: nil,
+                                    open: { model.open(bookmark) },
+                                    remove: { model.removeBookmark(bookmark) },
+                                    removeLabel: "Remove from Your apps"
+                                )
                                 .contextMenu {
                                     Button("Remove from Your apps") {
                                         model.removeBookmark(bookmark)
@@ -102,8 +110,17 @@ struct HomeView: View {
                     if !model.recents.isEmpty {
                         section("Recent") {
                             ForEach(model.recents) { recent in
-                                HomeRow(title: recent.name, subtitle: recent.description) {
-                                    model.open(recent)
+                                HomeRow(
+                                    title: recent.name,
+                                    subtitle: recent.description,
+                                    open: { model.open(recent) },
+                                    remove: { model.deleteRecent(recent) },
+                                    removeLabel: "Delete this app"
+                                )
+                                .contextMenu {
+                                    Button("Delete this app") {
+                                        model.deleteRecent(recent)
+                                    }
                                 }
                             }
                         }
@@ -238,6 +255,9 @@ private struct HomeRow: View {
     let title: String
     let subtitle: String?
     let open: () -> Void
+    /// Shown on hover as a small trash button; also in the context menu.
+    var remove: (() -> Void)?
+    var removeLabel: String = "Remove"
     @State private var hovering = false
 
     var body: some View {
@@ -252,6 +272,16 @@ private struct HomeRow: View {
                 }
             }
             Spacer()
+            if hovering, let remove {
+                Button {
+                    remove()
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help(removeLabel)
+            }
             Button("Open", action: open)
                 .buttonStyle(.bordered)
                 .controlSize(.small)

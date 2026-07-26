@@ -301,7 +301,8 @@ impl SidecarBridge {
                 }
                 Ok(None)
             }
-            "create" | "openBookmark" | "openRecipe" | "openRecent" | "editExperience"
+            "create" | "openBookmark" | "openRecipe" | "openRecent" | "recentDelete"
+            | "editExperience"
             | "bookmarkAdd" | "bookmarkRemove" | "openEditor" | "editorValidate" | "editorApply"
             | "editorRegenerate" | "openHome" | "quitApp" => Ok(Some(message.clone())),
             name if super::manage::is_management_event(name) => Ok(Some(message.clone())),
@@ -536,6 +537,22 @@ fn panel_binary() -> Result<std::path::PathBuf, String> {
 /// Home actions arrive from the panel and go back into the app: create and
 /// openRecipe run the native pipeline, openBookmark and openRecent open kept
 /// apps natively.
+/// A failed open is a message on the home, never only a line on stderr.
+fn surface_open_failure(app: &tauri::AppHandle, error: &str) {
+    let state = app.state::<NativeRendererState>();
+    let bridge = {
+        let guard = state.0.lock().unwrap();
+        match guard.as_ref() {
+            Some(running) => running.bridge.clone(),
+            None => return,
+        }
+    };
+    let _ = bridge
+        .lock()
+        .unwrap()
+        .send_generation_status("failed", Some(&format!("Could not open the app: {}", error)));
+}
+
 fn relay_home_event(app: &tauri::AppHandle, event: &Value) {
     match event.get("event").and_then(Value::as_str) {
         Some("create") => {
@@ -563,9 +580,16 @@ fn relay_home_event(app: &tauri::AppHandle, event: &Value) {
             let experience_id = experience_id.to_string();
             tauri::async_runtime::spawn(async move {
                 if let Err(error) = open_saved_experience(&app, &experience_id).await {
-                    eprintln!("Failed to open {} natively: {}", experience_id, error);
+                    surface_open_failure(&app, &error);
                 }
             });
+        }
+        Some("recentDelete") => {
+            let Some(experience_id) = event.get("id").and_then(Value::as_str) else {
+                return;
+            };
+            crate::delete_experience_record(app, experience_id);
+            refresh_native_home(app);
         }
         Some("editExperience") => {
             let window_id = event.get("windowId").and_then(Value::as_str).unwrap_or("");
@@ -685,7 +709,7 @@ fn relay_home_event(app: &tauri::AppHandle, event: &Value) {
                             title,
                             false,
                         ) {
-                            eprintln!("Failed to open {} natively: {}", bookmark_id, error);
+                            surface_open_failure(&app, &error);
                         }
                     }
                     Ok(None) => eprintln!("Bookmark {} not found", bookmark_id),

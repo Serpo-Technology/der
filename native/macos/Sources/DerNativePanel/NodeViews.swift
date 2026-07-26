@@ -570,11 +570,29 @@ struct TimerNode: View {
     }
 }
 
+/// Models route converter output (raw base64) straight into image src;
+/// recognize the common formats and synthesize the data URL.
+private func imageSource(_ src: String) -> URL? {
+    if src.isEmpty { return nil }
+    if src.contains(":") { return URL(string: src) }
+    let magic: [(String, String)] = [
+        ("iVBOR", "image/png"),
+        ("/9j/", "image/jpeg"),
+        ("R0lGOD", "image/gif"),
+        ("UklGR", "image/webp"),
+        ("Qk", "image/bmp"),
+    ]
+    for (prefix, mime) in magic where src.hasPrefix(prefix) {
+        return URL(string: "data:\(mime);base64,\(src)")
+    }
+    return URL(string: src)
+}
+
 struct ImageNode: View {
     let node: ResolvedNode
 
     var body: some View {
-        if let src = node.prop("src")?.stringValue, let url = URL(string: src) {
+        if let src = node.prop("src")?.stringValue, let url = imageSource(src) {
             AsyncImage(url: url) { image in
                 image.resizable().scaledToFit()
             } placeholder: {
