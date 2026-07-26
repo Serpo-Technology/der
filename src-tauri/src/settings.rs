@@ -77,8 +77,9 @@ pub struct StoredCredentials {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IntegrationCredential {
-    /// "bearer" (Authorization header), "header" (custom header), or
-    /// "query" (query parameter).
+    /// "bearer" (Authorization header), "header" (custom header), "query"
+    /// (query parameter), or "smtp" (a mail account consumed only by
+    /// email.send, never injectable into HTTP requests).
     pub kind: String,
     /// Header or query-parameter name; unused for bearer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -91,6 +92,10 @@ pub struct IntegrationCredential {
     /// fields, units.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// Kind-specific non-secret fields (smtp: host, port, security,
+    /// username, from).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fields: Option<std::collections::BTreeMap<String, String>>,
     pub secret: String,
 }
 
@@ -132,6 +137,8 @@ pub struct IntegrationCredentialView {
     pub base_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fields: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[tauri::command]
@@ -145,6 +152,7 @@ pub fn list_integration_credentials(app: AppHandle) -> Vec<IntegrationCredential
             target: cred.target,
             base_url: cred.base_url,
             notes: cred.notes,
+            fields: cred.fields,
         })
         .collect();
     views.sort_by(|a, b| a.name.cmp(&b.name));
@@ -189,6 +197,7 @@ pub fn set_integration_credential(
             target: target.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()),
             base_url: Some(base_url),
             notes: notes.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()),
+            fields: None,
             secret,
         },
     );

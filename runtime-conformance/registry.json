@@ -895,7 +895,7 @@
           "type": "string"
         }
       ],
-      "howto": "Wire a Send button: bind \"to\", \"subject\", and \"text\" from the form inputs, composing the body with format when the app collects separate fields. Leave \"from\" unbound; the configured account supplies it. Route \"sent\" into state and gate a confirmation text on it with visibleWhen truthy. Sending fails with a clear message until the user adds their mail server in Settings.",
+      "howto": "Wire a Send button: bind \"to\", \"subject\", and \"text\" from the form inputs, composing the body with format when the app collects separate fields. Leave \"from\" unbound; the configured account supplies it. Route \"sent\" into state and gate a confirmation text on it with visibleWhen truthy. The first send asks the user for their mail account if none is set up yet.",
       "example": {
         "id": "op-send-note",
         "operationName": "email.send",

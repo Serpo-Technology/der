@@ -1212,11 +1212,17 @@ fn check_operation(op: &mut Value, op_path: &str, checker: &mut Checker) {
         );
     }
 
-    // An auth reference must name a configured integration credential.
+    // An auth reference must name a configured HTTP credential. The store
+    // also holds non-injectable kinds (the smtp mail account, part-scoped
+    // secrets); those are invisible here and in the taught names.
     if let Some(auth) = implementation.get("auth").and_then(Value::as_str) {
+        let injectable = |credential: &&Value| {
+            matches!(as_str(credential, "kind"), "bearer" | "header" | "query")
+        };
         let credential = checker
             .credentials
             .iter()
+            .filter(injectable)
             .find(|credential| as_str(credential, "name") == auth)
             .cloned();
         match credential {
@@ -1224,6 +1230,7 @@ fn check_operation(op: &mut Value, op_path: &str, checker: &mut Checker) {
                 let known: Vec<&str> = checker
                     .credentials
                     .iter()
+                    .filter(injectable)
                     .map(|credential| as_str(credential, "name"))
                     .collect();
                 let message = if known.is_empty() {

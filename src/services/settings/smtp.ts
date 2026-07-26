@@ -32,3 +32,7 @@ export async function getSmtpSettings(): Promise<SmtpView> {
 export async function saveSmtpSettings(config: SmtpDraft): Promise<SmtpView> {
   return await invoke<SmtpView>('smtp_save', { config });
 }
+
+export async function deleteSmtpSettings(): Promise<SmtpView> {
+  return await invoke<SmtpView>('smtp_delete');
+}

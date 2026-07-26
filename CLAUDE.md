@@ -108,8 +108,8 @@ The frontend reaches Rust through `@tauri-apps/api` `invoke`. `src-tauri/src/lib
 commands (storage, `execute_operation`, window/tray control) plus the newer modules: `llm.rs`
 (the `llm_chat` command that performs all LLM HTTP via reqwest), `settings.rs` (LLM settings and
 credentials under `app_data_dir/settings/`, redacted reads), `oauth.rs` (Claude subscription
-PKCE sign-in and token refresh), and `mail.rs` (SMTP config storage and the `email_send`/
-`smtp_get`/`smtp_save` commands). `execute_operation`'s `remote` branch performs real HTTP
+PKCE sign-in and token refresh), and `mail.rs` (the mail account in the credential store and the
+`email_send`/`smtp_get`/`smtp_save`/`smtp_delete` commands). `execute_operation`'s `remote` branch performs real HTTP
 (`{name}` endpoint substitution, GET query / JSON body, and named integration credentials:
 `implementation.auth` references a credential stored under `settings/integrations.json`
 (bearer/header/query kinds, a required service base URL the secret is CONFINED to, and optional
@@ -298,17 +298,26 @@ these small bits (pick, read, convert, save) wired through state, proven end to 
 the pdf-viewer, image-shrink, and md-to-pdf eval prompts with stubbed dialogs and real
 wasm.
 `email.send` is the same pattern for mail (`src-tauri/src/mail.rs`, lettre over
-rustls): the SMTP server, account, and password live under `settings/smtp.json`
-(saved from either face's Settings; the panel and webview only see a redacted view
-with `hasPassword`, and an empty password on save keeps the stored one), contracts
-supply only to/subject/text (optional from falls back to the configured sender), and
-sending fails with a setup pointer until the user adds a server. SMTP is raw TCP, so
-no part kind can carry it: wasm parts import nothing and integration parts only get
-the confined HTTPS core, which is why it sits in the host platform layer next to the
-file dialogs. The mailer part (Resend API) stays the service-specific alternative and
-its howto defers ordinary sending to the builtin; mailto links remain the zero-setup
-path. The contact-email eval proves the composition class with a stubbed transport
-(`emailSent` expect on recipient, body, and the gated confirmation).
+rustls). The mail account is one credential in the shared store (kind `smtp`, name
+`mail`, in `settings/integrations.json` beside the HTTP and part-scoped kinds: the
+password is the secret, the server details are its `fields`), with the standard
+redaction (both faces see host/username/`hasPassword` views, an empty password on
+save keeps the stored one, and a legacy `settings/smtp.json` migrates in on first
+read). Contracts supply only to/subject/text (optional from falls back to the
+account's sender). Setup happens in the app's own flow: an unconfigured send opens
+the host-drawn account sheet natively (a `mailAccount` dialog request next to
+pickFile/saveFile) and then continues the send, the webview face offers "Set up
+email" on the error strip, and Settings reuses the same form as a row beside the
+HTTP credentials (add/edit/remove). Only bearer/header/query credentials are valid
+`implementation.auth` references and taught in the catalog; smtp and part-scoped
+kinds are invisible there (frozen in a validation vector) and refused at injection.
+SMTP is raw TCP, so no part kind can carry it: wasm parts import nothing and
+integration parts only get the confined HTTPS core, which is why it sits in the
+host platform layer next to the file dialogs. The mailer part (Resend API) stays
+the service-specific alternative and its howto defers ordinary sending to the
+builtin; mailto links remain the zero-setup path. The contact-email eval proves
+the composition class with a stubbed transport (`emailSent` expect on recipient,
+body, and the gated confirmation).
 
 ### Runtime kernel conformance
 
@@ -382,7 +391,7 @@ built programmatically in setup only outside native mode; `tauri.conf.json` decl
 windows), and everything the native face needs is native. `runtime/manage.rs` serves the
 management surfaces over the panel protocol as snapshot messages and action events, pure
 plumbing over the existing cores: LLM settings and redacted credentials, the Claude PKCE
-sign-in, integration credentials, the SMTP account (redacted snapshot plus `smtpSave`),
+sign-in, integration credentials, the mail account (redacted snapshot, `smtpSave`/`smtpRemove`),
 the parts registry (saved URL under
 `settings/registry.json`, update badges), the two-phase install review (stage summary with
 publisher fingerprint pinning and downgrade consent, then commit), part removal, part

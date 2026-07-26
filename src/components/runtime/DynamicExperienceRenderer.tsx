@@ -15,6 +15,7 @@ import { normalizeContract } from '../../schemas/contract';
 import { STYLE_ACCENTS, STYLE_THEMES } from '../../services/operations/registry';
 import { backgroundVariables, hexAccentVariables, isHexAccent } from '../../services/operations/accent-color';
 import { expandPackOperations } from '../../services/fragments/ui-fragments';
+import MailAccountForm from '../settings/MailAccountForm';
 
 interface DynamicExperienceRendererProps {
   contract: Contract;
@@ -90,6 +91,7 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
 
   // Handle operation execution
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [showMailSetup, setShowMailSetup] = useState(false);
   const dismissedErrorRef = React.useRef<string | null>(null);
 
   const handleOperationExecution = useCallback(
@@ -225,6 +227,11 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
       {operationError && (
         <div className="der-operation-error" role="alert">
           <span>{operationError}</span>
+          {operationError.includes('Email is not set up') && (
+            <button type="button" onClick={() => setShowMailSetup(true)}>
+              Set up email
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -235,6 +242,20 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
           >
             Dismiss
           </button>
+        </div>
+      )}
+      {showMailSetup && (
+        <div className="mail-account-overlay">
+          <div className="mail-account-dialog">
+            <h3>Mail account</h3>
+            <MailAccountForm
+              onSaved={() => {
+                setShowMailSetup(false);
+                setOperationError(null);
+              }}
+              onCancel={() => setShowMailSetup(false)}
+            />
+          </div>
         </div>
       )}
       <ErrorBoundary

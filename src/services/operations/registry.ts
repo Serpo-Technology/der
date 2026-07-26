@@ -576,7 +576,7 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       { name: 'to', type: 'string', description: 'The recipient the message went to' },
     ],
     howto:
-      'Wire a Send button: bind "to", "subject", and "text" from the form inputs, composing the body with format when the app collects separate fields. Leave "from" unbound; the configured account supplies it. Route "sent" into state and gate a confirmation text on it with visibleWhen truthy. Sending fails with a clear message until the user adds their mail server in Settings.',
+      'Wire a Send button: bind "to", "subject", and "text" from the form inputs, composing the body with format when the app collects separate fields. Leave "from" unbound; the configured account supplies it. Route "sent" into state and gate a confirmation text on it with visibleWhen truthy. The first send asks the user for their mail account if none is set up yet.',
     example: {
       id: 'op-send-note',
       operationName: 'email.send',
@@ -981,13 +981,16 @@ export function listRecipeDefs(): RecipeDef[] {
 }
 
 /** Redacted integration credentials (names and shapes, never secrets):
- * remote operations reference one via implementation.auth. */
+ * remote operations reference one via implementation.auth. Non-HTTP kinds
+ * (the smtp mail account, part-scoped secrets) ride the same store with
+ * kind-specific non-secret fields. */
 export interface IntegrationCredentialView {
   name: string;
   kind: string;
   target?: string;
   baseUrl?: string;
   notes?: string;
+  fields?: Record<string, string>;
 }
 
 export const INTEGRATION_CREDENTIALS: IntegrationCredentialView[] = [];

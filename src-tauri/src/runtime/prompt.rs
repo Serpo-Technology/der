@@ -330,9 +330,15 @@ pub fn render_catalog_text(vocab: &ComposeVocabulary, compact: bool) -> String {
         }
     }
 
+    // Only HTTP-injectable credentials are taught as auth names; the store's
+    // other kinds (the smtp mail account, part-scoped secrets) have their own
+    // consumers.
     let mut credential_lines: Vec<String> = Vec::new();
     for cred in &vocab.credentials {
         let kind = cred.get("kind").and_then(Value::as_str).unwrap_or("");
+        if !matches!(kind, "bearer" | "header" | "query") {
+            continue;
+        }
         let target = cred
             .get("target")
             .map(js_to_string)

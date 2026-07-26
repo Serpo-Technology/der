@@ -446,16 +446,12 @@ pub struct NativeRendererState(Mutex<Option<RunningSidecar>>);
 #[derive(Default)]
 pub struct PendingDialogs(Mutex<HashMap<String, std::sync::mpsc::Sender<Option<String>>>>);
 
-fn resolve_file_dialog(app: &tauri::AppHandle, message: &Value) {
+fn resolve_pending_dialog(app: &tauri::AppHandle, message: &Value, answer: Option<String>) {
     let request_id = message
         .get("requestId")
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let path = message
-        .get("path")
-        .and_then(Value::as_str)
-        .map(str::to_string);
     let sender = app
         .state::<PendingDialogs>()
         .0
@@ -463,8 +459,26 @@ fn resolve_file_dialog(app: &tauri::AppHandle, message: &Value) {
         .unwrap()
         .remove(&request_id);
     if let Some(sender) = sender {
-        let _ = sender.send(path);
+        let _ = sender.send(answer);
     }
+}
+
+fn resolve_file_dialog(app: &tauri::AppHandle, message: &Value) {
+    let path = message
+        .get("path")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    resolve_pending_dialog(app, message, path);
+}
+
+/// The account sheet's answer travels as the serialized config; a cancel
+/// resolves with nothing.
+fn resolve_mail_dialog(app: &tauri::AppHandle, message: &Value) {
+    let account = message
+        .get("account")
+        .filter(|value| value.is_object())
+        .map(|value| value.to_string());
+    resolve_pending_dialog(app, message, account);
 }
 
 /// True when the panel is running and can present dialogs as the active app.
@@ -497,7 +511,7 @@ fn panel_dialog(app: &tauri::AppHandle, mut request: Value) -> Result<Option<Str
     transport.lock().unwrap().send(&request)?;
     let outcome = receiver
         .recv_timeout(std::time::Duration::from_secs(300))
-        .map_err(|_| "The file dialog timed out".to_string());
+        .map_err(|_| "The dialog timed out".to_string());
     app.state::<PendingDialogs>().0.lock().unwrap().remove(&request_id);
     outcome
 }
@@ -510,6 +524,17 @@ pub fn panel_pick_file(app: &tauri::AppHandle, kind: &str) -> Result<Option<Stri
 
 pub fn panel_save_file(app: &tauri::AppHandle, name: &str) -> Result<Option<String>, String> {
     panel_dialog(app, json!({ "cmd": "saveFile", "name": name }))
+}
+
+/// The panel presents the mail-account sheet: the password goes from the
+/// sheet straight into the credential store, so an unconfigured email.send
+/// can complete its setup inside the app's own flow.
+pub fn panel_mail_account(app: &tauri::AppHandle, prefill: &Value) -> Option<crate::mail::SmtpConfig> {
+    if !panel_available(app) {
+        return None;
+    }
+    let reply = panel_dialog(app, json!({ "cmd": "mailAccount", "account": prefill })).ok()??;
+    serde_json::from_str(&reply).ok()
 }
 
 /// The panel bundled next to the app executable (Contents/MacOS in a
@@ -805,10 +830,14 @@ fn ensure_running(app: &tauri::AppHandle) -> Result<Arc<Mutex<SidecarBridge>>, S
                 }
                 match serde_json::from_str::<Value>(&line) {
                     Ok(message) => {
-                        if message.get("event").and_then(Value::as_str) == Some("fileDialog") {
-                            resolve_file_dialog(&reader_app, &message);
-                        } else if work_tx.send(message).is_err() {
-                            break;
+                        match message.get("event").and_then(Value::as_str) {
+                            Some("fileDialog") => resolve_file_dialog(&reader_app, &message),
+                            Some("mailAccount") => resolve_mail_dialog(&reader_app, &message),
+                            _ => {
+                                if work_tx.send(message).is_err() {
+                                    break;
+                                }
+                            }
                         }
                     }
                     Err(error) => eprintln!("native panel sent invalid JSON: {}", error),

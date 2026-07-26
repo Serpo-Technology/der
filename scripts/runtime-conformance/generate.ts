@@ -2249,6 +2249,50 @@ const VALIDATION_CASES: ValidationCase[] = [
     ],
   },
   {
+    name: 'non-http credential kinds are invisible to auth references',
+    contract: {
+      name: 'mail-auth',
+      elements: [
+        COUNT_TEXT,
+        {
+          id: 'send-btn',
+          type: 'button',
+          properties: { text: 'Send' },
+          eventBindings: [{ event: 'click', operationId: 'op-mail-auth' }],
+        },
+      ],
+      operations: [
+        {
+          id: 'op-mail-auth',
+          operationName: 'notify.fetch',
+          implementation: {
+            type: 'remote',
+            endpoint: 'https://hooks.example.dev/notify',
+            auth: 'mail',
+          },
+          inputs: [],
+          outputs: [{ name: 'response', target: 'state', targetId: 'clicks' }],
+        },
+      ],
+    },
+    credentials: [
+      {
+        name: 'mail',
+        kind: 'smtp',
+        fields: { host: 'smtp.example.net', security: 'starttls' },
+      },
+      {
+        name: 'hooks-token',
+        kind: 'bearer',
+        baseUrl: 'https://hooks.example.dev',
+      },
+      {
+        name: 'part:der-labs.mailer:api-key',
+        kind: 'partsecret',
+      },
+    ],
+  },
+  {
     name: 'fragment params enforce and packs validate through every rule',
     contract: {
       name: 'fragments',

@@ -1828,6 +1828,7 @@ pub fn set_part_credential(
             target: None,
             base_url: None,
             notes: None,
+            fields: None,
             secret,
         },
     );

@@ -284,6 +284,8 @@ public struct InboundMessage: Decodable, Sendable {
     public let view: SettingsViewShape?
     public let integrations: [IntegrationShape]?
     public let smtp: SmtpShape?
+    /// Prefill for the mailAccount dialog request.
+    public let account: SmtpShape?
     public let authorizeUrl: String?
     public let note: String?
     public let noteKind: String?

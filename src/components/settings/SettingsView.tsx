@@ -23,7 +23,8 @@ import {
   testLlmConnection,
   usesApiKey,
 } from '../../services/settings/llm-settings';
-import { getSmtpSettings, saveSmtpSettings } from '../../services/settings/smtp';
+import { SmtpView, deleteSmtpSettings, getSmtpSettings } from '../../services/settings/smtp';
+import MailAccountForm from './MailAccountForm';
 
 interface SettingsViewProps {
   onError: (message: string) => void;
@@ -48,49 +49,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
   const [integrationBaseUrl, setIntegrationBaseUrl] = useState('');
   const [integrationNotes, setIntegrationNotes] = useState('');
   const [integrationSecret, setIntegrationSecret] = useState('');
-  const [smtpHost, setSmtpHost] = useState('');
-  const [smtpPort, setSmtpPort] = useState('');
-  const [smtpUsername, setSmtpUsername] = useState('');
-  const [smtpPassword, setSmtpPassword] = useState('');
-  const [smtpSecurity, setSmtpSecurity] = useState('starttls');
-  const [smtpFrom, setSmtpFrom] = useState('');
-  const [smtpHasPassword, setSmtpHasPassword] = useState(false);
+  const [smtp, setSmtp] = useState<SmtpView | null>(null);
+  const [showMailForm, setShowMailForm] = useState(false);
 
   useEffect(() => {
     refreshIntegrationCredentials().then(setIntegrations).catch(() => undefined);
-    getSmtpSettings()
-      .then((view) => {
-        setSmtpHost(view.host);
-        setSmtpPort(view.port === null ? '' : String(view.port));
-        setSmtpUsername(view.username);
-        setSmtpSecurity(view.security);
-        setSmtpFrom(view.from);
-        setSmtpHasPassword(view.hasPassword);
-      })
-      .catch(() => undefined);
+    getSmtpSettings().then(setSmtp).catch(() => undefined);
   }, []);
 
-  const handleSaveSmtp = useCallback(async () => {
+  const handleRemoveMailAccount = useCallback(async () => {
     setBusy(true);
     try {
-      const port = smtpPort.trim() ? Number.parseInt(smtpPort.trim(), 10) : null;
-      const view = await saveSmtpSettings({
-        host: smtpHost.trim(),
-        port: Number.isNaN(port ?? 0) ? null : port,
-        username: smtpUsername.trim(),
-        password: smtpPassword,
-        security: smtpSecurity,
-        from: smtpFrom.trim(),
-      });
-      setSmtpHasPassword(view.hasPassword);
-      setSmtpPassword('');
-      setStatus('Email settings saved');
+      setSmtp(await deleteSmtpSettings());
+      setStatus('Mail account removed');
     } catch (error) {
       onError?.(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
     }
-  }, [smtpHost, smtpPort, smtpUsername, smtpPassword, smtpSecurity, smtpFrom, onError]);
+  }, [onError]);
+
+  // The generic list shows HTTP credentials; the store's other kinds (the
+  // mail account, part-scoped secrets) have their own rows and owners.
+  const httpIntegrations = integrations.filter((cred) =>
+    ['bearer', 'header', 'query'].includes(cred.kind)
+  );
 
   const handleAddIntegration = useCallback(async () => {
     setBusy(true);
@@ -405,9 +388,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
           credential by name; the secret stays on this machine and never appears in
           an app definition.
         </p>
-        {integrations.length > 0 && (
+        {httpIntegrations.length > 0 && (
           <ul className="settings-integrations">
-            {integrations.map((cred) => (
+            {httpIntegrations.map((cred) => (
               <li key={cred.name}>
                 <code>{cred.name}</code>
                 <span>
@@ -427,6 +410,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
             ))}
           </ul>
         )}
+        <ul className="settings-integrations">
+          <li>
+            <code>mail</code>
+            <span>
+              {smtp && smtp.host
+                ? `smtp account at ${smtp.host}${smtp.from ? ` as ${smtp.from}` : ''}`
+                : 'not set up; apps that send email ask on first use'}
+            </span>
+            <button className="link-button" onClick={() => setShowMailForm(true)} disabled={busy}>
+              {smtp && smtp.host ? 'Edit' : 'Add'}
+            </button>
+            {smtp && smtp.host && (
+              <button className="link-button" onClick={handleRemoveMailAccount} disabled={busy}>
+                Remove
+              </button>
+            )}
+          </li>
+        </ul>
         <div className="settings-field">
           <span>Add a credential</span>
           <div className="settings-integration-form">
@@ -487,60 +488,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
         </div>
       </section>
 
-      <section className="settings-section">
-        <h3>Email (SMTP)</h3>
-        <p className="settings-hint">
-          Apps that send email use this account. The password stays on this machine
-          and mail only goes through this server.
-        </p>
-        <div className="settings-field">
-          <span>Server</span>
-          <div className="settings-integration-form">
-            <input
-              value={smtpHost}
-              onChange={(e) => setSmtpHost(e.target.value)}
-              placeholder="smtp.example.net"
-              disabled={busy}
+      {showMailForm && (
+        <div className="mail-account-overlay">
+          <div className="mail-account-dialog">
+            <h3>Mail account</h3>
+            <MailAccountForm
+              onSaved={(view) => {
+                setSmtp(view);
+                setShowMailForm(false);
+                setStatus('Mail account saved');
+              }}
+              onCancel={() => setShowMailForm(false)}
             />
-            <input
-              value={smtpPort}
-              onChange={(e) => setSmtpPort(e.target.value)}
-              placeholder="port (optional)"
-              disabled={busy}
-            />
-            <select
-              value={smtpSecurity}
-              onChange={(e) => setSmtpSecurity(e.target.value)}
-              disabled={busy}
-            >
-              <option value="starttls">STARTTLS (587)</option>
-              <option value="tls">TLS (465)</option>
-            </select>
-            <input
-              value={smtpUsername}
-              onChange={(e) => setSmtpUsername(e.target.value)}
-              placeholder="username"
-              disabled={busy}
-            />
-            <input
-              type="password"
-              value={smtpPassword}
-              onChange={(e) => setSmtpPassword(e.target.value)}
-              placeholder={smtpHasPassword ? 'password (saved; type to replace)' : 'password'}
-              disabled={busy}
-            />
-            <input
-              value={smtpFrom}
-              onChange={(e) => setSmtpFrom(e.target.value)}
-              placeholder="from (Me <me@example.net>)"
-              disabled={busy}
-            />
-            <button onClick={handleSaveSmtp} disabled={busy || !smtpHost.trim()}>
-              Save
-            </button>
           </div>
         </div>
-      </section>
+      )}
 
       {status && <p className="settings-status">{status}</p>}
     </div>

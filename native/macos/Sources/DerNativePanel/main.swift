@@ -73,6 +73,9 @@ final class PanelWindows: NSObject, NSWindowDelegate {
         case "saveFile":
             guard let requestId = message.requestId else { return }
             presentSaveDialog(requestId: requestId, name: message.name ?? "")
+        case "mailAccount":
+            guard let requestId = message.requestId else { return }
+            presentMailAccountSheet(requestId: requestId, prefill: message.account)
         case "operationFailed":
             NSSound.beep()
         default:
@@ -162,6 +165,42 @@ final class PanelWindows: NSObject, NSWindowDelegate {
         var reply: [String: Any] = ["event": "fileDialog", "requestId": requestId]
         if let target { reply["path"] = target }
         Outbound.shared.send(reply)
+    }
+
+    /// An app's first send with no account configured lands here: the sheet
+    /// blocks like the file dialogs, and the account goes straight into the
+    /// host's credential store.
+    private func presentMailAccountSheet(requestId: String, prefill: SmtpShape?) {
+        NSApp.activate(ignoringOtherApps: true)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 300),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Mail account"
+        window.isReleasedWhenClosed = false
+        var answered = false
+        let finish: ([String: Any]?) -> Void = { account in
+            guard !answered else { return }
+            answered = true
+            var reply: [String: Any] = ["event": "mailAccount", "requestId": requestId]
+            if let account { reply["account"] = account }
+            Outbound.shared.send(reply)
+            NSApp.stopModal()
+            window.orderOut(nil)
+        }
+        let form = MailAccountForm(
+            draft: MailAccountDraft(prefill: prefill),
+            title: "Set up the mail account this app sends with",
+            onSave: { draft in finish(draft.payload) },
+            onCancel: { finish(nil) }
+        )
+        window.contentView = NSHostingView(rootView: form)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.runModal(for: window)
+        finish(nil)
     }
 
     private func showEditor(windowId: String, message: InboundMessage) {

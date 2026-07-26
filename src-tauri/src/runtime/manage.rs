@@ -59,9 +59,15 @@ fn version_newer(a: &str, b: &str) -> bool {
 
 pub fn settings_snapshot(app: &tauri::AppHandle, note: Option<(&str, &str)>) -> Value {
     let view = serde_json::to_value(crate::settings::build_view(app)).unwrap_or(Value::Null);
-    let integrations =
-        serde_json::to_value(crate::settings::list_integration_credentials(app.clone()))
-            .unwrap_or(Value::Null);
+    // The mail account travels as the dedicated smtp view; the generic list
+    // keeps only HTTP credentials.
+    let integrations = serde_json::to_value(
+        crate::settings::list_integration_credentials(app.clone())
+            .into_iter()
+            .filter(|credential| credential.kind != "smtp")
+            .collect::<Vec<_>>(),
+    )
+    .unwrap_or(Value::Null);
     let mut message = json!({
         "cmd": "settings",
         "view": view,
@@ -340,7 +346,15 @@ pub async fn handle_action(app: &tauri::AppHandle, event: &Value) {
                 from: text("from"),
             };
             let note = match crate::mail::save_keeping_password(app, config) {
-                Ok(_) => ("info", "Email settings saved".to_string()),
+                Ok(_) => ("info", "Mail account saved".to_string()),
+                Err(error) => ("error", error),
+            };
+            let snapshot = settings_snapshot(app, Some((note.0, &note.1)));
+            sidecar::send_panel_message(app, &snapshot);
+        }
+        "smtpRemove" => {
+            let note = match crate::mail::delete_account(app) {
+                Ok(()) => ("info", "Mail account removed".to_string()),
                 Err(error) => ("error", error),
             };
             let snapshot = settings_snapshot(app, Some((note.0, &note.1)));
@@ -488,6 +502,7 @@ pub fn is_management_event(name: &str) -> bool {
             | "integrationSave"
             | "integrationDelete"
             | "smtpSave"
+            | "smtpRemove"
             | "openParts"
             | "partsFetchRegistry"
             | "partsInstallRegistry"

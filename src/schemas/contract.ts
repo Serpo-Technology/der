@@ -866,12 +866,17 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       );
     }
 
-    // An auth reference must name a configured integration credential.
+    // An auth reference must name a configured HTTP credential. The store
+    // also holds non-injectable kinds (the smtp mail account, part-scoped
+    // secrets); those are invisible here and in the taught names.
     const auth = (op.implementation as { auth?: string } | undefined)?.auth;
     if (auth !== undefined) {
-      const credential = INTEGRATION_CREDENTIALS.find((cred) => cred.name === auth);
+      const injectable = INTEGRATION_CREDENTIALS.filter((cred) =>
+        ['bearer', 'header', 'query'].includes(cred.kind)
+      );
+      const credential = injectable.find((cred) => cred.name === auth);
       if (!credential) {
-        const known = INTEGRATION_CREDENTIALS.map((cred) => cred.name);
+        const known = injectable.map((cred) => cred.name);
         fail(
           `${opPath}.implementation.auth`,
           known.length > 0

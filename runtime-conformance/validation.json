@@ -4242,6 +4242,160 @@
       }
     },
     {
+      "name": "non-http credential kinds are invisible to auth references",
+      "contract": {
+        "name": "mail-auth",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "count-text",
+            "type": "text",
+            "properties": {},
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "clicks"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "send-btn",
+            "type": "button",
+            "properties": {
+              "text": "Send"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-mail-auth"
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-mail-auth",
+            "operationName": "notify.fetch",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "response",
+                "target": "state",
+                "targetId": "clicks"
+              }
+            ],
+            "triggers": [],
+            "implementation": {
+              "type": "remote",
+              "endpoint": "https://hooks.example.dev/notify",
+              "auth": "mail"
+            }
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [
+        {
+          "name": "mail",
+          "kind": "smtp",
+          "fields": {
+            "host": "smtp.example.net",
+            "security": "starttls"
+          }
+        },
+        {
+          "name": "hooks-token",
+          "kind": "bearer",
+          "baseUrl": "https://hooks.example.dev"
+        },
+        {
+          "name": "part:der-labs.mailer:api-key",
+          "kind": "partsecret"
+        }
+      ],
+      "expected": {
+        "errors": [
+          {
+            "path": "operations.0.implementation.auth",
+            "message": "\"mail\" is not a configured integration credential; available: hooks-token",
+            "code": "UNKNOWN_CREDENTIAL"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "mail-auth",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "count-text",
+              "type": "text",
+              "properties": {},
+              "dataBindings": [
+                {
+                  "property": "content",
+                  "source": "state",
+                  "sourceId": "clicks"
+                }
+              ],
+              "eventBindings": []
+            },
+            {
+              "id": "send-btn",
+              "type": "button",
+              "properties": {
+                "text": "Send"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-mail-auth"
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-mail-auth",
+              "operationName": "notify.fetch",
+              "inputs": [],
+              "outputs": [
+                {
+                  "name": "response",
+                  "target": "state",
+                  "targetId": "clicks"
+                }
+              ],
+              "triggers": [],
+              "implementation": {
+                "type": "remote",
+                "endpoint": "https://hooks.example.dev/notify",
+                "auth": "mail"
+              }
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
       "name": "fragment params enforce and packs validate through every rule",
       "contract": {
         "name": "fragments",

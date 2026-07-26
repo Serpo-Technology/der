@@ -467,19 +467,26 @@ export function renderCatalogText(compact = false, customLines: string[] = []): 
     return lines;
   });
 
-  const credentialLines = INTEGRATION_CREDENTIALS.flatMap((cred) => {
-    const shape =
-      cred.kind === 'bearer'
-        ? 'bearer token'
-        : cred.kind === 'header'
-          ? `header "${cred.target}"`
-          : `query parameter "${cred.target}"`;
-    const lines = [
-      `- ${cred.name} (${shape})${cred.baseUrl ? `: endpoints MUST start with ${cred.baseUrl}` : ''}`,
-    ];
-    if (cred.notes) lines.push(`  service notes: ${cred.notes}`);
-    return lines;
-  });
+  // Only HTTP-injectable credentials are taught as auth names; the store's
+  // other kinds (the smtp mail account, part-scoped secrets) have their own
+  // consumers.
+  const credentialLines = INTEGRATION_CREDENTIALS.filter((cred) =>
+    ['bearer', 'header', 'query'].includes(cred.kind)
+  ).flatMap(
+    (cred) => {
+      const shape =
+        cred.kind === 'bearer'
+          ? 'bearer token'
+          : cred.kind === 'header'
+            ? `header "${cred.target}"`
+            : `query parameter "${cred.target}"`;
+      const lines = [
+        `- ${cred.name} (${shape})${cred.baseUrl ? `: endpoints MUST start with ${cred.baseUrl}` : ''}`,
+      ];
+      if (cred.notes) lines.push(`  service notes: ${cred.notes}`);
+      return lines;
+    }
+  );
 
   const transformLines = Object.values(TRANSFORMS).map((def) => {
     const params = def.parameters.map((p) => p.name).join(', ');

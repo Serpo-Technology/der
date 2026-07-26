@@ -270,6 +270,12 @@ pub(crate) async fn execute_remote_core(
                 let target = credential.target.clone().unwrap_or_else(|| "key".to_string());
                 req = req.query(&[(target, credential.secret.clone())]);
             }
+            "smtp" => {
+                return Err(format!(
+                    "\"{}\" is a mail account; it can only be used by email.send, never sent to an HTTP endpoint",
+                    auth_name
+                ))
+            }
             other => return Err(format!("Unknown credential kind \"{}\"", other)),
         }
     }
@@ -1414,6 +1420,7 @@ pub fn run() {
             mail::email_send,
             mail::smtp_get,
             mail::smtp_save,
+            mail::smtp_delete,
             read_repository_index,
             write_repository_index,
             read_component_manifest,
