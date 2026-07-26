@@ -303,7 +303,7 @@ impl SidecarBridge {
             }
             "create" | "openBookmark" | "openRecipe" | "openRecent" | "editExperience"
             | "bookmarkAdd" | "bookmarkRemove" | "openEditor" | "editorValidate" | "editorApply"
-            | "editorRegenerate" => Ok(Some(message.clone())),
+            | "editorRegenerate" | "openHome" | "quitApp" => Ok(Some(message.clone())),
             name if super::manage::is_management_event(name) => Ok(Some(message.clone())),
             "log" => Ok(None),
             other => Err(format!("Unknown panel event \"{}\"", other)),
@@ -429,6 +429,74 @@ struct RunningSidecar {
 
 #[derive(Default)]
 pub struct NativeRendererState(Mutex<Option<RunningSidecar>>);
+
+/// Dialog requests waiting on the panel's answer, by request id.
+#[derive(Default)]
+pub struct PendingDialogs(Mutex<HashMap<String, std::sync::mpsc::Sender<Option<String>>>>);
+
+fn resolve_file_dialog(app: &tauri::AppHandle, message: &Value) {
+    let request_id = message
+        .get("requestId")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let path = message
+        .get("path")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let sender = app
+        .state::<PendingDialogs>()
+        .0
+        .lock()
+        .unwrap()
+        .remove(&request_id);
+    if let Some(sender) = sender {
+        let _ = sender.send(path);
+    }
+}
+
+/// True when the panel is running and can present dialogs as the active app.
+pub fn panel_available(app: &tauri::AppHandle) -> bool {
+    if !crate::native_mode() {
+        return false;
+    }
+    app.state::<NativeRendererState>().0.lock().unwrap().is_some()
+}
+
+fn panel_dialog(app: &tauri::AppHandle, mut request: Value) -> Result<Option<String>, String> {
+    let bridge = {
+        let state = app.state::<NativeRendererState>();
+        let guard = state.0.lock().unwrap();
+        match guard.as_ref() {
+            Some(running) => running.bridge.clone(),
+            None => return Err("The panel is not running".to_string()),
+        }
+    };
+    let request_id = uuid::Uuid::new_v4().to_string();
+    request["requestId"] = json!(request_id);
+    let (sender, receiver) = std::sync::mpsc::channel::<Option<String>>();
+    app.state::<PendingDialogs>()
+        .0
+        .lock()
+        .unwrap()
+        .insert(request_id.clone(), sender);
+    bridge.lock().unwrap().send_raw(&request)?;
+    let outcome = receiver
+        .recv_timeout(std::time::Duration::from_secs(300))
+        .map_err(|_| "The file dialog timed out".to_string());
+    app.state::<PendingDialogs>().0.lock().unwrap().remove(&request_id);
+    outcome
+}
+
+/// The panel presents the open dialog (it is the active app, so the dialog
+/// fronts instead of bouncing the Dock).
+pub fn panel_pick_file(app: &tauri::AppHandle, kind: &str) -> Result<Option<String>, String> {
+    panel_dialog(app, json!({ "cmd": "pickFile", "kind": kind }))
+}
+
+pub fn panel_save_file(app: &tauri::AppHandle, name: &str) -> Result<Option<String>, String> {
+    panel_dialog(app, json!({ "cmd": "saveFile", "name": name }))
+}
 
 /// The panel bundled next to the app executable (Contents/MacOS in a
 /// packaged build); how installed apps find their renderer.
@@ -588,6 +656,14 @@ fn relay_home_event(app: &tauri::AppHandle, event: &Value) {
         Some(name) if super::manage::is_management_event(name) => {
             super::manage::dispatch(app, event.clone());
         }
+        Some("openHome") => {
+            show_native_home(app);
+        }
+        Some("quitApp") => {
+            // The panel asked to quit DER: the core exits and the panel
+            // follows on its stdin EOF.
+            app.exit(0);
+        }
         Some("openBookmark") => {
             let Some(bookmark_id) = event.get("id").and_then(Value::as_str) else {
                 return;
@@ -660,7 +736,26 @@ fn ensure_running(app: &tauri::AppHandle) -> Result<Arc<Mutex<SidecarBridge>>, S
         .unwrap()
         .set_tree_rewriter(Box::new(move |tree| rewrite_granted_srcs(&rewrite_app, tree)));
 
-    let reader_bridge = bridge.clone();
+    // Panel events run on a sequential worker so ordering holds, while the
+    // reader stays free: a dispatch that opens a file dialog blocks the
+    // worker, and the dialog's reply still arrives through the reader.
+    let (work_tx, work_rx) = std::sync::mpsc::channel::<Value>();
+    let worker_bridge = bridge.clone();
+    let worker_app = app.clone();
+    std::thread::Builder::new()
+        .name("der-native-panel-worker".into())
+        .spawn(move || {
+            while let Ok(message) = work_rx.recv() {
+                let outcome = worker_bridge.lock().unwrap().handle_event(&message);
+                match outcome {
+                    Ok(Some(event)) => relay_home_event(&worker_app, &event),
+                    Ok(None) => {}
+                    Err(error) => eprintln!("native panel event failed: {}", error),
+                }
+            }
+        })
+        .map_err(|error| error.to_string())?;
+
     let reader_app = app.clone();
     std::thread::Builder::new()
         .name("der-native-panel-reader".into())
@@ -673,11 +768,10 @@ fn ensure_running(app: &tauri::AppHandle) -> Result<Arc<Mutex<SidecarBridge>>, S
                 }
                 match serde_json::from_str::<Value>(&line) {
                     Ok(message) => {
-                        let outcome = reader_bridge.lock().unwrap().handle_event(&message);
-                        match outcome {
-                            Ok(Some(event)) => relay_home_event(&reader_app, &event),
-                            Ok(None) => {}
-                            Err(error) => eprintln!("native panel event failed: {}", error),
+                        if message.get("event").and_then(Value::as_str) == Some("fileDialog") {
+                            resolve_file_dialog(&reader_app, &message);
+                        } else if work_tx.send(message).is_err() {
+                            break;
                         }
                     }
                     Err(error) => eprintln!("native panel sent invalid JSON: {}", error),

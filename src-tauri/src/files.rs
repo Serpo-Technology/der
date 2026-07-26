@@ -89,16 +89,26 @@ fn asset_url(app: &AppHandle, path: &Path) -> String {
 }
 
 pub fn pick_core(app: &AppHandle, kind: &str) -> Result<Value, String> {
-    let mut dialog = app.dialog().file();
-    if let Some((label, extensions)) = filters_for(kind) {
-        dialog = dialog.add_filter(label, extensions);
-    }
-    let Some(picked) = dialog.blocking_pick_file() else {
-        return Err("No file was chosen".to_string());
+    // In native mode the panel is the active app and presents the dialog;
+    // a dialog from this background process would open behind the windows
+    // and bounce the Dock instead.
+    let path: PathBuf = if crate::runtime::sidecar::panel_available(app) {
+        match crate::runtime::sidecar::panel_pick_file(app, kind)? {
+            Some(path) => PathBuf::from(path),
+            None => return Err("No file was chosen".to_string()),
+        }
+    } else {
+        let mut dialog = app.dialog().file();
+        if let Some((label, extensions)) = filters_for(kind) {
+            dialog = dialog.add_filter(label, extensions);
+        }
+        let Some(picked) = dialog.blocking_pick_file() else {
+            return Err("No file was chosen".to_string());
+        };
+        picked
+            .into_path()
+            .map_err(|error| format!("The picked file has no usable path: {}", error))?
     };
-    let path = picked
-        .into_path()
-        .map_err(|error| format!("The picked file has no usable path: {}", error))?;
     let size = std::fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0);
     let name = path
         .file_name()
@@ -148,16 +158,23 @@ pub fn save_core(app: &AppHandle, base64_data: &str, suggested_name: &str) -> Re
     let bytes = BASE64
         .decode(base64_data.trim())
         .map_err(|_| "file.save needs base64 data; feed it a converter's output".to_string())?;
-    let mut dialog = app.dialog().file();
-    if !suggested_name.is_empty() {
-        dialog = dialog.set_file_name(suggested_name);
-    }
-    let Some(target) = dialog.blocking_save_file() else {
-        return Err("Saving was cancelled".to_string());
+    let path: PathBuf = if crate::runtime::sidecar::panel_available(app) {
+        match crate::runtime::sidecar::panel_save_file(app, suggested_name)? {
+            Some(path) => PathBuf::from(path),
+            None => return Err("Saving was cancelled".to_string()),
+        }
+    } else {
+        let mut dialog = app.dialog().file();
+        if !suggested_name.is_empty() {
+            dialog = dialog.set_file_name(suggested_name);
+        }
+        let Some(target) = dialog.blocking_save_file() else {
+            return Err("Saving was cancelled".to_string());
+        };
+        target
+            .into_path()
+            .map_err(|error| format!("The chosen location has no usable path: {}", error))?
     };
-    let path = target
-        .into_path()
-        .map_err(|error| format!("The chosen location has no usable path: {}", error))?;
     std::fs::write(&path, &bytes).map_err(|error| format!("Could not save: {}", error))?;
     Ok(json!({
         "saved": true,

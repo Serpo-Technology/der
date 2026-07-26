@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 final class PanelWindows: NSObject, NSWindowDelegate {
@@ -66,6 +67,12 @@ final class PanelWindows: NSObject, NSWindowDelegate {
         case "editorStatus":
             guard let windowId = message.windowId else { return }
             editorWindows[windowId]?.model.applyStatus(message.status ?? "", message: message.message)
+        case "pickFile":
+            guard let requestId = message.requestId else { return }
+            presentOpenDialog(requestId: requestId, kind: message.kind ?? "")
+        case "saveFile":
+            guard let requestId = message.requestId else { return }
+            presentSaveDialog(requestId: requestId, name: message.name ?? "")
         case "operationFailed":
             NSSound.beep()
         default:
@@ -114,6 +121,47 @@ final class PanelWindows: NSObject, NSWindowDelegate {
             size: NSSize(width: 560, height: 600),
             content: PartsView(model: partsModel)
         )
+    }
+
+    /// The panel presents the core's file dialogs: as the active app they
+    /// front properly instead of hiding behind windows.
+    private func contentTypes(for kind: String) -> [UTType]? {
+        switch kind {
+        case "pdf": return [.pdf]
+        case "image": return [.image]
+        case "video": return [.movie, .video]
+        case "markdown":
+            return [UTType(filenameExtension: "md"), UTType(filenameExtension: "markdown"), .plainText]
+                .compactMap { $0 }
+        case "text": return [.plainText, .json, .commaSeparatedText, .html]
+        default: return nil
+        }
+    }
+
+    private func presentOpenDialog(requestId: String, kind: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        if let types = contentTypes(for: kind) {
+            panel.allowedContentTypes = types
+        }
+        let picked = panel.runModal() == .OK ? panel.url?.path : nil
+        var reply: [String: Any] = ["event": "fileDialog", "requestId": requestId]
+        if let picked { reply["path"] = picked }
+        Outbound.shared.send(reply)
+    }
+
+    private func presentSaveDialog(requestId: String, name: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSSavePanel()
+        if !name.isEmpty {
+            panel.nameFieldStringValue = name
+        }
+        let target = panel.runModal() == .OK ? panel.url?.path : nil
+        var reply: [String: Any] = ["event": "fileDialog", "requestId": requestId]
+        if let target { reply["path"] = target }
+        Outbound.shared.send(reply)
     }
 
     private func showEditor(windowId: String, message: InboundMessage) {
@@ -240,19 +288,96 @@ if launchDerIfStandalone() {
     exit(0)
 }
 
-/// Without a main menu macOS dispatches no key equivalents, so Cmd+V and
-/// friends do nothing; the standard App/Edit/Window menus restore them.
+/// Menu targets and the app delegate: menu picks become bridge events, the
+/// Dock reopen shows the home, and quitting tells the core so both
+/// processes leave together.
+@MainActor
+final class AppController: NSObject, NSApplicationDelegate {
+    static let shared = AppController()
+
+    @objc func openHome(_ sender: Any?) {
+        Outbound.shared.send(["event": "openHome"])
+    }
+
+    @objc func openSettings(_ sender: Any?) {
+        Outbound.shared.send(["event": "openSettings"])
+    }
+
+    @objc func openParts(_ sender: Any?) {
+        Outbound.shared.send(["event": "openParts"])
+    }
+
+    @objc func quitDer(_ sender: Any?) {
+        // The core exits and this process follows on stdin EOF; the timer is
+        // the fallback if the pipe lingers.
+        Outbound.shared.send(["event": "quitApp"])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            NSApp.terminate(nil)
+        }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows {
+            Outbound.shared.send(["event": "openHome"])
+        }
+        return true
+    }
+}
+
+/// The full DER menu bar: every screen reachable from it, and the standard
+/// Edit/Window items so system shortcuts work.
 @MainActor
 func installMainMenu() {
     let main = NSMenu()
+    let controller = AppController.shared
 
     let appItem = NSMenuItem()
     let appMenu = NSMenu()
+    let settingsItem = NSMenuItem(
+        title: "Settings...",
+        action: #selector(AppController.openSettings(_:)),
+        keyEquivalent: ","
+    )
+    settingsItem.target = controller
+    appMenu.addItem(settingsItem)
+    let partsItem = NSMenuItem(
+        title: "Parts...",
+        action: #selector(AppController.openParts(_:)),
+        keyEquivalent: "P"
+    )
+    partsItem.target = controller
+    appMenu.addItem(partsItem)
+    appMenu.addItem(NSMenuItem.separator())
     appMenu.addItem(withTitle: "Hide DER", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
     appMenu.addItem(NSMenuItem.separator())
-    appMenu.addItem(withTitle: "Quit DER", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    let quitItem = NSMenuItem(
+        title: "Quit DER",
+        action: #selector(AppController.quitDer(_:)),
+        keyEquivalent: "q"
+    )
+    quitItem.target = controller
+    appMenu.addItem(quitItem)
     appItem.submenu = appMenu
     main.addItem(appItem)
+
+    let fileItem = NSMenuItem()
+    let fileMenu = NSMenu(title: "File")
+    let newItem = NSMenuItem(
+        title: "New App...",
+        action: #selector(AppController.openHome(_:)),
+        keyEquivalent: "n"
+    )
+    newItem.target = controller
+    fileMenu.addItem(newItem)
+    let homeItem = NSMenuItem(
+        title: "Home",
+        action: #selector(AppController.openHome(_:)),
+        keyEquivalent: "0"
+    )
+    homeItem.target = controller
+    fileMenu.addItem(homeItem)
+    fileItem.submenu = fileMenu
+    main.addItem(fileItem)
 
     let editItem = NSMenuItem()
     let editMenu = NSMenu(title: "Edit")
@@ -290,8 +415,11 @@ func installMainMenu() {
 }
 
 let app = NSApplication.shared
-app.setActivationPolicy(.accessory)
+// The panel is DER's face: Dock presence, menu bar, and dialogs. Inside the
+// packaged DER.app bundle it inherits the app's name and icon.
+app.setActivationPolicy(.regular)
 MainActor.assumeIsolated {
+    app.delegate = AppController.shared
     installMainMenu()
 }
 

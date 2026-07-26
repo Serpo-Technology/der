@@ -1351,10 +1351,15 @@ pub fn run() {
         .manage(fragments::FragmentsState::new())
         .manage(runtime::sessions::RuntimeSessionsState::default())
         .manage(runtime::sidecar::NativeRendererState::default())
+        .manage(runtime::sidecar::PendingDialogs::default())
         .setup(|app| {
             // The two faces are peers: native mode never creates a webview
             // window, and webview mode builds its main window here.
             if native_mode() {
+                // The panel is DER's regular app (Dock, menu bar); the core
+                // stays a background service with the tray.
+                #[cfg(target_os = "macos")]
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
                 runtime::sidecar::show_native_home(app.handle());
             } else {
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
@@ -1455,13 +1460,23 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            if let tauri::RunEvent::Reopen { .. } = event {
-                if native_mode() {
-                    runtime::sidecar::show_native_home(app);
-                } else if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+            match event {
+                tauri::RunEvent::Reopen { .. } => {
+                    if native_mode() {
+                        runtime::sidecar::show_native_home(app);
+                    } else if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
                 }
+                // DER is a background app with a tray: closing every window
+                // never quits it; only an explicit quit does.
+                tauri::RunEvent::ExitRequested { api, code, .. } => {
+                    if code.is_none() {
+                        api.prevent_exit();
+                    }
+                }
+                _ => {}
             }
         });
 }

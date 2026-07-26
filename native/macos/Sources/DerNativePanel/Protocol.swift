@@ -250,6 +250,9 @@ public struct InboundMessage: Decodable, Sendable {
     public let theme: String?
     public let accent: String?
     public let background: String?
+    /// File dialog requests the panel presents for the core.
+    public let requestId: String?
+    public let kind: String?
     public let tree: [ResolvedNode]?
     public let operationId: String?
     public let bookmarks: [HomeBookmark]?

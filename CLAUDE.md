@@ -381,7 +381,16 @@ blueprint projection (`compose::derive_blueprint`) whose edited plan regenerates
 contract through `compose::generate_from_blueprint` (blueprint mode over the same loop),
 both landing with state preserved. The home reads the detailed bookmarks list, refreshes
 without raising its window (`raise` on the home message; only explicit opens front it),
-and shows example prompt chips when the create field is empty. `scripts/package-macos.sh` builds the installable app:
+and shows example prompt chips when the create field is empty. The panel is the app's face on macOS: regular activation policy (Dock and
+menu bar identity from the DER.app bundle, so the packaged app shows the DER name and
+icon), a full menu bar (Settings, Parts, Home, New App, Edit, Window) whose picks travel
+as bridge events, Dock reopen shows the home, and quitting sends `quitApp` so the core
+exits and the panel follows on stdin EOF. The core runs as an accessory in native mode
+(tray only, no second Dock icon) and prevents exit while windowless, so DER persists in
+the background. File dialogs in native mode are PRESENTED BY THE PANEL (`pickFile`/
+`saveFile` request-reply over the protocol with a pending map in the core; panel events
+run on a sequential worker thread so a dialog-blocked chain never deadlocks the reader);
+the webview face keeps the dialog plugin. `scripts/package-macos.sh` builds the installable app:
 the panel compiles in release mode, stages under `src-tauri/binaries/` (gitignored), and
 `tauri build --config src-tauri/tauri.macos-app.conf.json` bundles it as an externalBin in
 DER.app; a packaged build with the bundled panel runs native-first by default
