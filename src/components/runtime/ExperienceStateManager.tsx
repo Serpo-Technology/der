@@ -164,7 +164,11 @@ export class ExperienceStateManager {
 
   private extractResultValue(result: any, outputName: string): any {
     if (result && typeof result === 'object') {
-      return result[outputName] !== undefined ? result[outputName] : result;
+      if (result[outputName] !== undefined) return result[outputName];
+      // "reset" is a universal output: any operation may route it to clear
+      // a control, whether or not the part returns one.
+      if (outputName === 'reset') return '';
+      return result;
     }
     return result;
   }

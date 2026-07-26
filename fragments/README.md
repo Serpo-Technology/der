@@ -12,6 +12,16 @@ names live under the manifest's namespace (`date.diffDays` for namespace
 `date`); segments start lowercase and may continue in camelCase, matching
 the builtin vocabulary.
 
+## The ABI is language-agnostic
+
+A part is any wasm module with an empty import section exporting `memory`,
+`der_alloc(i32)->i32`, and `der_run(i32,i32)->i64`, answering the JSON
+envelope (`{"operation", "inputs"}` in, `{"ok": ...}` or `{"err": ...}`
+packed as `(ptr << 32) | len` out). The toolchain does not matter: `qr/` is
+written in C (clang + wasm-ld, `build.sh`), everything else here in Rust,
+and any language that can meet that shape can publish parts.
+
+
 ## Layout
 
 - `fragment-tool/` is the publisher CLI. It generates Ed25519 key pairs,

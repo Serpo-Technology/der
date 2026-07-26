@@ -2,6 +2,60 @@
   "formatVersion": 1,
   "sessions": [
     {
+      "name": "a reset output clears its element even when the part returns none",
+      "operations": [
+        {
+          "id": "op-add",
+          "operationName": "counter.add",
+          "inputs": [
+            {
+              "name": "key",
+              "source": "constant",
+              "sourceId": "total"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "reset",
+              "target": "ui-element",
+              "targetId": "amount-in"
+            }
+          ]
+        }
+      ],
+      "initialState": {},
+      "elements": [],
+      "env": {
+        "ids": [],
+        "randoms": [],
+        "epochMs": 1753315200000
+      },
+      "events": [
+        {
+          "do": "setElement",
+          "elementId": "amount-in",
+          "value": "42"
+        },
+        {
+          "do": "chain",
+          "operationIds": [
+            "op-add"
+          ]
+        }
+      ],
+      "expected": {
+        "data": {
+          "operation_op-add_reset": "",
+          "element_amount-in": "",
+          "total": 1,
+          "operation_op-add": {
+            "value": 1
+          }
+        },
+        "failed": []
+      }
+    },
+    {
       "name": "entry flow: element reads, input transform, reset outputs, mirrors",
       "operations": [
         {

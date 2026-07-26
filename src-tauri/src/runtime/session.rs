@@ -217,7 +217,7 @@ impl Session {
             _ => Value::Null,
         };
         let lookup = |source: &str, source_id: &str| -> Value {
-            if source == "element" {
+            if source != "state" {
                 self.read(&format!("element_{}", source_id))
             } else {
                 self.read(source_id)
@@ -317,6 +317,9 @@ fn extract_result_value(result: &Value, output_name: &str) -> Value {
     match result {
         Value::Object(map) => match map.get(output_name) {
             Some(value) => value.clone(),
+            // "reset" is a universal output: any operation may route it to
+            // clear a control, whether or not the part returns one.
+            None if output_name == "reset" => Value::String(String::new()),
             None => result.clone(),
         },
         other => other.clone(),

@@ -165,7 +165,41 @@ pub fn apply_transform(name: &str, value: &Value, parameters: &Map<String, Value
                 Value::Null => String::new(),
                 other => js_to_string(other),
             };
-            Value::String(template.replacen("{{value}}", &inserted, 1))
+            let mut out = template.replacen("{{value}}", &inserted, 1);
+            // Named slots: {{ssid}} fills from parameters.ssid, already
+            // resolved when it was a live reference. Left-to-right over the
+            // current text, matching the JS regex-replace pass.
+            let mut result = String::with_capacity(out.len());
+            while let Some(start) = out.find("{{") {
+                let Some(rel_end) = out[start + 2..].find("}}") else {
+                    break;
+                };
+                let name = out[start + 2..start + 2 + rel_end].to_string();
+                let is_identifier = !name.is_empty()
+                    && name
+                        .chars()
+                        .enumerate()
+                        .all(|(i, c)| c == '_' || c.is_ascii_alphabetic() || (i > 0 && c.is_ascii_digit()));
+                result.push_str(&out[..start]);
+                if is_identifier && name != "value" {
+                    match parameters.get(&name) {
+                        Some(Value::Null) => {}
+                        Some(slot) => result.push_str(&js_to_string(slot)),
+                        None => {
+                            result.push_str("{{");
+                            result.push_str(&name);
+                            result.push_str("}}");
+                        }
+                    }
+                } else {
+                    result.push_str("{{");
+                    result.push_str(&name);
+                    result.push_str("}}");
+                }
+                out = out[start + 4 + rel_end..].to_string();
+            }
+            result.push_str(&out);
+            Value::String(result)
         }
         "map" => {
             let mapping = match param(parameters, "mapping") {
@@ -249,7 +283,8 @@ fn param_ref_of(value: &Value) -> Option<(&str, &str)> {
     }
     let source = map.get("source")?.as_str()?;
     let source_id = map.get("sourceId")?.as_str()?;
-    if source == "state" || source == "element" {
+    // "ui-element" is the operation-input spelling of the same thing.
+    if source == "state" || source == "element" || source == "ui-element" {
         Some((source, source_id))
     } else {
         None

@@ -1166,6 +1166,37 @@
       "expected": "[]"
     },
     {
+      "name": "format named slots fill from parameters",
+      "transform": "format",
+      "parameters": {
+        "template": "WIFI:T:WPA;S:{{value}};P:{{pw}};;",
+        "pw": "hunter2"
+      },
+      "input": "homenet",
+      "expected": "WIFI:T:WPA;S:homenet;P:hunter2;;"
+    },
+    {
+      "name": "format repeated and missing slots",
+      "transform": "format",
+      "parameters": {
+        "template": "{{a}}-{{a}}-{{ghost}}-{{value}}",
+        "a": "x"
+      },
+      "input": "v",
+      "expected": "x-x-{{ghost}}-v"
+    },
+    {
+      "name": "format null slot empties and numbers coerce",
+      "transform": "format",
+      "parameters": {
+        "template": "[{{gone}}] {{n}}",
+        "gone": null,
+        "n": 7
+      },
+      "input": "",
+      "expected": "[] 7"
+    },
+    {
       "name": "format float repr",
       "transform": "format",
       "parameters": {

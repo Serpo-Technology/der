@@ -152,7 +152,7 @@ function resolveDataBinding(binding: DataBinding, state: ViewState, scope?: Item
   }
   return applyBindingTransforms(value, binding, {
     lookup: (source, sourceId) =>
-      state.data[source === 'element' ? `element_${sourceId}` : sourceId],
+      state.data[source === 'state' ? sourceId : `element_${sourceId}`],
   });
 }
 
@@ -195,7 +195,7 @@ function evaluateCondition(
       : getValueAtPath(scope?.item, condition.sourceId);
   const value = applyTransformPipeline(read, condition.transforms, {
     lookup: (source, sourceId) =>
-      state.data[source === 'element' ? `element_${sourceId}` : sourceId],
+      state.data[source === 'state' ? sourceId : `element_${sourceId}`],
   });
   const against = resolveConditionValue(condition.value, state);
 

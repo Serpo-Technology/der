@@ -1004,7 +1004,7 @@
     {
       "name": "format",
       "output": "scalar",
-      "description": "Inserts the value into a template at {{value}}.",
+      "description": "Inserts the value into a template at {{value}}; every other {{name}} slot fills from a same-named parameter (parameters may be live references).",
       "parameters": [
         "template"
       ]

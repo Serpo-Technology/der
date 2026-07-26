@@ -407,10 +407,12 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
   }
 
   const checkParamRef = (path: string, ref: { source: string; sourceId: unknown }) => {
-    if (ref.source === 'element' && typeof ref.sourceId === 'string') {
+    // "ui-element" is the operation-input spelling of "element".
+    const isElementRef = ref.source === 'element' || ref.source === 'ui-element';
+    if (isElementRef && typeof ref.sourceId === 'string') {
       consumedElementIds.add(ref.sourceId);
     }
-    if (ref.source !== 'state' && ref.source !== 'element') {
+    if (ref.source !== 'state' && !isElementRef) {
       fail(
         path,
         `Transform parameter reference source must be "state" or "element", got "${ref.source}"`,
@@ -422,7 +424,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       fail(path, 'Transform parameter reference needs a sourceId', 'INVALID_PARAM_REF');
       return;
     }
-    if (ref.source === 'element' && !elementIds.has(ref.sourceId)) {
+    if (isElementRef && !elementIds.has(ref.sourceId)) {
       fail(
         path,
         `Transform parameter references unknown element "${ref.sourceId}"; existing element ids: ${knownElementIds()}`,
@@ -586,7 +588,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
           const ref = paramRefOf(value);
           if (
             ref &&
-            ref.source === 'element' &&
+            (ref.source === 'element' || ref.source === 'ui-element') &&
             appendElementsByKey.get(binding.sourceId)?.has(String(ref.sourceId))
           ) {
             fail(
@@ -1012,6 +1014,8 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
       // Outputs must exist on the manifest.
       const outputNames = new Set(def.outputs.map((spec) => spec.name));
       op.outputs.forEach((output, outputIndex) => {
+        // "reset" is a universal output (clears the routed control).
+        if (output.name === 'reset') return;
         if (!outputNames.has(output.name)) {
           fail(
             `${opPath}.outputs.${outputIndex}`,

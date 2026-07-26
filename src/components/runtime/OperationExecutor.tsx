@@ -114,7 +114,7 @@ export class OperationExecutor {
     }
     return applyBindingTransforms(value, binding, {
       lookup: (source, sourceId) =>
-        state.getData(source === 'element' ? `element_${sourceId}` : sourceId)
+        state.getData(source === 'state' ? sourceId : `element_${sourceId}`)
     });
   }
 

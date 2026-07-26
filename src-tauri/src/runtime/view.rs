@@ -223,7 +223,7 @@ fn resolve_data_binding(
     }
 
     let lookup = |ref_source: &str, ref_id: &str| -> Value {
-        let key = if ref_source == "element" {
+        let key = if ref_source != "state" {
             format!("element_{}", ref_id)
         } else {
             ref_id.to_string()
@@ -274,7 +274,7 @@ fn evaluate_condition(condition: &Value, ctx: &ViewContext, scope: Option<&Scope
     let (value, was_undefined) = match transforms {
         Some(steps) if !steps.is_empty() => {
             let lookup = |ref_source: &str, ref_id: &str| -> Value {
-                let key = if ref_source == "element" {
+                let key = if ref_source != "state" {
                     format!("element_{}", ref_id)
                 } else {
                     ref_id.to_string()

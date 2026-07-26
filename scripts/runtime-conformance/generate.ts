@@ -257,6 +257,24 @@ const TRANSFORM_CASES: TransformCase[] = [
     input: null,
   },
   {
+    name: 'format named slots fill from parameters',
+    transform: 'format',
+    parameters: { template: 'WIFI:T:WPA;S:{{value}};P:{{pw}};;', pw: 'hunter2' },
+    input: 'homenet',
+  },
+  {
+    name: 'format repeated and missing slots',
+    transform: 'format',
+    parameters: { template: '{{a}}-{{a}}-{{ghost}}-{{value}}', a: 'x' },
+    input: 'v',
+  },
+  {
+    name: 'format null slot empties and numbers coerce',
+    transform: 'format',
+    parameters: { template: '[{{gone}}] {{n}}', gone: null, n: 7 },
+    input: '',
+  },
+  {
     name: 'format float repr',
     transform: 'format',
     parameters: { template: '{{value}}' },
@@ -650,6 +668,21 @@ interface SessionCase {
 }
 
 const SESSION_CASES: SessionCase[] = [
+  {
+    name: 'a reset output clears its element even when the part returns none',
+    operations: [
+      {
+        id: 'op-add',
+        operationName: 'counter.add',
+        inputs: [{ name: 'key', source: 'constant', sourceId: 'total' }],
+        outputs: [{ name: 'reset', target: 'ui-element', targetId: 'amount-in' }],
+      },
+    ],
+    events: [
+      { do: 'setElement', elementId: 'amount-in', value: '42' },
+      { do: 'chain', operationIds: ['op-add'] },
+    ],
+  },
   {
     name: 'entry flow: element reads, input transform, reset outputs, mirrors',
     operations: [

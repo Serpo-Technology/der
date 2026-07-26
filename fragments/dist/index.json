@@ -106,6 +106,20 @@
       "bundleBytes": 3668
     },
     {
+      "id": "der-labs.qr",
+      "name": "QR Codes",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "qr",
+      "description": "QR code generation: any text becomes a scannable PNG. Written in C against the open part ABI.",
+      "operations": [
+        "qr.encode"
+      ],
+      "bundleUrl": "der-labs.qr.derpart",
+      "bundleSha256": "89c6c883b81ec7988b609d5567f0ad8752d30e4718aa72deebdb298a314a8a04",
+      "bundleBytes": 19024
+    },
+    {
       "id": "der-labs.starter-apps",
       "name": "Starter Apps",
       "version": "1.1.0",

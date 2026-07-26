@@ -198,12 +198,14 @@ impl Checker<'_> {
     fn check_param_ref(&mut self, path: &str, reference: &Map<String, Value>) {
         let source = reference.get("source").and_then(Value::as_str).unwrap_or("");
         let source_id = reference.get("sourceId").cloned().unwrap_or(Value::Null);
-        if source == "element" {
+        // "ui-element" is the operation-input spelling of "element".
+        let is_element_ref = source == "element" || source == "ui-element";
+        if is_element_ref {
             if let Some(id) = source_id.as_str() {
                 self.consumed_element_ids.add(id);
             }
         }
-        if source != "state" && source != "element" {
+        if source != "state" && !is_element_ref {
             self.fail(
                 path,
                 format!(
@@ -222,7 +224,7 @@ impl Checker<'_> {
             );
             return;
         };
-        if source == "element" && !self.element_ids.has(id) {
+        if is_element_ref && !self.element_ids.has(id) {
             let listed = self.known_element_ids();
             self.fail(
                 path,
@@ -387,7 +389,9 @@ impl Checker<'_> {
                 if let Some(parameters) = step.get("parameters").and_then(Value::as_object) {
                     for value in parameters.values() {
                         let Some(reference) = param_ref_of(value) else { continue };
-                        if reference.get("source").and_then(Value::as_str) != Some("element") {
+                        let ref_source =
+                            reference.get("source").and_then(Value::as_str).unwrap_or("");
+                        if ref_source != "element" && ref_source != "ui-element" {
                             continue;
                         }
                         let ref_id =
@@ -1479,6 +1483,10 @@ fn check_operation(op: &mut Value, op_path: &str, checker: &mut Checker) {
         let op_outputs = op.get("outputs").and_then(Value::as_array).cloned().unwrap_or_default();
         for (output_index, output) in op_outputs.iter().enumerate() {
             let output_name = as_str(output, "name");
+            // "reset" is a universal output (clears the routed control).
+            if output_name == "reset" {
+                continue;
+            }
             if !output_names.contains(&output_name) {
                 let provides = if output_names.is_empty() {
                     "none".to_string()

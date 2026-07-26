@@ -23,7 +23,11 @@ function isParamRef(value: unknown): value is { source: 'state' | 'element'; sou
   const keys = Object.keys(value as object);
   if (keys.length !== 2 || !keys.includes('source') || !keys.includes('sourceId')) return false;
   const ref = value as { source?: unknown; sourceId?: unknown };
-  return (ref.source === 'state' || ref.source === 'element') && typeof ref.sourceId === 'string';
+  // "ui-element" is the operation-input spelling of the same thing.
+  return (
+    (ref.source === 'state' || ref.source === 'element' || ref.source === 'ui-element') &&
+    typeof ref.sourceId === 'string'
+  );
 }
 
 /** Replaces parameter references with live values; static parameters pass through. */
@@ -261,14 +265,27 @@ export const TRANSFORMS: Record<string, TransformDef> = {
   format: {
     name: 'format',
     output: 'scalar',
-    description: 'Inserts the value into a template at {{value}}.',
+    description:
+      'Inserts the value into a template at {{value}}; every other {{name}} slot fills from a same-named parameter (parameters may be live references).',
     parameters: [
-      { name: 'template', type: 'string', description: 'Template containing {{value}}' },
+      { name: 'template', type: 'string', description: 'Template containing {{value}} and optional {{name}} slots' },
     ],
     apply: (value, parameters) => {
       const template = parameters.template;
       if (typeof template !== 'string') return value;
-      return template.replace('{{value}}', value === null || value === undefined ? '' : String(value));
+      let out = template.replace(
+        '{{value}}',
+        value === null || value === undefined ? '' : String(value)
+      );
+      // Named slots: {{ssid}} fills from parameters.ssid, already resolved
+      // when it was a live reference.
+      out = out.replace(/\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g, (whole, name: string) => {
+        if (name === 'value') return whole;
+        const slot = parameters[name];
+        if (slot === undefined) return whole;
+        return slot === null ? '' : String(slot);
+      });
+      return out;
     },
   },
   formatNumber: {

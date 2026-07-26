@@ -1,0 +1,57 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.qr",
+  "name": "QR Codes",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "QR code generation: any text becomes a scannable PNG. Written in C against the open part ABI.",
+  "namespace": "qr",
+  "capabilities": [],
+  "wasmSha256": "c9f9ced24ba181a4989ffa0f93066431b99b5262b0be4ce3f4e98f19bc215060",
+  "createdAt": "2026-07-25T23:20:00Z",
+  "operations": [
+    {
+      "name": "qr.encode",
+      "description": "Encodes text as a QR code PNG. Returns {base64, size, modules}.",
+      "inputs": [
+        {
+          "name": "text",
+          "type": "string",
+          "required": true,
+          "description": "The text or URL to encode (up to a few hundred characters)"
+        },
+        {
+          "name": "scale",
+          "type": "number",
+          "required": false,
+          "description": "Pixels per module, 1-32 (default 8)"
+        },
+        {
+          "name": "border",
+          "type": "number",
+          "required": false,
+          "description": "Quiet-zone modules around the code, 0-16 (default 4)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "base64",
+          "type": "string",
+          "description": "PNG bytes, base64; bind an image element's src to it"
+        },
+        {
+          "name": "size",
+          "type": "number",
+          "description": "Image side length in pixels"
+        },
+        {
+          "name": "modules",
+          "type": "number",
+          "description": "QR modules per side"
+        }
+      ],
+      "howto": "Route \"base64\" into state and bind an image element's src from that key; the runtime renders it directly. Build the payload with a format transform, e.g. a wifi card is qr.encode on text formatted as WIFI:T:WPA;S:{{value}};P:<password>;; from the ssid input, and a link QR encodes the url input as-is. Chain file.save with the same base64 to export the PNG."
+    }
+  ]
+}
