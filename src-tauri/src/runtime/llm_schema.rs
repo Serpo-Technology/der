@@ -837,6 +837,14 @@ fn llm_contract(value: &Value, path: &[String], ctx: &mut Ctx) -> Option<Value> 
             {
                 styling_out.insert("accent".to_string(), accent);
             }
+            if let Some(background) = optional_string(
+                styling_map.get("background"),
+                false,
+                &push_path(&styling_path, "background"),
+                ctx,
+            ) {
+                styling_out.insert("background".to_string(), background);
+            }
             if let Some(raw_styles) = styling_map.get("customStyles") {
                 if let Some(styles) =
                     record_field(Some(raw_styles), &push_path(&styling_path, "customStyles"), ctx)

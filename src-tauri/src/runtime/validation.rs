@@ -479,6 +479,18 @@ pub fn check_against_manifests(
                 styling_edits.push(("accent".to_string(), None));
             }
         }
+        if let Some(background) = styling.get("background").and_then(Value::as_str) {
+            if !background.is_empty() && !is_hex_accent(background) {
+                checker.warn(
+                    "styling.background",
+                    format!(
+                        "\"{}\" is not a hex color like \"#fef9c3\"; background removed",
+                        background
+                    ),
+                );
+                styling_edits.push(("background".to_string(), None));
+            }
+        }
     }
     if let Some(styling) = contract.get_mut("styling").and_then(Value::as_object_mut) {
         for (key, replacement) in styling_edits {

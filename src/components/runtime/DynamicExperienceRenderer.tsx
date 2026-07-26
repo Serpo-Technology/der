@@ -13,7 +13,7 @@ import { OperationExecutor, EventContext } from './OperationExecutor';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { normalizeContract } from '../../schemas/contract';
 import { STYLE_ACCENTS, STYLE_THEMES } from '../../services/operations/registry';
-import { hexAccentVariables, isHexAccent } from '../../services/operations/accent-color';
+import { backgroundVariables, hexAccentVariables, isHexAccent } from '../../services/operations/accent-color';
 import { expandPackOperations } from '../../services/fragments/ui-fragments';
 
 interface DynamicExperienceRendererProps {
@@ -188,6 +188,7 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
   const styling = (normalizedContract.styling ?? { theme: 'default' }) as {
     theme?: string;
     accent?: string;
+    background?: string;
   };
   const theme = (STYLE_THEMES as readonly string[]).includes(styling.theme ?? '')
     ? styling.theme
@@ -198,6 +199,8 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
       : undefined;
   const hexAccent =
     !accent && styling.accent && isHexAccent(styling.accent) ? styling.accent : undefined;
+  const hexBackground =
+    styling.background && isHexAccent(styling.background) ? styling.background : undefined;
   const containerClassName = [
     'dynamic-experience-container',
     `der-theme-${theme}`,
@@ -205,9 +208,11 @@ export const DynamicExperienceRenderer: React.FC<DynamicExperienceRendererProps>
   ]
     .filter(Boolean)
     .join(' ');
-  const containerStyles = hexAccent
-    ? ({ ...layoutStyles, ...hexAccentVariables(hexAccent) } as React.CSSProperties)
-    : (layoutStyles as React.CSSProperties);
+  const containerStyles = {
+    ...layoutStyles,
+    ...(hexAccent ? hexAccentVariables(hexAccent) : undefined),
+    ...(hexBackground ? backgroundVariables(hexBackground) : undefined),
+  } as React.CSSProperties;
 
   return (
     <div

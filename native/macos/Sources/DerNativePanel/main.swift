@@ -21,7 +21,8 @@ final class PanelWindows: NSObject, NSWindowDelegate {
         case "open":
             guard let windowId = message.windowId else { return }
             open(windowId: windowId, title: message.title ?? "Experience",
-                 theme: message.theme, accent: message.accent, tree: message.tree ?? [],
+                 theme: message.theme, accent: message.accent,
+                 background: message.background, tree: message.tree ?? [],
                  assembling: message.assembling ?? false)
         case "update":
             guard let windowId = message.windowId, let tree = message.tree,
@@ -31,7 +32,8 @@ final class PanelWindows: NSObject, NSWindowDelegate {
             // Edits can change the look mid-flight; restyle with the tree.
             entry.model.theme = message.theme
             entry.model.accent = message.accent
-            applyAppearance(entry.window, theme: message.theme)
+            entry.model.background = message.background
+            applyAppearance(entry.window, dark: entry.model.backgroundIsDark)
         case "close":
             guard let windowId = message.windowId, let entry = windows.removeValue(forKey: windowId) else { return }
             entry.window.delegate = nil
@@ -158,19 +160,16 @@ final class PanelWindows: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func applyAppearance(_ window: NSWindow, theme: String?) {
-        if theme == "dark" || theme == "terminal" {
-            window.appearance = NSAppearance(named: .darkAqua)
-        } else {
-            window.appearance = nil
-        }
+    private func applyAppearance(_ window: NSWindow, dark: Bool) {
+        window.appearance = dark ? NSAppearance(named: .darkAqua) : nil
     }
 
     private func open(windowId: String, title: String, theme: String?, accent: String?,
-                      tree: [ResolvedNode], assembling: Bool) {
+                      background: String?, tree: [ResolvedNode], assembling: Bool) {
         let model = TreeModel(windowId: windowId, tree: tree, assembling: assembling)
         model.theme = theme
         model.accent = accent
+        model.background = background
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 620),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
@@ -179,7 +178,7 @@ final class PanelWindows: NSObject, NSWindowDelegate {
         )
         window.title = title
         window.isReleasedWhenClosed = false
-        applyAppearance(window, theme: theme)
+        applyAppearance(window, dark: model.backgroundIsDark)
         window.contentView = NSHostingView(rootView: RootView(model: model))
         window.center()
         window.identifier = NSUserInterfaceItemIdentifier(windowId)

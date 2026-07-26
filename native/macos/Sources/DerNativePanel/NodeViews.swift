@@ -11,6 +11,7 @@ final class TreeModel: ObservableObject {
     @Published var assembling: Bool
     @Published var theme: String?
     @Published var accent: String?
+    @Published var background: String?
     @Published var editInstruction = ""
     @Published var editBusy = false
     @Published var editNote: String?
@@ -40,8 +41,39 @@ final class TreeModel: ObservableObject {
         }
     }
 
+    /// A free-form background hex parsed into channels; drives the whole
+    /// derived palette when present.
+    private var backgroundChannels: (r: Double, g: Double, b: Double)? {
+        guard let background, background.count == 7, background.hasPrefix("#"),
+              let value = UInt32(background.dropFirst(), radix: 16) else { return nil }
+        return (
+            Double((value >> 16) & 0xff) / 255.0,
+            Double((value >> 8) & 0xff) / 255.0,
+            Double(value & 0xff) / 255.0
+        )
+    }
+
+    var backgroundIsDark: Bool {
+        guard let rgb = backgroundChannels else {
+            return theme == "dark" || theme == "terminal"
+        }
+        return (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000 < 0.57
+    }
+
+    /// Steps the background toward black (light bg) or white (dark bg): the
+    /// same derivation the webview computes into CSS variables.
+    private func steppedSurface(_ amount: Double) -> Color? {
+        guard let rgb = backgroundChannels else { return nil }
+        let target: Double = backgroundIsDark ? 1.0 : 0.0
+        func mix(_ channel: Double) -> Double { channel + (target - channel) * amount }
+        return Color(red: mix(rgb.r), green: mix(rgb.g), blue: mix(rgb.b))
+    }
+
     /// A subtle themed surface behind the content.
     var backgroundColor: Color? {
+        if let rgb = backgroundChannels {
+            return Color(red: rgb.r, green: rgb.g, blue: rgb.b)
+        }
         switch theme {
         case "paper": return Color(red: 0.98, green: 0.955, blue: 0.90)
         case "terminal": return Color(red: 0.04, green: 0.07, blue: 0.05)
@@ -52,6 +84,7 @@ final class TreeModel: ObservableObject {
 
     /// Raised panel color for card surfaces.
     var surfaceColor: Color {
+        if let stepped = steppedSurface(0.07) { return stepped }
         switch theme {
         case "paper": return Color(red: 0.955, green: 0.925, blue: 0.85)
         case "terminal": return Color(red: 0.07, green: 0.11, blue: 0.08)
@@ -61,6 +94,7 @@ final class TreeModel: ObservableObject {
     }
 
     var borderColor: Color {
+        if let stepped = steppedSurface(0.2) { return stepped }
         switch theme {
         case "paper": return Color(red: 0.85, green: 0.80, blue: 0.70)
         case "terminal": return Color(red: 0.17, green: 0.28, blue: 0.19)

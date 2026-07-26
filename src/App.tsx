@@ -14,7 +14,7 @@ import { repositoryService } from "./services/repository/repository-service";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { registerBuiltins } from "./services/repository/builtins";
 import { STYLE_ACCENTS, STYLE_THEMES } from "./services/operations/registry";
-import { hexAccentVariables, isHexAccent } from "./services/operations/accent-color";
+import { backgroundVariables, hexAccentVariables, isHexAccent } from "./services/operations/accent-color";
 
 function App() {
   // Seed the shared component catalog once at startup. Installed parts load
@@ -248,7 +248,11 @@ const ExperienceWindow: React.FC<{
 
   // The window chrome follows the app's theme so the whole window reads as
   // one surface.
-  const styling = (currentContract?.styling ?? {}) as { theme?: string; accent?: string };
+  const styling = (currentContract?.styling ?? {}) as {
+    theme?: string;
+    accent?: string;
+    background?: string;
+  };
   const themeClass = `der-theme-${
     styling.theme && (STYLE_THEMES as readonly string[]).includes(styling.theme)
       ? styling.theme
@@ -262,6 +266,10 @@ const ExperienceWindow: React.FC<{
     !accentClass && styling.accent && isHexAccent(styling.accent)
       ? hexAccentVariables(styling.accent)
       : undefined;
+  const hexBackgroundStyles =
+    styling.background && isHexAccent(styling.background)
+      ? backgroundVariables(styling.background)
+      : undefined;
 
   return (
     <div
@@ -271,6 +279,7 @@ const ExperienceWindow: React.FC<{
         flexDirection: "column",
         height: "100%",
         ...(hexAccentStyles as React.CSSProperties | undefined),
+        ...(hexBackgroundStyles as React.CSSProperties | undefined),
       }}
     >
       <header className="der-window-header">

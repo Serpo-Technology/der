@@ -74,13 +74,14 @@ impl SidecarBridge {
         assembling: bool,
     ) -> Result<(), String> {
         let tree = resolve_entry_view(&entry, &elements);
-        let (theme, accent) = contract_look(&contract);
+        let (theme, accent, background) = contract_look(&contract);
         self.transport.send(&json!({
             "cmd": "open",
             "windowId": window_id,
             "title": title,
             "theme": theme,
             "accent": accent,
+            "background": background,
             "tree": tree,
             "assembling": assembling,
         }))?;
@@ -300,7 +301,7 @@ impl SidecarBridge {
         let tree = resolve_entry_view(&window.entry, &window.elements);
         let assembling = window.assembling;
         // Edits can change the look; every update re-states it.
-        let (theme, accent) = contract_look(&window.contract);
+        let (theme, accent, background) = contract_look(&window.contract);
         self.transport.send(&json!({
             "cmd": "update",
             "windowId": window_id,
@@ -308,13 +309,14 @@ impl SidecarBridge {
             "assembling": assembling,
             "theme": theme,
             "accent": accent,
+            "background": background,
         }))
     }
 }
 
-/// The app-level look a contract declares: theme and accent, as the panel
-/// applies them to window chrome and controls.
-fn contract_look(contract: &Value) -> (Option<String>, Option<String>) {
+/// The app-level look a contract declares: theme, accent, and free-form
+/// background, as the panel applies them to window chrome and controls.
+fn contract_look(contract: &Value) -> (Option<String>, Option<String>, Option<String>) {
     let styling = contract.get("styling");
     let read = |key: &str| {
         styling
@@ -322,7 +324,7 @@ fn contract_look(contract: &Value) -> (Option<String>, Option<String>) {
             .and_then(Value::as_str)
             .map(str::to_string)
     };
-    (read("theme"), read("accent"))
+    (read("theme"), read("accent"), read("background"))
 }
 
 // ---------------------------------------------------------------------------

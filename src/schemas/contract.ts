@@ -149,6 +149,7 @@ export const LayoutSpecSchema = z.object({
 export const StyleSpecSchema = z.object({
   theme: z.string().default('default'),
   accent: z.string().optional(),
+  background: z.string().optional(),
   customStyles: z.record(z.string(), z.any()).optional(),
 });
 
@@ -374,7 +375,7 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
 
   // Styling is cosmetic vocabulary: unknown values normalize with a warning.
   if (contract.styling) {
-    const styling = contract.styling as { theme?: string; accent?: string };
+    const styling = contract.styling as { theme?: string; accent?: string; background?: string };
     if (styling.theme && !(STYLE_THEMES as readonly string[]).includes(styling.theme)) {
       warn(
         warnings,
@@ -394,6 +395,14 @@ export function checkAgainstManifests(contract: ContractShape): ManifestCheckRes
         `"${styling.accent}" is not one of ${STYLE_ACCENTS.join('|')} or a hex color like "#7c3aed"; accent removed`
       );
       delete styling.accent;
+    }
+    if (styling.background && !isHexAccent(styling.background)) {
+      warn(
+        warnings,
+        'styling.background',
+        `"${styling.background}" is not a hex color like "#fef9c3"; background removed`
+      );
+      delete styling.background;
     }
   }
 

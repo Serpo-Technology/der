@@ -1481,6 +1481,24 @@ const VALIDATION_CASES: ValidationCase[] = [
     },
   },
   {
+    name: 'a hex background survives and a malformed one normalizes away',
+    contract: {
+      name: 'styled-bg',
+      styling: { background: '#fef9c3' },
+      elements: [COUNT_TEXT, ADD_BTN],
+      operations: [WIRED_COUNTER],
+    },
+  },
+  {
+    name: 'a non-hex background is removed with a warning',
+    contract: {
+      name: 'styled-bad-bg',
+      styling: { background: 'sunny' },
+      elements: [COUNT_TEXT, ADD_BTN],
+      operations: [WIRED_COUNTER],
+    },
+  },
+  {
     name: 'an event referencing a missing operation fails with the id list',
     contract: {
       name: 'missing-ref',
