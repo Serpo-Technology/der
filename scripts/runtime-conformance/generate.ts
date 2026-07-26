@@ -21,28 +21,20 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-import {
-  TRANSFORMS,
-  applyBindingTransforms,
-  applyTransformPipeline,
-} from '../../src/services/operations/transforms';
-import { parseRowExpression } from '../../src/services/operations/row-expression';
-import { BUILTIN_OPERATIONS, assembleStructured } from '../../src/services/operations/registry';
-import { ExperienceStateManager } from '../../src/components/runtime/ExperienceStateManager';
-import { OperationExecutor } from '../../src/components/runtime/OperationExecutor';
-import { resolveViewTree } from '../../src/services/runtime-view/resolve-view';
-import {
-  extractStreamingContract,
-  parsePartialJson,
-} from '../../src/services/ai-interpreter/partial-json';
-import {
-  ComposedResponseSchema,
-  ContractSchema,
-  LlmContractSchema,
-  checkAgainstManifests,
-  formatManifestErrors,
-} from '../../src/schemas/contract';
+import { TRANSFORMS } from '../../src/services/operations/transforms';
+import { BUILTIN_OPERATIONS } from '../../src/services/operations/registry';
+import { ContractSchema, LlmContractSchema } from '../../src/schemas/contract';
 import type { ContractShape } from '../../src/schemas/contract';
+import { instantiateKernel, KernelInstance } from '../../src/services/runtime-core/wasm-kernel';
+
+// Expectations come from the reference implementation itself: the runtime
+// kernel's wasm build answers every computation below, so the corpus is
+// authored by the exact semantics both faces ship.
+let kernel: KernelInstance;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function kcall(operation: string, payload: Record<string, unknown> = {}): any {
+  return kernel.run({ operation, ...payload });
+}
 import {
   ELEMENT_MANIFESTS,
   FRAGMENT_OPERATIONS,
@@ -946,93 +938,46 @@ function runOperationCase(entry: OperationCase) {
   const def = BUILTIN_OPERATIONS[entry.operation];
   if (!def) throw new Error(`No builtin ${entry.operation}`);
 
-  const state: Record<string, unknown> = JSON.parse(JSON.stringify(entry.state));
-  const ctx = {
-    getState: (key: string) => state[key],
-    setState: (key: string, value: unknown) => {
-      state[key] = value;
-    },
+  const env = {
+    ids: entry.env?.ids ?? [],
+    randoms: entry.env?.randoms ?? [],
+    epochMs: FIXED_EPOCH_MS,
   };
+  const reply = kcall('capture.operation', {
+    name: entry.operation,
+    inputs: jsonNormalize(entry.inputs),
+    state: jsonNormalize(entry.state),
+    env,
+  }) as { state: Record<string, unknown>; outputs?: Record<string, unknown>; error?: string };
 
-  const idQueue = [...(entry.env?.ids ?? [])];
-  const randomQueue = [...(entry.env?.randoms ?? [])];
-  const cryptoObject = globalThis.crypto as { randomUUID?: () => string };
-  const originalUuid = cryptoObject.randomUUID?.bind(cryptoObject);
-  const originalRandom = Math.random;
-  const OriginalDate = globalThis.Date;
-  cryptoObject.randomUUID = () => {
-    const next = idQueue.shift();
-    if (next === undefined) throw new Error(`${entry.name}: ran out of scripted ids`);
-    return next;
-  };
-  Math.random = () => {
-    const next = randomQueue.shift();
-    if (next === undefined) throw new Error(`${entry.name}: ran out of scripted randoms`);
-    return next;
-  };
-  class FixedDate extends OriginalDate {
-    constructor(...args: unknown[]) {
-      if (args.length === 0) {
-        super(FIXED_EPOCH_MS);
-      } else {
-        super(...(args as [number]));
-      }
-    }
-    static now() {
-      return FIXED_EPOCH_MS;
-    }
-  }
-  (globalThis as { Date: unknown }).Date = FixedDate;
-
-  try {
-    // The executor assembles dotted prefixes before execute runs; the Rust
-    // kernel assembles inside execute_builtin, so the vectors carry the flat
-    // inputs and the assembly is covered on both sides.
-    const assembled = assembleStructured(entry.inputs, def.structuredPrefixes);
-    const outputs = def.execute(assembled as never, ctx) as Record<string, unknown>;
-    if (outputs instanceof Promise)
-      throw new Error(`${entry.name}: async builtins stay outside the kernel`);
-    const frozenOutputs: Record<string, unknown> = {};
-    for (const [name, value] of Object.entries(outputs)) {
-      if (!entry.shapeOnlyOutputs?.includes(name)) {
-        frozenOutputs[name] = jsonNormalize(value);
-      }
-    }
+  if (reply.error !== undefined) {
     return {
       name: entry.name,
       operation: entry.operation,
       inputs: jsonNormalize(entry.inputs),
       state: jsonNormalize(entry.state),
-      env: {
-        ids: entry.env?.ids ?? [],
-        randoms: entry.env?.randoms ?? [],
-        epochMs: FIXED_EPOCH_MS,
-      },
-      shapeOnlyOutputs: entry.shapeOnlyOutputs ?? [],
-      error: false,
-      expected: { state: jsonNormalize(state), outputs: frozenOutputs },
-    };
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith(entry.name)) throw error;
-    return {
-      name: entry.name,
-      operation: entry.operation,
-      inputs: jsonNormalize(entry.inputs),
-      state: jsonNormalize(entry.state),
-      env: {
-        ids: entry.env?.ids ?? [],
-        randoms: entry.env?.randoms ?? [],
-        epochMs: FIXED_EPOCH_MS,
-      },
+      env,
       shapeOnlyOutputs: [],
       error: true,
       expected: { state: jsonNormalize(entry.state), outputs: {} },
     };
-  } finally {
-    if (originalUuid) cryptoObject.randomUUID = originalUuid;
-    Math.random = originalRandom;
-    (globalThis as { Date: unknown }).Date = OriginalDate;
   }
+  const frozenOutputs: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(reply.outputs ?? {})) {
+    if (!entry.shapeOnlyOutputs?.includes(name)) {
+      frozenOutputs[name] = value;
+    }
+  }
+  return {
+    name: entry.name,
+    operation: entry.operation,
+    inputs: jsonNormalize(entry.inputs),
+    state: jsonNormalize(entry.state),
+    env,
+    shapeOnlyOutputs: entry.shapeOnlyOutputs ?? [],
+    error: false,
+    expected: { state: reply.state, outputs: frozenOutputs },
+  };
 }
 
 const ENTRY_ROW_DEF: UiFragmentDef = {
@@ -2527,46 +2472,27 @@ function buildRegistrySnapshot() {
 }
 
 function runValidationCase(entry: ValidationCase) {
-  for (const [name, def] of Object.entries(entry.fragmentDefs ?? {})) {
-    FRAGMENT_ELEMENTS[name] = def;
-  }
-  for (const [name, def] of Object.entries(entry.partOperations ?? {})) {
-    FRAGMENT_OPERATIONS[name] = {
-      name,
-      description: 'conformance double',
-      inputs: def.inputs,
-      outputs: def.outputs,
-      structuredPrefixes: def.structuredPrefixes,
-      execute: async () => ({}),
-    };
-  }
-  setIntegrationCredentials(entry.credentials ?? []);
-  try {
-    const contract = JSON.parse(
-      JSON.stringify(ContractSchema.parse(entry.contract))
-    ) as ContractShape;
-    const result = checkAgainstManifests(contract);
-    return {
-      name: entry.name,
-      contract: jsonNormalize(JSON.parse(JSON.stringify(ContractSchema.parse(entry.contract)))),
-      fragmentDefs: jsonNormalize(entry.fragmentDefs ?? {}),
-      partOperations: jsonNormalize(entry.partOperations ?? {}),
-      credentials: jsonNormalize(entry.credentials ?? []),
-      expected: {
-        errors: jsonNormalize(result.errors),
-        warnings: jsonNormalize(result.warnings),
-        mutated: jsonNormalize(contract),
-      },
-    };
-  } finally {
-    for (const name of Object.keys(entry.fragmentDefs ?? {})) {
-      delete FRAGMENT_ELEMENTS[name];
-    }
-    for (const name of Object.keys(entry.partOperations ?? {})) {
-      delete FRAGMENT_OPERATIONS[name];
-    }
-    setIntegrationCredentials([]);
-  }
+  const contract = jsonNormalize(
+    JSON.parse(JSON.stringify(ContractSchema.parse(entry.contract)))
+  );
+  const outcome = kcall('validate.check', {
+    contract,
+    fragmentDefs: jsonNormalize(entry.fragmentDefs ?? {}),
+    partOperations: jsonNormalize(entry.partOperations ?? {}),
+    credentials: jsonNormalize(entry.credentials ?? []),
+  }) as { errors: unknown[]; warnings: unknown[]; contract: unknown };
+  return {
+    name: entry.name,
+    contract,
+    fragmentDefs: jsonNormalize(entry.fragmentDefs ?? {}),
+    partOperations: jsonNormalize(entry.partOperations ?? {}),
+    credentials: jsonNormalize(entry.credentials ?? []),
+    expected: {
+      errors: outcome.errors,
+      warnings: outcome.warnings,
+      mutated: outcome.contract,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -2590,40 +2516,6 @@ interface ComposeVocabulary {
   recipes?: Record<string, RecipeDef>;
 }
 
-/** Publishes a fixture's installed vocabulary; returns the cleanup. */
-function publishVocabulary(vocab: ComposeVocabulary): () => void {
-  for (const [name, def] of Object.entries(vocab.fragmentDefs ?? {})) {
-    FRAGMENT_ELEMENTS[name] = def;
-  }
-  for (const [name, def] of Object.entries(vocab.partOperations ?? {})) {
-    FRAGMENT_OPERATIONS[name] = {
-      name,
-      description: def.description,
-      inputs: def.inputs,
-      outputs: def.outputs,
-      structuredPrefixes: def.structuredPrefixes,
-      howto: def.howto,
-      example: def.example as never,
-      execute: async () => ({}),
-    };
-  }
-  setIntegrationCredentials(vocab.credentials ?? []);
-  for (const [name, def] of Object.entries(vocab.recipes ?? {})) {
-    FRAGMENT_RECIPES[name] = def;
-  }
-  return () => {
-    for (const name of Object.keys(vocab.fragmentDefs ?? {})) {
-      delete FRAGMENT_ELEMENTS[name];
-    }
-    for (const name of Object.keys(vocab.partOperations ?? {})) {
-      delete FRAGMENT_OPERATIONS[name];
-    }
-    setIntegrationCredentials([]);
-    for (const name of Object.keys(vocab.recipes ?? {})) {
-      delete FRAGMENT_RECIPES[name];
-    }
-  };
-}
 
 function vocabularyEcho(vocab: ComposeVocabulary) {
   return {
@@ -2757,28 +2649,21 @@ const COMPOSE_PROMPT_CASES: ComposePromptCase[] = [
 ];
 
 function runComposePromptCase(entry: ComposePromptCase) {
-  const cleanup = publishVocabulary(entry);
-  try {
-    const expected: Record<string, unknown> = {
-      base: buildBasePrompt(renderCatalogText()),
-    };
-    if (entry.compact) {
-      expected.compactCreateSystem = `${buildBasePrompt(renderCatalogText(true), true)}\n\n${CREATE_PROMPT_SECTION}`;
-    }
-    return {
-      name: entry.name,
-      compact: entry.compact ?? false,
-      ...vocabularyEcho(entry),
-      expected,
-    };
-  } finally {
-    cleanup();
+  const vocab = vocabularyEcho(entry);
+  const expected: Record<string, unknown> = {
+    base: kcall('capture.promptBase', { ...vocab, compact: false }).base,
+  };
+  if (entry.compact) {
+    const sections = kcall('capture.promptSections');
+    const compactBase = kcall('capture.promptBase', { ...vocab, compact: true }).base;
+    expected.compactCreateSystem = `${compactBase}\n\n${sections.create}`;
   }
-}
-
-function contractSemanticProblems(candidate: unknown): string[] {
-  const result = checkAgainstManifests(candidate as ContractShape);
-  return result.errors.length > 0 ? [formatManifestErrors(result.errors)] : [];
+  return {
+    name: entry.name,
+    compact: entry.compact ?? false,
+    ...vocab,
+    expected,
+  };
 }
 
 interface ComposeResponseCase extends ComposeVocabulary {
@@ -2898,32 +2783,24 @@ const COMPOSE_RESPONSE_CASES: ComposeResponseCase[] = [
 ];
 
 function runComposeResponseCase(entry: ComposeResponseCase) {
-  const cleanup = publishVocabulary(entry);
-  try {
-    const semantic =
-      entry.schema === 'composed'
-        ? (candidate: unknown) =>
-            checkComposedCandidate(candidate as { recipe?: string; contract?: unknown }).problems
-        : contractSemanticProblems;
-    const verdict =
-      entry.schema === 'composed'
-        ? parseValidatedJson(entry.raw, ComposedResponseSchema, semantic)
-        : parseValidatedJson(entry.raw, LlmContractSchema, semantic);
-    const expected = verdict.ok
-      ? { ok: true, value: jsonNormalize(verdict.value) }
-      : entry.problemPrefixOnly
-        ? { ok: false, problemPrefix: 'The response was not parseable JSON:' }
-        : { ok: false, problem: verdict.problem };
-    return {
-      name: entry.name,
-      schema: entry.schema,
-      raw: entry.raw,
-      ...vocabularyEcho(entry),
-      expected,
-    };
-  } finally {
-    cleanup();
-  }
+  const vocab = vocabularyEcho(entry);
+  const verdict = kcall('capture.parseValidated', {
+    ...vocab,
+    schema: entry.schema,
+    raw: entry.raw,
+  }) as { ok: boolean; value?: unknown; problem?: string };
+  const expected = verdict.ok
+    ? { ok: true, value: verdict.value }
+    : entry.problemPrefixOnly
+      ? { ok: false, problemPrefix: 'The response was not parseable JSON:' }
+      : { ok: false, problem: verdict.problem };
+  return {
+    name: entry.name,
+    schema: entry.schema,
+    raw: entry.raw,
+    ...vocab,
+    expected,
+  };
 }
 
 interface ComposeFinalizeCase extends ComposeVocabulary {
@@ -3044,36 +2921,31 @@ const COMPOSE_FINALIZE_CASES: ComposeFinalizeCase[] = [
 ];
 
 function runComposeFinalizeCase(entry: ComposeFinalizeCase) {
-  const cleanup = publishVocabulary(entry);
-  try {
-    const parsed = JSON.parse(
-      JSON.stringify(LlmContractSchema.parse(entry.shape))
-    ) as ContractShape;
-    const shape = jsonNormalize(parsed);
-    const hadCreatedAt =
-      (entry.shape.metadata as Record<string, unknown> | undefined)?.createdAt !== undefined;
-    const contract = finalizeContractShape(
-      JSON.parse(JSON.stringify(parsed)) as ContractShape,
-      entry.description
-    );
-    const expected = jsonNormalize(contract) as Record<string, unknown>;
-    const metadata = expected.metadata as Record<string, unknown> | undefined;
-    if (metadata) {
-      metadata.updatedAt = '<stamped>';
-      if (!hadCreatedAt) {
-        metadata.createdAt = '<stamped>';
-      }
+  const vocab = vocabularyEcho(entry);
+  const parsed = JSON.parse(JSON.stringify(LlmContractSchema.parse(entry.shape))) as ContractShape;
+  const shape = jsonNormalize(parsed);
+  const hadCreatedAt =
+    (entry.shape.metadata as Record<string, unknown> | undefined)?.createdAt !== undefined;
+  const expected = kcall('capture.finalize', {
+    ...vocab,
+    shape,
+    ...(entry.description !== undefined ? { description: entry.description } : {}),
+    nowIso: '2026-01-01T00:00:00.000Z',
+  }).contract as Record<string, unknown>;
+  const metadata = expected.metadata as Record<string, unknown> | undefined;
+  if (metadata) {
+    metadata.updatedAt = '<stamped>';
+    if (!hadCreatedAt) {
+      metadata.createdAt = '<stamped>';
     }
-    return {
-      name: entry.name,
-      shape,
-      ...(entry.description !== undefined ? { description: entry.description } : {}),
-      ...vocabularyEcho(entry),
-      expected,
-    };
-  } finally {
-    cleanup();
   }
+  return {
+    name: entry.name,
+    shape,
+    ...(entry.description !== undefined ? { description: entry.description } : {}),
+    ...vocab,
+    expected,
+  };
 }
 
 interface ComposeLoopCase {
@@ -3132,75 +3004,30 @@ const COMPOSE_LOOP_CASES: ComposeLoopCase[] = [
 ];
 
 async function runComposeLoopCase(entry: ComposeLoopCase) {
-  const calls: unknown[] = [];
-  let index = 0;
-  const stub = {
-    sendMessage: async (
-      messages: Array<{ role: string; content: string }>,
-      options: {
-        systemBlocks?: Array<{ text: string; cache?: boolean }>;
-        jsonMode?: boolean;
-        maxTokens?: number;
-      } = {}
-    ) => {
-      calls.push(
-        jsonNormalize({
-          messages,
-          systemBlocks: options.systemBlocks,
-          jsonMode: options.jsonMode ?? false,
-          maxTokens: options.maxTokens,
-        })
-      );
-      const content = entry.responses[Math.min(index, entry.responses.length - 1)];
-      index += 1;
-      return { content, provider: entry.provider };
-    },
-  } as unknown as LLMClient;
-
-  const semantic =
-    entry.schema === 'composed'
-      ? (candidate: unknown) =>
-          checkComposedCandidate(candidate as { recipe?: string; contract?: unknown }).problems
-      : contractSemanticProblems;
-  const messages = [
-    { role: 'user' as const, content: 'Build an app for this request:\n\ntest request' },
-  ];
-  const options = {
-    label: 'Contract',
-    maxTokens: 16000,
-    systemBlocks: [{ text: 'BASE', cache: true }, { text: 'MODE' }],
-    semanticCheck: semantic as never,
+  const reply = kcall('capture.composeLoop', {
+    provider: entry.provider,
+    schema: entry.schema,
+    responses: entry.responses,
+    messages: [{ role: 'user', content: 'Build an app for this request:\n\ntest request' }],
+  }) as {
+    outcome: { ok: boolean; value?: unknown; error?: string };
+    calls: unknown[];
   };
-  try {
-    const value =
-      entry.schema === 'composed'
-        ? await generateValidatedJson(stub, messages, ComposedResponseSchema, options)
-        : await generateValidatedJson(stub, messages, LlmContractSchema, options);
-    return {
-      name: entry.name,
-      provider: entry.provider,
-      schema: entry.schema,
-      responses: entry.responses,
-      expected: { ok: true, value: jsonNormalize(value), calls },
-    };
-  } catch (error) {
-    return {
-      name: entry.name,
-      provider: entry.provider,
-      schema: entry.schema,
-      responses: entry.responses,
-      expected: {
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-        calls,
-      },
-    };
-  }
+  const expected = reply.outcome.ok
+    ? { ok: true, value: reply.outcome.value, calls: reply.calls }
+    : { ok: false, error: reply.outcome.error, calls: reply.calls };
+  return {
+    name: entry.name,
+    provider: entry.provider,
+    schema: entry.schema,
+    responses: entry.responses,
+    expected,
+  };
 }
 
 function runStreamingCase(entry: StreamingCase) {
-  const partial = parsePartialJson(entry.raw);
-  const contract = extractStreamingContract(entry.raw);
+  const partial = kcall('capture.streamingPartial', { raw: entry.raw }).partial ?? null;
+  const contract = kcall('streaming.extract', { accumulated: entry.raw }).contract ?? null;
   return {
     name: entry.name,
     raw: entry.raw,
@@ -3226,159 +3053,81 @@ function stripNullKeys(value: unknown): unknown {
 }
 
 function runTemplateCase(entry: TemplateCase) {
-  if (entry.kind === 'fragment') {
-    const expanded = expandUiFragment(entry.instance as unknown as UIElement, entry.def);
-    return {
-      name: entry.name,
-      kind: entry.kind,
-      def: jsonNormalize(entry.def),
-      instance: jsonNormalize(entry.instance),
-      expected: jsonNormalize(expanded),
-    };
-  }
-  FRAGMENT_ELEMENTS[entry.def.name] = entry.def;
-  try {
-    const packs = expandPackOperations([entry.instance as unknown as UIElement]);
-    return {
-      name: entry.name,
-      kind: entry.kind,
-      def: jsonNormalize(entry.def),
-      instance: jsonNormalize(entry.instance),
-      expected: jsonNormalize(packs.map((pack) => pack.operation)),
-    };
-  } finally {
-    delete FRAGMENT_ELEMENTS[entry.def.name];
-  }
+  const payload = {
+    instance: jsonNormalize(entry.instance),
+    def: jsonNormalize(entry.def),
+  };
+  const expected =
+    entry.kind === 'fragment'
+      ? kcall('capture.templateFragment', payload).value
+      : kcall('capture.templatePack', payload).value;
+  return {
+    name: entry.name,
+    kind: entry.kind,
+    def: jsonNormalize(entry.def),
+    instance: jsonNormalize(entry.instance),
+    expected,
+  };
 }
 
 function runViewCase(entry: ViewCase) {
-  for (const [name, def] of Object.entries(entry.fragmentDefs ?? {})) {
-    FRAGMENT_ELEMENTS[name] = def;
-  }
-  try {
-    const tree = resolveViewTree(entry.elements as unknown as UIElement[], {
-      data: entry.state,
-    });
-    return {
-      name: entry.name,
-      elements: entry.elements,
-      state: jsonNormalize(entry.state),
-      fragmentDefs: jsonNormalize(entry.fragmentDefs ?? {}),
-      expected: stripNullKeys(jsonNormalize(tree)),
-    };
-  } finally {
-    for (const name of Object.keys(entry.fragmentDefs ?? {})) {
-      delete FRAGMENT_ELEMENTS[name];
-    }
-  }
+  const tree = kcall('capture.view', {
+    elements: jsonNormalize(entry.elements),
+    state: jsonNormalize(entry.state),
+    fragmentDefs: jsonNormalize(entry.fragmentDefs ?? {}),
+  }).tree;
+  return {
+    name: entry.name,
+    elements: entry.elements,
+    state: jsonNormalize(entry.state),
+    fragmentDefs: jsonNormalize(entry.fragmentDefs ?? {}),
+    expected: tree,
+  };
 }
 
-/** Scripts ids, randomness, and the clock for the duration of one case. */
-async function withScriptedGlobals<T>(
-  env: { ids?: string[]; randoms?: number[] } | undefined,
-  run: () => Promise<T>
-): Promise<T> {
-  const idQueue = [...(env?.ids ?? [])];
-  const randomQueue = [...(env?.randoms ?? [])];
-  const cryptoObject = globalThis.crypto as { randomUUID?: () => string };
-  const originalUuid = cryptoObject.randomUUID?.bind(cryptoObject);
-  const originalRandom = Math.random;
-  const OriginalDate = globalThis.Date;
-  cryptoObject.randomUUID = () => {
-    const next = idQueue.shift();
-    if (next === undefined) throw new Error('ran out of scripted ids');
-    return next;
-  };
-  Math.random = () => {
-    const next = randomQueue.shift();
-    if (next === undefined) throw new Error('ran out of scripted randoms');
-    return next;
-  };
-  class FixedDate extends OriginalDate {
-    constructor(...args: unknown[]) {
-      if (args.length === 0) {
-        super(FIXED_EPOCH_MS);
-      } else {
-        super(...(args as [number]));
-      }
-    }
-    static now() {
-      return FIXED_EPOCH_MS;
-    }
-  }
-  (globalThis as { Date: unknown }).Date = FixedDate;
-  try {
-    return await run();
-  } finally {
-    if (originalUuid) cryptoObject.randomUUID = originalUuid;
-    Math.random = originalRandom;
-    (globalThis as { Date: unknown }).Date = OriginalDate;
-  }
-}
 
 /** Drives one session scenario through the headless webview runtime classes,
  * mirroring the renderer's chain rule: a failed operation stops the rest. */
 async function runSessionCase(entry: SessionCase) {
-  return await withScriptedGlobals(entry.env, async () => {
-    const manager = new ExperienceStateManager('vector');
-    await manager.initializeState({
-      initialState: entry.initialState,
-      operations: entry.operations as unknown as OperationBinding[],
-      elements: entry.elements ?? [],
-    } as unknown as Contract);
-    const executor = new OperationExecutor();
-    const failed: string[] = [];
+  const env = {
+    ids: entry.env?.ids ?? [],
+    randoms: entry.env?.randoms ?? [],
+    epochMs: FIXED_EPOCH_MS,
+  };
+  const reply = kcall('capture.session', {
+    operations: jsonNormalize(entry.operations),
+    initialState: jsonNormalize(entry.initialState ?? {}),
+    elements: jsonNormalize(entry.elements ?? []),
+    env,
+    events: jsonNormalize(entry.events),
+  }) as { failed: string[]; data: Record<string, unknown> };
 
-    for (const event of entry.events) {
-      if (event.do === 'setElement') {
-        manager.setData(`element_${event.elementId}`, event.value);
-        continue;
-      }
-      for (const operationId of event.operationIds) {
-        const operation = entry.operations.find((op) => op.id === operationId);
-        if (!operation) throw new Error(`${entry.name}: no operation ${operationId}`);
-        try {
-          const result = await executor.executeOperation(
-            operation as unknown as OperationBinding,
-            { item: event.item },
-            manager
-          );
-          manager.updateStateFromOperationResult(
-            operationId,
-            result,
-            (operation.outputs ?? []) as never
-          );
-        } catch {
-          failed.push(operationId);
-          break;
-        }
-      }
-    }
-
-    return {
-      name: entry.name,
-      operations: entry.operations,
-      initialState: jsonNormalize(entry.initialState ?? {}),
-      elements: entry.elements ?? [],
-      env: {
-        ids: entry.env?.ids ?? [],
-        randoms: entry.env?.randoms ?? [],
-        epochMs: FIXED_EPOCH_MS,
-      },
-      events: entry.events,
-      expected: { data: jsonNormalize(manager.getState().data), failed },
-    };
-  });
+  return {
+    name: entry.name,
+    operations: entry.operations,
+    initialState: jsonNormalize(entry.initialState ?? {}),
+    elements: entry.elements ?? [],
+    env,
+    events: entry.events,
+    expected: { data: reply.data, failed: reply.failed },
+  };
 }
 
 async function main(): Promise<void> {
   const outDir = resolve(scriptDir, '../../runtime-conformance');
   mkdirSync(outDir, { recursive: true });
+  kernel = await instantiateKernel(
+    readFileSync(resolve(outDir, '../runtime-wasm/dist/der_runtime_kernel.wasm'))
+  );
 
   const transforms = TRANSFORM_CASES.map((entry) => {
     const def = TRANSFORMS[entry.transform];
     if (!def) throw new Error(`No transform ${entry.transform}`);
-    const expected = def.apply(entry.input, entry.parameters);
+    const expected = kcall('capture.transform', {
+      name: entry.transform,
+      value: jsonNormalize(entry.input),
+      parameters: jsonNormalize(entry.parameters ?? {}),
+    }).value;
     return {
       name: entry.name,
       transform: entry.transform,
@@ -3390,8 +3139,14 @@ async function main(): Promise<void> {
 
   const pipelines = PIPELINE_CASES.map((entry) => {
     const expected = entry.legacySingle
-      ? applyBindingTransforms(entry.input, { transform: entry.steps[0] as never })
-      : applyTransformPipeline(entry.input, entry.steps as never);
+      ? kcall('capture.legacySingle', {
+          value: jsonNormalize(entry.input),
+          step: jsonNormalize(entry.steps[0]),
+        }).value
+      : kcall('capture.pipeline', {
+          value: jsonNormalize(entry.input),
+          steps: jsonNormalize(entry.steps),
+        }).value;
     return {
       name: entry.name,
       steps: entry.steps,
@@ -3402,27 +3157,19 @@ async function main(): Promise<void> {
   });
 
   const expressions = EXPRESSION_CASES.map((entry) => {
-    let parsed;
-    try {
-      parsed = parseRowExpression(entry.expression);
-    } catch {
+    const parsed = kcall('capture.expressionParse', { expression: entry.expression });
+    if (parsed.parseError !== undefined) {
       return { name: entry.name, expression: entry.expression, parseError: true };
     }
-    const identifiers = [...parsed.identifiers].sort();
+    const identifiers = [...(parsed.identifiers as string[])].sort();
     if (entry.row === undefined) {
       return { name: entry.name, expression: entry.expression, identifiers, parseError: false };
     }
-    try {
-      const value = parsed.evaluate(entry.row);
-      return {
-        name: entry.name,
-        expression: entry.expression,
-        row: entry.row,
-        identifiers,
-        parseError: false,
-        value,
-      };
-    } catch {
+    const evaluated = kcall('capture.expressionEval', {
+      expression: entry.expression,
+      row: jsonNormalize(entry.row),
+    });
+    if (evaluated.evalError !== undefined) {
       return {
         name: entry.name,
         expression: entry.expression,
@@ -3432,6 +3179,14 @@ async function main(): Promise<void> {
         evalError: true,
       };
     }
+    return {
+      name: entry.name,
+      expression: entry.expression,
+      row: entry.row,
+      identifiers,
+      parseError: false,
+      value: evaluated.value,
+    };
   });
 
   writeFileSync(
@@ -3499,11 +3254,7 @@ async function main(): Promise<void> {
     JSON.stringify(
       {
         formatVersion: 1,
-        promptSections: {
-          create: CREATE_PROMPT_SECTION,
-          blueprint: BLUEPRINT_PROMPT_SECTION,
-          edit: EDIT_PROMPT_SECTION,
-        },
+        promptSections: kcall('capture.promptSections'),
         prompts: composePrompts,
         responses: composeResponses,
         finalize: composeFinalize,
@@ -3520,9 +3271,6 @@ async function main(): Promise<void> {
   // The Rust kernel is the reference: every regenerated family must pass
   // its wasm build before the corpus is considered written. A failure here
   // means the fixtures encode semantics the kernel does not implement.
-  const { instantiateKernel } = await import('../../src/services/runtime-core/wasm-kernel');
-  const kernelBytes = readFileSync(resolve(outDir, '../runtime-wasm/dist/der_runtime_kernel.wasm'));
-  const kernel = await instantiateKernel(kernelBytes);
   const arbiterFamilies: Array<{ family: string; file: string }> = [
     { family: 'transform', file: 'transforms.json' },
     { family: 'pipeline', file: 'transforms.json' },

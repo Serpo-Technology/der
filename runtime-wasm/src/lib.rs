@@ -141,6 +141,314 @@ fn run_operation(request: &Value) -> Result<Value, String> {
     let text = |key: &str| request.get(key).and_then(Value::as_str).unwrap_or("").to_string();
 
     match operation {
+        // -------------------------------------------------------------
+        // Capture surface: the vector generator computes expectations by
+        // asking the kernel, so the corpus is authored by the reference
+        // implementation itself.
+        // -------------------------------------------------------------
+        "capture.transform" => {
+            let parameters = request
+                .get("parameters")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            Ok(json!({
+                "value": der_runtime::transforms::apply_transform(
+                    &text("name"),
+                    request.get("value").unwrap_or(&Value::Null),
+                    &parameters,
+                )
+            }))
+        }
+        "capture.pipeline" => {
+            let steps: Vec<der_runtime::transforms::TransformStep> =
+                serde_json::from_value(request.get("steps").cloned().unwrap_or(Value::Null))
+                    .map_err(|error| format!("steps: {}", error))?;
+            Ok(json!({
+                "value": der_runtime::transforms::apply_pipeline(
+                    request.get("value").unwrap_or(&Value::Null),
+                    &steps,
+                )
+            }))
+        }
+        "capture.legacySingle" => {
+            let step: der_runtime::transforms::TransformStep =
+                serde_json::from_value(request.get("step").cloned().unwrap_or(Value::Null))
+                    .map_err(|error| format!("step: {}", error))?;
+            Ok(json!({
+                "value": der_runtime::transforms::apply_legacy_single(
+                    request.get("value").unwrap_or(&Value::Null),
+                    &step,
+                )
+            }))
+        }
+        "capture.expressionParse" => {
+            match der_runtime::expression::parse_row_expression(&text("expression")) {
+                Ok(parsed) => Ok(json!({ "identifiers": parsed.identifiers })),
+                Err(error) => Ok(json!({ "parseError": error })),
+            }
+        }
+        "capture.expressionEval" => {
+            let row = request
+                .get("row")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            match der_runtime::expression::parse_row_expression(&text("expression")) {
+                Ok(parsed) => match parsed.evaluate(&row) {
+                    Ok(value) => Ok(json!({ "value": value })),
+                    Err(error) => Ok(json!({ "evalError": error })),
+                },
+                Err(error) => Ok(json!({ "parseError": error })),
+            }
+        }
+        "capture.operation" => {
+            let inputs = request
+                .get("inputs")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            let mut state = request
+                .get("state")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            let mut env = der_runtime::vectors::env_from(request);
+            match der_runtime::operations::execute_builtin(
+                &text("name"),
+                &inputs,
+                &mut state,
+                &mut env,
+            ) {
+                Ok(outputs) => Ok(json!({ "state": state, "outputs": outputs })),
+                Err(error) => Ok(json!({ "state": state, "error": error })),
+            }
+        }
+        "capture.session" => {
+            let operations: Vec<der_runtime::session::OperationSpec> =
+                serde_json::from_value(request.get("operations").cloned().unwrap_or(Value::Null))
+                    .map_err(|error| format!("operations: {}", error))?;
+            let elements = request
+                .get("elements")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let initial_state = request
+                .get("initialState")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            let mut session = der_runtime::session::Session::new(
+                operations,
+                initial_state,
+                &elements,
+                Box::new(der_runtime::vectors::env_from(request)),
+            );
+            let mut failed: Vec<String> = Vec::new();
+            for event in request.get("events").and_then(Value::as_array).into_iter().flatten() {
+                match event.get("do").and_then(Value::as_str) {
+                    Some("setElement") => session.set_element(
+                        event.get("elementId").and_then(Value::as_str).unwrap_or(""),
+                        event.get("value").cloned().unwrap_or(Value::Null),
+                    ),
+                    Some("chain") => {
+                        let ids: Vec<String> = event
+                            .get("operationIds")
+                            .and_then(Value::as_array)
+                            .map(|ids| {
+                                ids.iter()
+                                    .filter_map(Value::as_str)
+                                    .map(str::to_string)
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        let item = event.get("item").filter(|value| !value.is_null());
+                        if let Some(failed_id) = session.run_chain(&ids, item) {
+                            failed.push(failed_id);
+                        }
+                    }
+                    other => return Err(format!("Unknown session event {:?}", other)),
+                }
+            }
+            Ok(json!({ "failed": failed, "data": session.state().clone() }))
+        }
+        "capture.templateFragment" => {
+            let instance = request
+                .get("instance")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            let def = request
+                .get("def")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            match der_runtime::templates::expand_ui_fragment(&instance, &def) {
+                Ok(expanded) => Ok(json!({ "value": expanded })),
+                Err(error) => Ok(json!({ "expandError": error })),
+            }
+        }
+        "capture.templatePack" => {
+            let instance = request
+                .get("instance")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            let def = request
+                .get("def")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            Ok(json!({
+                "value": der_runtime::templates::instantiate_pack_operations(&instance, &def)
+            }))
+        }
+        "capture.view" => {
+            let elements = request
+                .get("elements")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let state = request
+                .get("state")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            let fragment_defs = request
+                .get("fragmentDefs")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            let ctx = der_runtime::view::ViewContext {
+                state: &state,
+                fragment_defs: &fragment_defs,
+            };
+            let tree = der_runtime::vectors::strip_null_keys(&Value::Array(
+                der_runtime::view::resolve_view_tree(&elements, &ctx),
+            ));
+            Ok(json!({ "tree": tree }))
+        }
+        "capture.streamingPartial" => {
+            Ok(json!({ "partial": der_runtime::streaming::parse_partial_json(&text("raw")) }))
+        }
+        "capture.promptSections" => Ok(json!({
+            "create": der_runtime::prompt::CREATE_PROMPT_SECTION,
+            "blueprint": der_runtime::prompt::BLUEPRINT_PROMPT_SECTION,
+            "edit": der_runtime::prompt::EDIT_PROMPT_SECTION,
+        })),
+        "capture.promptBase" => {
+            let vocab = der_runtime::vectors::compose_vocabulary(request);
+            let compact = request.get("compact").and_then(Value::as_bool).unwrap_or(false);
+            Ok(json!({
+                "base": der_runtime::prompt::build_base_prompt(
+                    &der_runtime::prompt::render_catalog_text(&vocab, compact),
+                    compact,
+                )
+            }))
+        }
+        "capture.parseValidated" => {
+            let vocab = der_runtime::vectors::compose_vocabulary(request);
+            let schema_name = text("schema");
+            let schema = if schema_name == "contract" {
+                der_runtime::llm_schema::SchemaKind::Contract
+            } else {
+                der_runtime::llm_schema::SchemaKind::Composed
+            };
+            let mut semantic = der_runtime::vectors::compose_semantic(
+                if schema_name == "contract" { "contract" } else { "composed" },
+                &vocab,
+            );
+            match der_runtime::llm_schema::parse_validated_json(&text("raw"), &schema, &mut semantic)
+            {
+                der_runtime::llm_schema::ParseVerdict::Ok(value) => {
+                    Ok(json!({ "ok": true, "value": value }))
+                }
+                der_runtime::llm_schema::ParseVerdict::Problem(problem) => {
+                    Ok(json!({ "ok": false, "problem": problem }))
+                }
+            }
+        }
+        "capture.checkComposed" => {
+            let vocab = der_runtime::vectors::compose_vocabulary(request);
+            let mut value = request.get("value").cloned().unwrap_or(Value::Null);
+            let (problems, warnings) =
+                der_runtime::compose::check_composed_candidate(&mut value, &vocab);
+            Ok(json!({ "problems": problems, "warnings": warnings, "value": value }))
+        }
+        "capture.finalize" => {
+            let vocab = der_runtime::vectors::compose_vocabulary(request);
+            Ok(json!({
+                "contract": der_runtime::compose::finalize_contract_shape(
+                    request.get("shape").unwrap_or(&Value::Null),
+                    request.get("description").and_then(Value::as_str),
+                    &text("nowIso"),
+                    &vocab,
+                )
+            }))
+        }
+        "capture.composeLoop" => {
+            let vocab = der_runtime::vectors::compose_vocabulary(request);
+            let schema_name = text("schema");
+            let schema = if schema_name == "contract" {
+                der_runtime::llm_schema::SchemaKind::Contract
+            } else {
+                der_runtime::llm_schema::SchemaKind::Composed
+            };
+            let responses: Vec<String> = request
+                .get("responses")
+                .and_then(Value::as_array)
+                .map(|list| {
+                    list.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let mut llm = der_runtime::vectors::ScriptedLlm {
+                provider: text("provider"),
+                responses,
+                index: 0,
+                calls: Vec::new(),
+            };
+            let messages = request
+                .get("messages")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let options = der_runtime::compose::GenerateOptions {
+                label: "Contract".to_string(),
+                max_tokens: Some(16000),
+                system_blocks: vec![
+                    der_runtime::compose::SystemBlockSpec {
+                        text: "BASE".to_string(),
+                        cache: true,
+                    },
+                    der_runtime::compose::SystemBlockSpec {
+                        text: "MODE".to_string(),
+                        cache: false,
+                    },
+                ],
+            };
+            let mut semantic = der_runtime::vectors::compose_semantic(
+                if schema_name == "contract" { "contract" } else { "composed" },
+                &vocab,
+            );
+            let outcome = der_runtime::vectors::block_on(
+                der_runtime::compose::generate_validated_json(
+                    &mut llm,
+                    messages,
+                    schema,
+                    options,
+                    &mut semantic,
+                    None,
+                ),
+            );
+            let outcome_json = match outcome {
+                Ok(value) => json!({ "ok": true, "value": value }),
+                Err(error) => json!({ "ok": false, "error": error }),
+            };
+            Ok(json!({ "outcome": outcome_json, "calls": llm.calls }))
+        }
         "vectors.runFamily" => {
             let family = text("family");
             let fixtures = request.get("fixtures").cloned().unwrap_or(Value::Null);

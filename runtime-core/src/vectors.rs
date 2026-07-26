@@ -25,7 +25,7 @@ use crate::transforms::{apply_legacy_single, apply_pipeline, apply_transform, Tr
 use crate::validation::check_against_manifests;
 use crate::view::{resolve_view_tree, ViewContext};
 
-fn env_from(vector: &Value) -> ScriptedEnv {
+pub fn env_from(vector: &Value) -> ScriptedEnv {
     ScriptedEnv {
         ids: vector["env"]["ids"]
             .as_array()
@@ -75,7 +75,7 @@ fn params_of(vector: &Value, key: &str) -> Map<String, Value> {
 
 /// Object keys holding null and absent keys are equivalent in the view
 /// protocol; arrays keep nulls as real entries.
-fn strip_null_keys(value: &Value) -> Value {
+pub fn strip_null_keys(value: &Value) -> Value {
     match value {
         Value::Array(items) => Value::Array(items.iter().map(strip_null_keys).collect()),
         Value::Object(map) => Value::Object(
@@ -88,7 +88,7 @@ fn strip_null_keys(value: &Value) -> Value {
     }
 }
 
-fn compose_vocabulary(vector: &Value) -> crate::compose::ComposeVocabulary {
+pub fn compose_vocabulary(vector: &Value) -> crate::compose::ComposeVocabulary {
     use crate::compose::ComposeVocabulary;
     ComposeVocabulary {
         fragment_defs: vector["fragmentDefs"].as_object().cloned().unwrap_or_default(),
@@ -98,7 +98,7 @@ fn compose_vocabulary(vector: &Value) -> crate::compose::ComposeVocabulary {
     }
 }
 
-fn compose_semantic<'a>(
+pub fn compose_semantic<'a>(
     schema: &'a str,
     vocab: &'a crate::compose::ComposeVocabulary,
 ) -> impl FnMut(&mut Value) -> Vec<String> + 'a {
@@ -125,11 +125,11 @@ fn compose_semantic<'a>(
     }
 }
 
-struct ScriptedLlm {
-    provider: String,
-    responses: Vec<String>,
-    index: usize,
-    calls: Vec<Value>,
+pub struct ScriptedLlm {
+    pub provider: String,
+    pub responses: Vec<String>,
+    pub index: usize,
+    pub calls: Vec<Value>,
 }
 
 impl crate::compose::ComposeLlm for ScriptedLlm {
@@ -166,7 +166,7 @@ impl crate::compose::ComposeLlm for ScriptedLlm {
     }
 }
 
-fn block_on<F: std::future::Future>(future: F) -> F::Output {
+pub fn block_on<F: std::future::Future>(future: F) -> F::Output {
     use std::task::{Context, Poll, Waker};
     let mut future = Box::pin(future);
     let waker = Waker::noop();

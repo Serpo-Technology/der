@@ -57,6 +57,7 @@
         {
           "id": "panel",
           "type": "container",
+          "events": {},
           "props": {
             "padding": "8",
             "a": "hi",
@@ -66,7 +67,6 @@
             "c": true,
             "d": "plain"
           },
-          "events": {},
           "children": []
         }
       ]
@@ -151,6 +151,7 @@
         {
           "id": "rows",
           "type": "list",
+          "events": {},
           "props": {
             "emptyText": "Nothing yet",
             "items": [
@@ -170,7 +171,6 @@
               }
             ]
           },
-          "events": {},
           "children": [],
           "rows": [
             {
@@ -185,51 +185,51 @@
                 {
                   "id": "r-title",
                   "type": "text",
-                  "props": {
-                    "content": "Bolt"
-                  },
                   "events": {},
-                  "children": [],
                   "eventItem": {
                     "id": "a",
                     "title": "Bolt",
                     "qty": 4,
                     "done": true
-                  }
+                  },
+                  "props": {
+                    "content": "Bolt"
+                  },
+                  "children": []
                 },
                 {
                   "id": "r-flag",
                   "type": "text",
-                  "props": {
-                    "content": "done"
-                  },
                   "events": {},
-                  "children": [],
                   "eventItem": {
                     "id": "a",
                     "title": "Bolt",
                     "qty": 4,
                     "done": true
-                  }
+                  },
+                  "props": {
+                    "content": "done"
+                  },
+                  "children": []
                 },
                 {
                   "id": "r-del",
                   "type": "button",
-                  "props": {
-                    "text": "Delete"
-                  },
                   "events": {
                     "click": [
                       "op-del"
                     ]
                   },
-                  "children": [],
                   "eventItem": {
                     "id": "a",
                     "title": "Bolt",
                     "qty": 4,
                     "done": true
-                  }
+                  },
+                  "props": {
+                    "text": "Delete"
+                  },
+                  "children": []
                 }
               ]
             },
@@ -243,32 +243,32 @@
                 {
                   "id": "r-title",
                   "type": "text",
-                  "props": {
-                    "content": "Washer"
-                  },
                   "events": {},
-                  "children": [],
                   "eventItem": {
                     "title": "Washer",
                     "qty": 10
-                  }
+                  },
+                  "props": {
+                    "content": "Washer"
+                  },
+                  "children": []
                 },
                 {
                   "id": "r-del",
                   "type": "button",
-                  "props": {
-                    "text": "Delete"
-                  },
                   "events": {
                     "click": [
                       "op-del"
                     ]
                   },
-                  "children": [],
                   "eventItem": {
                     "title": "Washer",
                     "qty": 10
-                  }
+                  },
+                  "props": {
+                    "text": "Delete"
+                  },
+                  "children": []
                 }
               ]
             },
@@ -282,32 +282,32 @@
                 {
                   "id": "r-title",
                   "type": "text",
-                  "props": {
-                    "content": "Tape"
-                  },
                   "events": {},
-                  "children": [],
                   "eventItem": {
                     "title": "Tape",
                     "qty": 3
-                  }
+                  },
+                  "props": {
+                    "content": "Tape"
+                  },
+                  "children": []
                 },
                 {
                   "id": "r-del",
                   "type": "button",
-                  "props": {
-                    "text": "Delete"
-                  },
                   "events": {
                     "click": [
                       "op-del"
                     ]
                   },
-                  "children": [],
                   "eventItem": {
                     "title": "Tape",
                     "qty": 3
-                  }
+                  },
+                  "props": {
+                    "text": "Delete"
+                  },
+                  "children": []
                 }
               ]
             }
@@ -345,10 +345,10 @@
         {
           "id": "rows",
           "type": "list",
+          "events": {},
           "props": {
             "emptyText": "Nothing yet"
           },
-          "events": {},
           "children": [],
           "rows": []
         }
@@ -417,23 +417,23 @@
         {
           "id": "search-in",
           "type": "input",
-          "props": {
-            "label": "Search"
-          },
           "events": {},
-          "children": [],
           "control": {
             "kind": "value",
             "value": "bo"
-          }
+          },
+          "props": {
+            "label": "Search"
+          },
+          "children": []
         },
         {
           "id": "hits",
           "type": "text",
+          "events": {},
           "props": {
             "content": 1
           },
-          "events": {},
           "children": []
         }
       ]
@@ -476,53 +476,53 @@
         {
           "id": "name-in",
           "type": "input",
-          "props": {
-            "defaultValue": "hello"
-          },
           "events": {},
-          "children": [],
           "control": {
             "kind": "value",
             "value": "hello"
-          }
+          },
+          "props": {
+            "defaultValue": "hello"
+          },
+          "children": []
         },
         {
           "id": "qty-in",
           "type": "input",
-          "props": {},
           "events": {},
-          "children": [],
           "control": {
             "kind": "value",
             "value": "42"
-          }
+          },
+          "props": {},
+          "children": []
         },
         {
           "id": "done-in",
           "type": "checkbox",
-          "props": {},
           "events": {},
-          "children": [],
           "control": {
             "kind": "checkbox",
             "value": true
-          }
+          },
+          "props": {},
+          "children": []
         },
         {
           "id": "cat-in",
           "type": "select",
+          "events": {},
+          "control": {
+            "kind": "value",
+            "value": ""
+          },
           "props": {
             "options": [
               "a",
               "b"
             ]
           },
-          "events": {},
-          "children": [],
-          "control": {
-            "kind": "value",
-            "value": ""
-          }
+          "children": []
         }
       ]
     },
@@ -609,19 +609,19 @@
         {
           "id": "gt-null",
           "type": "text",
+          "events": {},
           "props": {
             "content": "shows"
           },
-          "events": {},
           "children": []
         },
         {
           "id": "and-gate",
           "type": "text",
+          "events": {},
           "props": {
             "content": "both"
           },
-          "events": {},
           "children": []
         }
       ]
@@ -706,28 +706,28 @@
         {
           "id": "const-ref",
           "type": "text",
+          "events": {},
           "props": {
             "content": "typed zero"
           },
-          "events": {},
           "children": []
         },
         {
           "id": "state-ref",
           "type": "text",
+          "events": {},
           "props": {
             "content": "beats limit"
           },
-          "events": {},
           "children": []
         },
         {
           "id": "element-ref",
           "type": "text",
+          "events": {},
           "props": {
             "content": "matches picked"
           },
-          "events": {},
           "children": []
         }
       ]
@@ -891,38 +891,38 @@
         {
           "id": "task-entry-row",
           "type": "container",
+          "events": {},
           "props": {
             "direction": "row",
             "gap": "8",
             "align": "end"
           },
-          "events": {},
           "children": [
             {
               "id": "task-entry-input",
               "type": "input",
+              "events": {},
+              "control": {
+                "kind": "value",
+                "value": ""
+              },
               "props": {
                 "label": "New task",
                 "placeholder": ""
               },
-              "events": {},
-              "children": [],
-              "control": {
-                "kind": "value",
-                "value": ""
-              }
+              "children": []
             },
             {
               "id": "task-entry-btn",
               "type": "button",
-              "props": {
-                "text": "Add",
-                "variant": "primary"
-              },
               "events": {
                 "click": [
                   "op-add"
                 ]
+              },
+              "props": {
+                "text": "Add",
+                "variant": "primary"
               },
               "children": []
             }
@@ -931,28 +931,28 @@
         {
           "id": "tick1-box",
           "type": "container",
-          "props": {},
           "events": {},
+          "props": {},
           "children": [
             {
               "id": "tick1-display",
               "type": "text",
+              "events": {},
               "props": {
                 "content": "Steps: 5"
               },
-              "events": {},
               "children": []
             },
             {
               "id": "tick1-btn",
               "type": "button",
-              "props": {
-                "text": "Tick"
-              },
               "events": {
                 "click": [
                   "tick1-step"
                 ]
+              },
+              "props": {
+                "text": "Tick"
               },
               "children": []
             }
@@ -1001,9 +1001,6 @@
         {
           "id": "go-btn",
           "type": "button",
-          "props": {
-            "text": "Go"
-          },
           "events": {
             "click": [
               "op-first",
@@ -1013,17 +1010,20 @@
               "op-note"
             ]
           },
+          "props": {
+            "text": "Go"
+          },
           "children": []
         },
         {
           "id": "clock",
           "type": "timer",
-          "props": {},
           "events": {
             "tick": [
               "op-advance"
             ]
           },
+          "props": {},
           "children": []
         }
       ]
