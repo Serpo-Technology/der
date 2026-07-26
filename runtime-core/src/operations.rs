@@ -43,7 +43,7 @@ fn structured_prefixes(operation: &str) -> &'static [&'static str] {
 /// Groups prefixed inputs into objects: {"key": k, "item.title": t} becomes
 /// {"key": k, "item": {"title": t}}. Unresolved fields stay null, exactly
 /// like the webview's assembleStructured.
-fn assemble_structured(inputs: &Map<String, Value>, prefixes: &[&str]) -> Map<String, Value> {
+pub fn assemble_structured(inputs: &Map<String, Value>, prefixes: &[&str]) -> Map<String, Value> {
     if prefixes.is_empty() {
         return inputs.clone();
     }

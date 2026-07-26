@@ -208,7 +208,8 @@ list's append actually writes, with fields derived mid-pipeline visible to later
 Builtins also include `random.int`/`random.pick` (randomness cannot live in zero-import wasm).
 Warnings are cosmetic normalizations only (knob defaults, deduped inputs, seeded state keys);
 the edit bar shows them grouped apart from spec assumptions and open questions. The `local`
-execution type still runs for human-edited contracts only.
+execution type is sunset: the executor refuses `implementation.code` with a clear
+message, so contracts compose parts everywhere, including hand-edited ones.
 
 ### Runtime conventions
 
@@ -347,11 +348,25 @@ transports (`emailSent` expect; a fixture inbox behind provider seams).
 
 ### Runtime kernel conformance
 
-The pure runtime kernel (transform semantics, the row-expression grammar, and the builtin
-operations with structured input assembly) is implemented twice: TypeScript
+The pure runtime kernel (transform semantics, the row-expression grammar, the builtin
+operations with structured input assembly, sessions, view resolution, validation,
+streaming recovery, and the compose orchestration) lives in the standalone `der-runtime`
+crate (`runtime-core/`), host-free by construction: the desktop core links it natively
+(`src-tauri/src/runtime/` re-exports it and adds the host: dispatcher, live sessions,
+sidecar, manage, schedule), and `runtime-wasm/` compiles the same crate to wasm32 behind
+the parts' `der_alloc`/`der_run` envelope with one `env.host_call` import for dispatch
+and entropy (`scripts/build-runtime-wasm.sh`; the artifact in `runtime-wasm/dist/` is
+committed so the Node suites stay hermetic; `wasm-kernel.ts` is the loader). Dispatched
+part operations get their structured prefixes assembled by the dispatch hosts exactly
+like the webview executor. The corpus runner itself is shared
+(`runtime-core/src/vectors.rs`): the cargo suite, the wasm build's Node suite
+(`runtime-wasm-conformance.test.ts`), and the generator's closing arbiter all drive the
+one implementation. A TypeScript twin of the executable kernel
 (`src/services/operations/transforms.ts`, `row-expression.ts`, the executable parts of
-`registry.ts`) runs in the webview renderer, and Rust (`src-tauri/src/runtime/`) is the
-core's implementation, the basis for renderer backends beyond the webview. Operations run
+`registry.ts`) remains in the tree for the display-only assembly drafts, the plain
+browser dev server, and its own conformance suite, but no production execution path
+under Tauri touches it, and it retires fully once the browser face loads the wasm
+kernel. Operations run
 over an injected environment (scripted ids, randoms, and clock in vectors; real entropy in
 production), `time.now`'s local date and time are asserted by shape so the corpus stays
 timezone-independent, and `http.get` stays outside the kernel (network IO owned by the
@@ -538,10 +553,14 @@ instead of throwing.
 `evals/prompts.json`, judges each first attempt with the real pipeline validation, then chains
 into the behavioral stage: it spawns `vitest run --config vitest.evals.config.ts` against the
 fresh results file and merges outcomes into it, printing one end-to-end score. The behavioral
-harness (`evals/behavior.eval.tsx` + `evals/harness/`) renders each passing contract through the
-real renderer under jsdom and runs the prompt's `behavior` script: steps address controls by
-fuzzy hints (generated ids and labels vary), compute parts execute their actual wasm under
-Node's WebAssembly with the host ABI, and remote parts return the scenario's `stubs`.
+harness (`evals/behavior.eval.tsx` + `evals/harness/`) executes each passing contract in the
+runtime kernel's wasm build (a fresh kernel per scenario over the session-client transport
+seam) and renders its resolved trees through the real React presentation under jsdom,
+running the prompt's `behavior` script: steps address controls by fuzzy hints (generated
+ids and labels vary), compute parts execute their actual wasm synchronously inside the
+kernel's host_call, and remote parts return the scenario's `stubs`; the platform stubs
+(dialogs, mail, store) share one synchronous core with the TS providers. Behavioral runs
+therefore prove the exact semantics the desktop core ships.
 `ContractBuilder.finalizeShape` is the tooling entry that normalizes a stored shape without a
 model call. Prompts may carry `expectRecipe`: the correct answer reuses that installed recipe
 (a composed contract scores `no-reuse`, the wrong or unexpected recipe `recipe-mismatch`), and

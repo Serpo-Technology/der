@@ -37,7 +37,6 @@ export class OperationResolutionError extends Error {
   }
 }
 
-const LOCAL_CODE_TIMEOUT_MS = 5000;
 
 type ExecType = 'builtin' | 'local' | 'remote';
 
@@ -142,42 +141,14 @@ export class OperationExecutor {
 
   private async executeLocal(
     operation: OperationBinding,
-    inputs: Record<string, unknown>,
-    state: StateAccess
+    _inputs: Record<string, unknown>,
+    _state: StateAccess
   ): Promise<Record<string, unknown>> {
-    const code = operation.implementation?.code;
-    if (!code) {
-      throw new Error(`Local operation ${operation.id} has no code`);
-    }
-
-    let fn: (inputs: Record<string, unknown>, ctx: OperationContext) => unknown;
-    try {
-      fn = new Function('inputs', 'ctx', code) as typeof fn;
-    } catch (error) {
-      throw new Error(
-        `Local operation ${operation.id} has invalid code: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    }
-
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error(`Local operation ${operation.id} timed out after ${LOCAL_CODE_TIMEOUT_MS}ms`)),
-        LOCAL_CODE_TIMEOUT_MS
-      )
+    // Sunset: contracts compose parts, and code never ships inside them.
+    // Anything still carrying implementation.code predates the part system.
+    throw new Error(
+      `Operation ${operation.id} carries local code, which no longer runs; edit the app so it composes installed parts instead`
     );
-    const result = await Promise.race([
-      Promise.resolve().then(() => fn(inputs, this.operationContext(state))),
-      timeout,
-    ]);
-
-    if (result === null || typeof result !== 'object' || Array.isArray(result)) {
-      throw new Error(
-        `Local operation ${operation.id} must return an object keyed by output names`
-      );
-    }
-    return result as Record<string, unknown>;
   }
 
   private async executeRemote(

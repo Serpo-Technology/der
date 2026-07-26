@@ -18,7 +18,7 @@ export interface KernelInstance {
 }
 
 export async function instantiateKernel(
-  bytes: BufferSource,
+  bytes: ArrayBuffer | ArrayBufferView,
   host?: KernelHost
 ): Promise<KernelInstance> {
   const encoder = new TextEncoder();

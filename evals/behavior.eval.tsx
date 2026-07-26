@@ -9,7 +9,9 @@ import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import React from 'react';
 import { readFileSync, readdirSync } from 'node:fs';
-import { DynamicExperienceRenderer } from '../src/components/runtime/DynamicExperienceRenderer';
+import { CoreExperienceRenderer } from '../src/components/runtime/CoreExperienceRenderer';
+import { setSessionTransport } from '../src/services/runtime-core/session-client';
+import { createKernelTransport } from './harness/kernel-transport';
 import { ContractBuilder } from '../src/services/ai-interpreter/contract-builder';
 import { repositoryService } from '../src/services/repository/repository-service';
 import { ContractShape } from '../src/schemas/contract';
@@ -62,14 +64,18 @@ describe(`behavior against ${resultsPath}`, () => {
     it(entry.id, async () => {
       setRemoteStubs(scenario.stubs ?? {});
       setupFileStubs(scenario.file);
+      // Contracts execute in the runtime kernel's wasm build, the same
+      // semantics the desktop core ships; React stays the presentation.
+      setSessionTransport(await createKernelTransport());
       const contract = builder.finalizeShape(entry.contract as ContractShape);
       const { container, unmount } = render(
-        <DynamicExperienceRenderer contract={contract} experienceId={`behave-${entry.id}`} />
+        <CoreExperienceRenderer contract={contract} experienceId={`behave-${entry.id}`} />
       );
       try {
         await runScenario(scenario, container as HTMLElement);
       } finally {
         unmount();
+        setSessionTransport(undefined);
       }
       expect(true).toBe(true);
     });

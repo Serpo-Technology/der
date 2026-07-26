@@ -268,89 +268,28 @@ describe('OperationExecutor', () => {
       vi.useRealTimers();
     });
 
-    it('runs implementation code with inputs and state context', async () => {
-      const state = makeState({ counter: 1 });
+    it('refuses local code with the sunset message', async () => {
       const operation = makeOperation({
         id: 'op-local',
         executionType: 'local',
-        inputs: [{ name: 'amount', source: 'state', sourceId: 'counter' }],
+        inputs: [],
         implementation: {
           type: 'local',
-          code: 'var next = Number(inputs.amount) + 1; ctx.setState("counter", next); return { counter: next };'
+          code: 'return { counter: 2 };'
         }
       });
 
-      const result = await executor.executeOperation(operation, {}, state);
-
-      expect(result).toEqual({ counter: 2 });
-      expect(state.data.counter).toBe(2);
-    });
-
-    it('rejects local code that returns a non-object', async () => {
-      const operation = makeOperation({
-        id: 'op-scalar',
-        executionType: 'local',
-        implementation: { type: 'local', code: 'return 42;' }
-      });
-
       await expect(executor.executeOperation(operation, {}, makeState())).rejects.toThrow(
-        'must return an object keyed by output names'
+        'carries local code, which no longer runs'
       );
     });
 
-    it('rejects local code that returns an array', async () => {
-      const operation = makeOperation({
-        id: 'op-array',
-        executionType: 'local',
-        implementation: { type: 'local', code: 'return [1, 2];' }
-      });
-
-      await expect(executor.executeOperation(operation, {}, makeState())).rejects.toThrow(
-        'must return an object keyed by output names'
-      );
-    });
-
-    it('surfaces errors thrown by local code', async () => {
-      const operation = makeOperation({
-        id: 'op-throws',
-        executionType: 'local',
-        implementation: { type: 'local', code: 'throw new Error("boom");' }
-      });
-
-      await expect(executor.executeOperation(operation, {}, makeState())).rejects.toThrow('boom');
-    });
-
-    it('rejects code that does not compile', async () => {
-      const operation = makeOperation({
-        id: 'op-broken',
-        executionType: 'local',
-        implementation: { type: 'local', code: 'this is not javascript' }
-      });
-
-      await expect(executor.executeOperation(operation, {}, makeState())).rejects.toThrow(
-        'has invalid code'
-      );
-    });
-
-    it('rejects a local operation without code', async () => {
+    it('refuses codeless local operations with the same sunset message', async () => {
       const operation = makeOperation({ id: 'op-empty', executionType: 'local' });
 
       await expect(executor.executeOperation(operation, {}, makeState())).rejects.toThrow(
-        'has no code'
+        'carries local code, which no longer runs'
       );
-    });
-
-    it('times out local code that never settles', async () => {
-      const operation = makeOperation({
-        id: 'op-hang',
-        executionType: 'local',
-        implementation: { type: 'local', code: 'return new Promise(function () {});' }
-      });
-
-      const pending = executor.executeOperation(operation, {}, makeState());
-      const expectation = expect(pending).rejects.toThrow('timed out after 5000ms');
-      await vi.advanceTimersByTimeAsync(5000);
-      await expectation;
     });
   });
 

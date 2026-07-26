@@ -16,7 +16,7 @@
  * presentation owned by whichever renderer displays the value.
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -3516,6 +3516,44 @@ async function main(): Promise<void> {
   process.stdout.write(
     `wrote ${transforms.length} transform, ${pipelines.length} pipeline, ${expressions.length} expression, ${operations.length} operation, ${sessions.length} session, ${templates.length} template, ${views.length} view, ${streaming.length} streaming, ${validation.length} validation, ${composePrompts.length + composeResponses.length + composeFinalize.length + composeLoop.length} compose vectors\n`
   );
+
+  // The Rust kernel is the reference: every regenerated family must pass
+  // its wasm build before the corpus is considered written. A failure here
+  // means the fixtures encode semantics the kernel does not implement.
+  const { instantiateKernel } = await import('../../src/services/runtime-core/wasm-kernel');
+  const kernelBytes = readFileSync(resolve(outDir, '../runtime-wasm/dist/der_runtime_kernel.wasm'));
+  const kernel = await instantiateKernel(kernelBytes);
+  const arbiterFamilies: Array<{ family: string; file: string }> = [
+    { family: 'transform', file: 'transforms.json' },
+    { family: 'pipeline', file: 'transforms.json' },
+    { family: 'operation', file: 'operations.json' },
+    { family: 'session', file: 'sessions.json' },
+    { family: 'template', file: 'templates.json' },
+    { family: 'view', file: 'views.json' },
+    { family: 'validation', file: 'validation.json' },
+    { family: 'streaming', file: 'streaming.json' },
+    { family: 'expression', file: 'expressions.json' },
+    { family: 'composePrompt', file: 'compose.json' },
+    { family: 'composeResponse', file: 'compose.json' },
+    { family: 'composeFinalize', file: 'compose.json' },
+    { family: 'composeLoop', file: 'compose.json' },
+  ];
+  const disagreements: string[] = [];
+  for (const { family, file } of arbiterFamilies) {
+    const fixtures = JSON.parse(readFileSync(resolve(outDir, file), 'utf8'));
+    const outcome = kernel.run({ operation: 'vectors.runFamily', family, fixtures }) as {
+      failures: string[];
+    };
+    for (const failure of outcome.failures) {
+      disagreements.push(`${family}: ${failure}`);
+    }
+  }
+  if (disagreements.length > 0) {
+    throw new Error(
+      `The Rust kernel rejects the regenerated corpus (rebuild it with scripts/build-runtime-wasm.sh if the kernel changed):\n${disagreements.join('\n')}`
+    );
+  }
+  process.stdout.write('kernel arbiter: every family verified against the wasm build\n');
 }
 
 main().catch((error) => {

@@ -20,6 +20,9 @@ use crate::fragments::{execute_in_module, execute_part_remote_core, FragmentsSta
 pub struct PartRoute {
     pub fragment_id: String,
     pub remote: bool,
+    /// Input-name prefixes assembled into objects before execution, from
+    /// the part's manifest (the webview executor does the same).
+    pub structured_prefixes: Vec<String>,
 }
 
 pub struct HostDispatcher {
@@ -32,10 +35,13 @@ pub struct HostDispatcher {
 impl OperationDispatcher for HostDispatcher {
     fn dispatch(&self, request: &DispatchRequest) -> Result<Map<String, Value>, String> {
         if let Some(route) = self.parts.get(request.operation_name) {
+            let prefixes: Vec<&str> =
+                route.structured_prefixes.iter().map(String::as_str).collect();
+            let assembled = super::operations::assemble_structured(request.inputs, &prefixes);
             return if route.remote {
-                self.dispatch_part_remote(route, request)
+                self.dispatch_part_remote(route, request, &assembled)
             } else {
-                self.dispatch_part_wasm(route, request)
+                self.dispatch_part_wasm(route, request, &assembled)
             };
         }
         if request.operation_name == "http.get" {
@@ -64,6 +70,7 @@ impl HostDispatcher {
         &self,
         route: &PartRoute,
         request: &DispatchRequest,
+        inputs: &Map<String, Value>,
     ) -> Result<Map<String, Value>, String> {
         let dir = self.fragments_dir()?;
         let state = self.app.state::<FragmentsState>();
@@ -74,7 +81,7 @@ impl HostDispatcher {
             state.engine(),
             &loaded,
             request.operation_name,
-            &Value::Object(request.inputs.clone()),
+            &Value::Object(inputs.clone()),
         )
         .map_err(|error| error.message)?;
         as_outputs(result)
@@ -84,6 +91,7 @@ impl HostDispatcher {
         &self,
         route: &PartRoute,
         request: &DispatchRequest,
+        inputs: &Map<String, Value>,
     ) -> Result<Map<String, Value>, String> {
         let dir = self.fragments_dir()?;
         let integrations = crate::settings::load_integrations(&self.app);
@@ -92,7 +100,7 @@ impl HostDispatcher {
             &integrations,
             &route.fragment_id,
             request.operation_name,
-            &Value::Object(request.inputs.clone()),
+            &Value::Object(inputs.clone()),
         ))
         .map_err(|error| error.message)?;
         as_outputs(data)

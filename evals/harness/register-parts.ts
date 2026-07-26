@@ -19,6 +19,20 @@ export function setRemoteStubs(stubs: Record<string, Record<string, unknown>>): 
   remoteStubs = stubs;
 }
 
+export function remoteStub(name: string): Record<string, unknown> | undefined {
+  return remoteStubs[name];
+}
+
+/** Sync execution surface for the kernel host: precompiled modules for
+ * compute operations, a remote flag for stub routing. */
+export const PART_ROUTES = new Map<
+  string,
+  { remote: boolean; module?: WebAssembly.Module; structuredPrefixes?: string[] }
+>();
+
+/** Raw uiFragments defs by name, the shape the kernel's resolver expands. */
+export const FRAGMENT_DEFS: Record<string, unknown> = {};
+
 export function registerRunnableParts(dir: string): void {
   for (const file of readdirSync(dir)) {
     if (!file.endsWith('.derpart')) continue;
@@ -29,7 +43,13 @@ export function registerRunnableParts(dir: string): void {
     const wasmBytes = envelope.wasmB64
       ? new Uint8Array(Buffer.from(envelope.wasmB64, 'base64'))
       : null;
+    const compiled = wasmBytes ? new WebAssembly.Module(wasmBytes as BufferSource) : undefined;
     for (const op of manifest.operations ?? []) {
+      PART_ROUTES.set(op.name, {
+        remote: Boolean(op.remote),
+        module: op.remote ? undefined : compiled,
+        structuredPrefixes: op.structuredPrefixes,
+      });
       FRAGMENT_OPERATIONS[op.name] = {
         name: op.name,
         description: op.description,
@@ -55,6 +75,7 @@ export function registerRunnableParts(dir: string): void {
       };
     }
     for (const fragment of manifest.uiFragments ?? []) {
+      FRAGMENT_DEFS[fragment.name] = fragment;
       FRAGMENT_ELEMENTS[fragment.name] = {
         name: fragment.name,
         description: fragment.description,

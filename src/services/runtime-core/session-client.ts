@@ -8,6 +8,29 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { ResolvedNode } from '../runtime-view/resolve-view';
 
+/** A pluggable session backend: Tauri's invoke by default, the wasm kernel
+ * in the eval harness and in browsers without a core process. */
+export interface SessionTransport {
+  open(
+    contract: unknown,
+    initialData: Record<string, unknown>,
+    experienceId: string
+  ): Promise<SessionOpened>;
+  setElement(sessionId: string, elementId: string, value: unknown): Promise<ResolvedNode[]>;
+  dispatch(sessionId: string, operationIds: string[], item: unknown): Promise<EventOutcome>;
+  close(sessionId: string): Promise<void>;
+}
+
+let sessionTransport: SessionTransport | undefined;
+
+export function setSessionTransport(transport: SessionTransport | undefined): void {
+  sessionTransport = transport;
+}
+
+export function hasSessionTransport(): boolean {
+  return sessionTransport !== undefined;
+}
+
 export interface SessionOpened {
   sessionId: string;
   tree: ResolvedNode[];
@@ -42,13 +65,19 @@ export class CoreSessionClient {
       if (this.sessionId) {
         const stale = this.sessionId;
         this.sessionId = null;
-        await invoke('runtime_close_session', { sessionId: stale }).catch(() => undefined);
+        if (sessionTransport) {
+          await sessionTransport.close(stale).catch(() => undefined);
+        } else {
+          await invoke('runtime_close_session', { sessionId: stale }).catch(() => undefined);
+        }
       }
-      const opened = await invoke<SessionOpened>('runtime_open_session', {
-        contract,
-        initialData,
-        experienceId,
-      });
+      const opened = sessionTransport
+        ? await sessionTransport.open(contract, initialData, experienceId)
+        : await invoke<SessionOpened>('runtime_open_session', {
+            contract,
+            initialData,
+            experienceId,
+          });
       this.sessionId = opened.sessionId;
       return opened;
     });
@@ -59,6 +88,9 @@ export class CoreSessionClient {
     return this.enqueue(async () => {
       if (!this.sessionId) return null;
       const sessionId = this.sessionId;
+      if (sessionTransport) {
+        return await sessionTransport.setElement(sessionId, elementId, value);
+      }
       await invoke('runtime_set_element', { sessionId, elementId, value });
       return await invoke<ResolvedNode[]>('runtime_resolve_view', { sessionId });
     });
@@ -67,6 +99,9 @@ export class CoreSessionClient {
   async dispatch(operationIds: string[], item: unknown): Promise<EventOutcome | null> {
     return this.enqueue(async () => {
       if (!this.sessionId) return null;
+      if (sessionTransport) {
+        return await sessionTransport.dispatch(this.sessionId, operationIds, item ?? null);
+      }
       return await invoke<EventOutcome>('runtime_dispatch_event', {
         sessionId: this.sessionId,
         operationIds,
@@ -80,17 +115,11 @@ export class CoreSessionClient {
       if (!this.sessionId) return;
       const sessionId = this.sessionId;
       this.sessionId = null;
+      if (sessionTransport) {
+        await sessionTransport.close(sessionId).catch(() => undefined);
+        return;
+      }
       await invoke('runtime_close_session', { sessionId }).catch(() => undefined);
     });
   }
-}
-
-/** True when a contract still leans on the webview-only local escape hatch;
- * such contracts keep the local renderer. */
-export function contractUsesLocalCode(contract: {
-  operations?: Array<{ executionType?: string; implementation?: { code?: string } }>;
-}): boolean {
-  return (contract.operations ?? []).some(
-    (operation) => operation.executionType === 'local' || Boolean(operation.implementation?.code)
-  );
 }

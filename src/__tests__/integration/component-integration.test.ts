@@ -180,7 +180,7 @@ describe('Component Integration and Operation Binding', () => {
       expect(result.result).toBe(42);
     });
 
-    it('executes local operations from their implementation code with state access', async () => {
+    it('refuses local operations now that code never ships in contracts', async () => {
       stateManager.setData('count', 5);
 
       const operation: OperationBinding = {
@@ -196,11 +196,11 @@ describe('Component Integration and Operation Binding', () => {
         },
       };
 
-      const result = await operationExecutor.executeOperation(operation, {}, stateManager);
-
-      expect(result.next).toBe(8);
-      expect(stateManager.getData('count')).toBe(8);
+      await expect(operationExecutor.executeOperation(operation, {}, stateManager)).rejects.toThrow(
+        'carries local code, which no longer runs'
+      );
     });
+
 
     it('executes remote operations through the execute_operation command', async () => {
       installInvokeMock({

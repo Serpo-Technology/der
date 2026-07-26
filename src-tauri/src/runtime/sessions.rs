@@ -61,11 +61,20 @@ pub(crate) fn installed_vocabulary(
         if let Some(Value::Array(operations)) = manifest.get("operations") {
             for operation in operations {
                 if let Some(name) = operation.get("name").and_then(Value::as_str) {
+                    let structured_prefixes: Vec<String> = operation
+                        .get("structuredPrefixes")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect();
                     parts.insert(
                         name.to_string(),
                         PartRoute {
                             fragment_id: fragment_id.clone(),
                             remote: operation.get("remote").is_some(),
+                            structured_prefixes,
                         },
                     );
                 }

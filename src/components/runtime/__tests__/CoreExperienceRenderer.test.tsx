@@ -38,7 +38,6 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 import { CoreExperienceRenderer } from '../CoreExperienceRenderer';
-import { contractUsesLocalCode } from '../../../services/runtime-core/session-client';
 import type { Contract } from '../../../types/contract';
 
 const CONTRACT = {
@@ -154,23 +153,4 @@ describe('CoreExperienceRenderer', () => {
     expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Ada');
   });
 
-  it('detects the local-code escape hatch', () => {
-    expect(contractUsesLocalCode(CONTRACT)).toBe(false);
-    expect(
-      contractUsesLocalCode({
-        ...CONTRACT,
-        operations: [
-          {
-            id: 'op-x',
-            operationName: 'custom',
-            executionType: 'local',
-            implementation: { type: 'local', code: 'return {}' },
-            inputs: [],
-            outputs: [],
-            triggers: [],
-          },
-        ],
-      } as unknown as Contract)
-    ).toBe(true);
-  });
 });
