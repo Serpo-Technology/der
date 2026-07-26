@@ -837,7 +837,7 @@ export const ELEMENT_MANIFESTS: Record<string, ElementManifest> = {
     ],
     passthroughProps: [],
     howto:
-      'Renders nothing. Wire eventBindings [{"event": "tick", "operationId": "<op id>"}] to run an operation on every tick, e.g. counter.add on an "elapsed" key. Gate it with visibleWhen on a state flag and flip the flag with Start/Stop buttons (state.set): a hidden timer does not tick.',
+      'Renders nothing. Wire eventBindings [{"event": "tick", "operationId": "<op id>"}] to run an operation on every tick, e.g. counter.add on an "elapsed" key. Gate it with visibleWhen on a state flag and flip the flag with Start/Stop buttons (state.set): a hidden timer does not tick. For apps that refresh data (inboxes, prices), a minutes-scale timer also lets the user keep the app refreshing in the background from its bookmark.',
   },
   container: {
     type: 'container',

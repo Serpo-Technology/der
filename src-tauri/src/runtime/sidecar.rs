@@ -311,7 +311,7 @@ impl SidecarBridge {
             }
             "create" | "openBookmark" | "openRecipe" | "openRecent" | "recentDelete"
             | "editExperience"
-            | "bookmarkAdd" | "bookmarkRemove" | "openEditor" | "editorValidate" | "editorApply"
+            | "bookmarkAdd" | "bookmarkRemove" | "bookmarkBackground" | "openEditor" | "editorValidate" | "editorApply"
             | "editorRegenerate" | "openHome" | "quitApp" => Ok(Some(message.clone())),
             name if super::manage::is_management_event(name) => Ok(Some(message.clone())),
             "log" => Ok(None),
@@ -479,6 +479,24 @@ fn resolve_mail_dialog(app: &tauri::AppHandle, message: &Value) {
         .filter(|value| value.is_object())
         .map(|value| value.to_string());
     resolve_pending_dialog(app, message, account);
+}
+
+/// True when the experience currently has an open native window; a busy
+/// bridge counts as open so the scheduler never stalls behind a dialog.
+pub fn experience_window_open(app: &tauri::AppHandle, experience_id: &str) -> bool {
+    let bridge = {
+        let state = app.state::<NativeRendererState>();
+        let guard = state.0.lock().unwrap();
+        match guard.as_ref() {
+            Some(running) => running.bridge.clone(),
+            None => return false,
+        }
+    };
+    let open = match bridge.try_lock() {
+        Ok(bridge) => bridge.window_for_experience(experience_id).is_some(),
+        Err(_) => true,
+    };
+    open
 }
 
 /// True when the panel is running and can present dialogs as the active app.
@@ -700,6 +718,16 @@ fn relay_home_event(app: &tauri::AppHandle, event: &Value) {
                 .to_string();
             native_editor_regenerate(app, window_id, raw);
         }
+        Some("bookmarkBackground") => {
+            let Some(bookmark_id) = event.get("id").and_then(Value::as_str) else {
+                return;
+            };
+            let minutes = event.get("minutes").and_then(Value::as_u64).unwrap_or(0) as u32;
+            if let Err(error) = crate::set_bookmark_background_record(app, bookmark_id, minutes) {
+                eprintln!("Failed to set background refresh on {}: {}", bookmark_id, error);
+            }
+            refresh_native_home(app);
+        }
         Some("bookmarkRemove") => {
             let Some(bookmark_id) = event.get("id").and_then(Value::as_str) else {
                 return;
@@ -855,7 +883,7 @@ fn ensure_running(app: &tauri::AppHandle) -> Result<Arc<Mutex<SidecarBridge>>, S
     Ok(bridge)
 }
 
-fn build_entry(
+pub(crate) fn build_entry(
     app: &tauri::AppHandle,
     contract: &Value,
     initial_data: Map<String, Value>,
@@ -1387,6 +1415,7 @@ fn send_native_home(app: &tauri::AppHandle, raise: bool) {
                 json!({
                     "id": bookmark.get("id").cloned().unwrap_or(Value::Null),
                     "name": bookmark.get("name").cloned().unwrap_or(Value::Null),
+                    "backgroundMinutes": bookmark.get("backgroundMinutes").cloned().unwrap_or(Value::Null),
                 })
             })
             .collect();

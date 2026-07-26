@@ -370,6 +370,14 @@ in production. `runtime/sessions.rs` is the live-session surface: `runtime_open_
 manifests on disk, saved data merged), `runtime_resolve_view`, `runtime_set_element`,
 `runtime_dispatch_event` (off the async core threads), `runtime_close_session`; its
 host-free cores are integration-tested by driving the committed stopwatch pack natively.
+`runtime/schedule.rs` is background refresh: a bookmarked app can opt in
+(the home row's context menu natively, the bookmark card in the webview; a
+`backgroundMinutes` field on the bookmark record) and the core then runs the
+app's visible timer tick chains once per cadence in a headless session (saved
+state in, timer beats, state persisted back), skipping apps with an open
+native window because their renderer owns the timers. The timer element is
+the app's own declaration of periodic work, so no new vocabulary exists for
+this; the timer howto teaches minutes-scale refresh timers.
 `runtime/sidecar.rs` renders experiences in external panel
 processes: the bridge owns the sessions, speaks newline-delimited JSON over the panel's
 stdio (`open`/`update`/`close` out; `setElement`/`dispatch`/`windowClosed` in), and answers

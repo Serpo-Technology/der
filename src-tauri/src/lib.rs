@@ -423,7 +423,7 @@ pub(crate) fn delete_experience_record(app: &AppHandle, experience_id: &str) {
     let _ = fs::remove_file(state);
 }
 
-fn read_experience_state(app: &AppHandle, experience_id: &str) -> Option<Value> {
+pub(crate) fn read_experience_state(app: &AppHandle, experience_id: &str) -> Option<Value> {
     let app_data_dir = app.path().app_data_dir().ok()?;
     let state_file = app_data_dir
         .join("experience_states")
@@ -494,8 +494,8 @@ async fn load_experience(
 
 // Bookmark data structures
 #[derive(Debug, Serialize, Deserialize)]
-struct BookmarkedExperience {
-    id: String,
+pub(crate) struct BookmarkedExperience {
+    pub(crate) id: String,
     name: String,
     description: Option<String>,
     contract: Value,
@@ -503,6 +503,10 @@ struct BookmarkedExperience {
     last_accessed_at: String,
     tags: Option<Vec<String>>,
     thumbnail: Option<String>,
+    /// Minutes between background timer beats; absent or 0 keeps the app
+    /// foreground-only.
+    #[serde(default)]
+    pub(crate) background_minutes: Option<u32>,
 }
 
 /// Share envelope wire format: camelCase keys with absent (never null)
@@ -558,6 +562,10 @@ async fn bookmark_experience(
         .map_err(|e| format!("Failed to create bookmarks directory: {}", e))?;
     
     let now = chrono::Utc::now().to_rfc3339();
+    let existing_background = read_bookmarks(&app)
+        .into_iter()
+        .find(|bookmark| bookmark.id == experience_id)
+        .and_then(|bookmark| bookmark.background_minutes);
     let bookmark = BookmarkedExperience {
         id: experience_id.clone(),
         name,
@@ -567,6 +575,7 @@ async fn bookmark_experience(
         last_accessed_at: now,
         tags,
         thumbnail: None,
+        background_minutes: existing_background,
     };
     
     let bookmark_file = bookmarks_dir.join(format!("{}.json", experience_id));
@@ -630,15 +639,54 @@ async fn list_bookmarked_experiences_detailed(app: AppHandle) -> Result<Vec<Valu
                 "createdAt": bookmark.created_at,
                 "lastAccessedAt": bookmark.last_accessed_at,
                 "tags": bookmark.tags,
-                "thumbnail": bookmark.thumbnail
+                "thumbnail": bookmark.thumbnail,
+                "backgroundMinutes": bookmark.background_minutes
             })
         })
         .collect();
     Ok(experiences)
 }
 
+/// Updates one bookmark's background-refresh cadence in place.
+pub(crate) fn set_bookmark_background_record(
+    app: &AppHandle,
+    experience_id: &str,
+    minutes: u32,
+) -> Result<(), String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    let bookmark_file = app_data_dir.join("bookmarks").join(format!("{}.json", experience_id));
+    let bookmark_json = fs::read_to_string(&bookmark_file)
+        .map_err(|_| format!("No bookmark {}", experience_id))?;
+    let mut bookmark: BookmarkedExperience = serde_json::from_str(&bookmark_json)
+        .map_err(|e| format!("Failed to parse bookmark: {}", e))?;
+    bookmark.background_minutes = if minutes > 0 { Some(minutes) } else { None };
+    let updated = serde_json::to_string_pretty(&bookmark)
+        .map_err(|e| format!("Failed to serialize bookmark: {}", e))?;
+    fs::write(bookmark_file, updated)
+        .map_err(|e| format!("Failed to save bookmark: {}", e))
+}
+
+#[tauri::command]
+async fn set_bookmark_background(
+    app: AppHandle,
+    experience_id: String,
+    minutes: u32,
+) -> Result<(), String> {
+    set_bookmark_background_record(&app, &experience_id, minutes)
+}
+
+/// A bookmarked app's contract, for headless background sessions.
+pub(crate) fn bookmark_contract(app: &AppHandle, experience_id: &str) -> Option<Value> {
+    let app_data_dir = app.path().app_data_dir().ok()?;
+    let bookmark_file = app_data_dir.join("bookmarks").join(format!("{}.json", experience_id));
+    let bookmark_json = fs::read_to_string(bookmark_file).ok()?;
+    let bookmark: BookmarkedExperience = serde_json::from_str(&bookmark_json).ok()?;
+    Some(bookmark.contract)
+}
+
 /// Reads every bookmark record, most recently accessed first.
-fn read_bookmarks(app: &AppHandle) -> Vec<BookmarkedExperience> {
+pub(crate) fn read_bookmarks(app: &AppHandle) -> Vec<BookmarkedExperience> {
     let Ok(app_data_dir) = app.path().app_data_dir() else {
         return Vec::new();
     };
@@ -1374,6 +1422,9 @@ pub fn run() {
         .manage(runtime::sidecar::NativeRendererState::default())
         .manage(runtime::sidecar::PendingDialogs::default())
         .setup(|app| {
+            // Background refresh beats for bookmarked apps that opted in,
+            // in both faces: the core owns the cadence, not a window.
+            runtime::schedule::spawn(app.handle().clone());
             // The two faces are peers: native mode never creates a webview
             // window, and webview mode builds its main window here.
             if native_mode() {
@@ -1442,6 +1493,7 @@ pub fn run() {
             bookmark_experience,
             load_bookmarked_experience,
             list_bookmarked_experiences_detailed,
+            set_bookmark_background,
             delete_bookmarked_experience,
             share_experience,
             import_shared_experience,

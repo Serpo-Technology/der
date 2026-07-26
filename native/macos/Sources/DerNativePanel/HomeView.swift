@@ -59,6 +59,15 @@ final class HomeModel: ObservableObject {
         Outbound.shared.send(["event": "bookmarkRemove", "id": bookmark.id])
     }
 
+    func toggleBackground(_ bookmark: HomeBookmark) {
+        let enabled = (bookmark.backgroundMinutes ?? 0) > 0
+        Outbound.shared.send([
+            "event": "bookmarkBackground",
+            "id": bookmark.id,
+            "minutes": enabled ? 0 : 15,
+        ])
+    }
+
     func deleteRecent(_ recent: HomeRecent) {
         Outbound.shared.send(["event": "recentDelete", "id": recent.id])
     }
@@ -100,6 +109,13 @@ struct HomeView: View {
                                     removeLabel: "Remove from Your apps"
                                 )
                                 .contextMenu {
+                                    Button(
+                                        (bookmark.backgroundMinutes ?? 0) > 0
+                                            ? "Stop background refresh"
+                                            : "Refresh in background every 15 min"
+                                    ) {
+                                        model.toggleBackground(bookmark)
+                                    }
                                     Button("Remove from Your apps") {
                                         model.removeBookmark(bookmark)
                                     }

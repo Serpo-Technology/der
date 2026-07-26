@@ -256,6 +256,24 @@ const BookmarkCard: React.FC<BookmarkCardProps> = ({
   // First click arms the delete, second click performs it; the armed state
   // falls back after a few seconds.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Background refresh cadence; the record may carry either key spelling
+  // depending on which face saved it last.
+  const record = bookmark as unknown as Record<string, unknown>;
+  const [backgroundMinutes, setBackgroundMinutes] = useState<number>(
+    Number(record.backgroundMinutes ?? record.background_minutes ?? 0) || 0
+  );
+  const toggleBackground = async () => {
+    const next = backgroundMinutes > 0 ? 0 : 15;
+    try {
+      await invoke('set_bookmark_background', {
+        experienceId: bookmark.id,
+        minutes: next,
+      });
+      setBackgroundMinutes(next);
+    } catch {
+      // The record may be gone; the list refresh surfaces that.
+    }
+  };
   useEffect(() => {
     if (!confirmingDelete) return;
     const timer = setTimeout(() => setConfirmingDelete(false), 4000);
@@ -333,6 +351,18 @@ const BookmarkCard: React.FC<BookmarkCardProps> = ({
               Share
             </button>
           )}
+          <button
+            className="load-button"
+            onClick={toggleBackground}
+            disabled={isLoading}
+            title={
+              backgroundMinutes > 0
+                ? 'The app currently refreshes every 15 minutes while closed'
+                : 'Run this app’s timers every 15 minutes while closed'
+            }
+          >
+            {backgroundMinutes > 0 ? 'Background refresh: on' : 'Background refresh: off'}
+          </button>
           <button
             className={`delete-button danger ${confirmingDelete ? 'confirming' : ''}`}
             onClick={handleDeleteClick}

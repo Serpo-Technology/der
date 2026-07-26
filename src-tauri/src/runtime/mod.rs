@@ -12,6 +12,7 @@ pub mod llm_schema;
 pub mod manage;
 pub mod manifests;
 pub mod prompt;
+pub mod schedule;
 pub mod operations;
 pub mod session;
 pub mod sessions;

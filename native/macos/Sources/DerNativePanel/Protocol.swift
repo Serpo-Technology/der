@@ -129,6 +129,8 @@ public struct ResolvedNode: Codable, Equatable, Sendable, Identifiable {
 public struct HomeBookmark: Decodable, Sendable, Identifiable {
     public let id: String
     public let name: String
+    /// Minutes between background refresh beats; nil or 0 is off.
+    public let backgroundMinutes: Int?
 }
 
 public struct HomeRecipe: Decodable, Sendable, Identifiable {
