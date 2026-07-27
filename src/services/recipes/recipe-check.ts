@@ -5,7 +5,7 @@
  */
 
 import { ValidationWarning } from '../../types/contract';
-import { invoke } from '@tauri-apps/api/core';
+import { coreInvoke } from '../runtime-core/core-invoke';
 import type { ContractShape } from '../../schemas/contract';
 import { RecipeDef } from '../operations/registry';
 
@@ -29,7 +29,7 @@ function cloneContract(def: RecipeDef): unknown {
 export async function resolveRecipeShape(def: RecipeDef): Promise<ResolvedRecipeShape> {
   // The runtime core runs the same structural and manifest gates the model
   // faces; the webview carries no checker of its own.
-  const verdict = (await invoke('runtime_check_contract', { contract: cloneContract(def) })) as {
+  const verdict = (await coreInvoke('runtime_check_contract', { contract: cloneContract(def) })) as {
     shape: ContractShape | null;
     errors: string[];
     warnings: string[];

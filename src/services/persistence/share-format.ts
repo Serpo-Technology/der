@@ -13,7 +13,7 @@ import {
   formatZodError,
 } from '../../schemas/contract';
 import type { ContractShape } from '../../schemas/contract';
-import { invoke } from '@tauri-apps/api/core';
+import { coreInvoke } from '../runtime-core/core-invoke';
 import type { Contract } from '../../types/contract';
 import type { ShareableContract } from '../../types/persistence';
 
@@ -132,7 +132,7 @@ export async function parseShareableText(text: string): Promise<ParsedShare> {
     };
   }
   const shape = contractParse.data as ContractShape;
-  const verdict = (await invoke('runtime_check_contract', { contract: shape })) as {
+  const verdict = (await coreInvoke('runtime_check_contract', { contract: shape })) as {
     shape: ContractShape | null;
     errors: string[];
     warnings: string[];
@@ -153,7 +153,7 @@ export async function finalizeSharedContract(parsed: ParsedShare): Promise<Contr
   if (!parsed.shape || parsed.problems.length > 0) {
     throw new Error(`This share does not validate:\n${parsed.problems.join('\n')}`);
   }
-  return (await invoke('runtime_finalize_contract', {
+  return (await coreInvoke('runtime_finalize_contract', {
     shape: parsed.shape,
     description: parsed.shareable?.metadata.description ?? parsed.shareable?.metadata.title,
   })) as Contract;

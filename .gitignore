@@ -37,3 +37,4 @@ src-tauri/binaries/
 runtime-core/target/
 runtime-wasm/target/
 !runtime-wasm/dist/
+.claude/

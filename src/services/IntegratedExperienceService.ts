@@ -16,12 +16,13 @@ import { Blueprint as BlueprintModel } from '../models/blueprint';
 import { Contract as ContractModel } from '../models/contract';
 import { emit, listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { coreInvoke } from './runtime-core/core-invoke';
 import { isTauriRuntime } from './tauri/TauriCommandService';
 // Streaming drafts extract in the runtime core; the webview holds no
 // parser of its own.
 async function extractStreamingDraft(accumulated: string): Promise<unknown | null> {
   try {
-    const draft = await invoke('runtime_extract_streaming', { accumulated });
+    const draft = await coreInvoke('runtime_extract_streaming', { accumulated });
     return draft === null || draft === undefined ? null : draft;
   } catch {
     return null;

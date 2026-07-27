@@ -21,7 +21,7 @@ authoritative architecture record; read the Architecture section before structur
 npm run eval -- --provider mercury   # Generate the prompt suite (evals/prompts.json) and score end to end: compose + scripted behavior. --only <id> one prompt; --static-only skips behaviors
 npm run eval:behave    # Rerun just the behaviors against the newest eval results (or EVAL_RESULTS=<path>)
 npm run tauri dev      # Run the full desktop app (Rust backend + Vite frontend). Use this to exercise invoke().
-npm run dev            # Vite frontend only on port 1420. Tauri invoke() calls fail here (no Rust backend).
+npm run dev            # Vite frontend only on port 1420. Sessions and contract commands run over the in-process kernel; core-only capabilities (LLM, storage, parts, network) fail with a desktop-app message.
 npm run build          # tsc (type-check, excludes tests) then vite build
 npm run tauri build    # Build the packaged desktop app
 
@@ -150,6 +150,9 @@ Rust `open_experience_window` command when opening an experience in its own OS w
 changes propagate across windows via the Tauri event `experience-contract-updated`. The app
 starts hidden and is driven from a macOS system tray whose menu emits `navigate-to-create` and
 `show-bookmarks`, which `MainInterface` listens for.
+Outside Tauri the same window opens experience links instead: a `#app=<base64url JSON>` hash
+carries the contract, the id derives from the link so per-app state persists in localStorage,
+and bookmark/native-window controls (core capabilities) stay hidden.
 
 ### models/ vs types/ (gotcha)
 
@@ -412,9 +415,16 @@ dispatches chains one operation per call so the chain-stop rule stays with
 the core (EventOutcome carries the failure message for the error strip), and
 overlays local control values over async echoes until a dispatch lands.
 `LiveExperienceRenderer` wraps it for the standalone window. Outside Tauri
-(`npm run dev`, plain vite) there is no session backend, so windows render
-nothing interactive; jsdom suites that need semantics route invoke to the
-wasm kernel through `src/test/kernel-invoke.ts`. The dispatcher seam
+(`npm run dev`, a plain browser) the face stays self-sufficient:
+`main.tsx` installs the browser core before the first render
+(`src/services/runtime-core/browser-core.ts` loads the committed kernel
+wasm as a vite asset and serves the session transport plus the contract
+commands through `core-invoke.ts`, the invoke-or-router seam every
+command call site uses), builtins run in-kernel, and host-owned
+operations (http.get, files, mail, store, installed parts) fail their
+chain with a message naming the desktop app. jsdom suites that need
+semantics route invoke to the wasm kernel through
+`src/test/kernel-invoke.ts`. The dispatcher seam
 (`runtime/session.rs` trait, `runtime/host.rs` implementation) routes non-builtin operations
 to the machinery that already runs them: wasm parts in the wasmtime host, integration part
 remotes through the signed service path, contract remotes and `http.get` through the shared

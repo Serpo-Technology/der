@@ -583,6 +583,12 @@ fn run_operation(request: &Value) -> Result<Value, String> {
             let accumulated = text("accumulated");
             Ok(json!({ "contract": extract_streaming_contract(&accumulated) }))
         }
+        "blueprint.derive" => {
+            let contract = request.get("contract").cloned().unwrap_or(Value::Null);
+            Ok(json!({
+                "blueprint": der_runtime::compose::derive_blueprint(&contract, &text("description"))
+            }))
+        }
         "session.open" => {
             let session_id = text("sessionId");
             if session_id.is_empty() {

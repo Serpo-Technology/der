@@ -33,6 +33,7 @@ import { integratedExperienceService } from '../services/IntegratedExperienceSer
 import { isTauriRuntime } from '../services/tauri/TauriCommandService';
 import { generateFromBlueprintViaCore } from '../services/runtime-core/compose-client';
 import { invoke } from '@tauri-apps/api/core';
+import { coreInvoke } from '../services/runtime-core/core-invoke';
 import { listen } from '@tauri-apps/api/event';
 
 // Navigation modes
@@ -197,13 +198,12 @@ export const MainInterface: React.FC = () => {
     setState(prev => ({ ...prev, isProcessing: true, error: null }));
 
     try {
-      // Generate contract from blueprint: the runtime core under Tauri,
-      // the TS builder outside it.
+      // Blueprint-mode regeneration runs in the desktop core.
       const contractData = (await generateFromBlueprintViaCore(state.blueprint)).contract;
       const contract = new ContractClass(contractData);
       
       // Validate contract through the core's checker
-      const verdict = (await invoke('runtime_check_contract', { contract: contractData })) as {
+      const verdict = (await coreInvoke('runtime_check_contract', { contract: contractData })) as {
         errors: string[];
         warnings: string[];
       };

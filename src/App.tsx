@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { LiveExperienceRenderer } from "./components/runtime/LiveExperienceRenderer";
 import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { isTauriRuntime } from "./services/tauri/TauriCommandService";
 import type { Contract as ContractType, ValidationWarning } from "./types/contract";
 import { ExperienceEditBar } from "./components/runtime/ExperienceEditBar";
 import { integratedExperienceService } from "./services/IntegratedExperienceService";
@@ -15,6 +16,44 @@ import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { registerBuiltins } from "./services/repository/builtins";
 import { STYLE_ACCENTS, STYLE_THEMES } from "./services/operations/registry";
 import { backgroundVariables, hexAccentVariables, isHexAccent } from "./services/operations/accent-color";
+
+/** Experience links for windows with no core process behind them: the hash
+ * carries the contract itself (`#app=<base64url JSON>`), so a browser tab
+ * opens an app the way the desktop core opens a window. */
+function decodeHashContract(encoded: string): ContractType | undefined {
+  try {
+    const b64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const binary = atob(b64);
+    const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes)) as ContractType;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Stable per-link id so the app's state persists across reloads. */
+function hashExperienceId(encoded: string): string {
+  let h = 5381;
+  for (let i = 0; i < encoded.length; i++) {
+    h = ((h << 5) + h + encoded.charCodeAt(i)) >>> 0;
+  }
+  return `web-${h.toString(36)}`;
+}
+
+function webStateKey(experienceId: string): string {
+  return `der-state-${experienceId}`;
+}
+
+function readWebState(experienceId: string): Record<string, unknown> | undefined {
+  try {
+    const raw = window.localStorage.getItem(webStateKey(experienceId));
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function App() {
   // Seed the shared component catalog once at startup. Installed parts load
@@ -28,6 +67,21 @@ function App() {
       console.warn("Failed to load installed parts", error)
     );
   }, []);
+  const [hashTick, setHashTick] = useState(0);
+  useEffect(() => {
+    const onHashChange = () => setHashTick((tick) => tick + 1);
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+  const hashExperience = useMemo(() => {
+    if (isTauriRuntime()) return undefined;
+    const match = /[#&]app=([A-Za-z0-9_-]+={0,2})/.exec(window.location.hash);
+    if (!match) return undefined;
+    const contract = decodeHashContract(match[1]);
+    if (!contract) return undefined;
+    return { id: hashExperienceId(match[1]), contract };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hashTick]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const injected = (globalThis as any).__DER_BOOTSTRAP as
     | {
@@ -62,6 +116,21 @@ function App() {
             initialContract={injectedContract}
             savedState={injectedState}
             initialAssembling={Boolean(injected.assembling)}
+          />
+        </ErrorBoundary>
+      </div>
+    );
+  }
+
+  if (hashExperience) {
+    return (
+      <div className="app" style={{ width: "100%", height: "100%" }}>
+        <ErrorBoundary fallback={<div style={{ padding: 16 }}>This window failed to render. Reload the page to reopen the app.</div>}>
+          <ExperienceWindow
+            key={hashExperience.id}
+            initialExperienceId={hashExperience.id}
+            initialContract={hashExperience.contract}
+            savedState={readWebState(hashExperience.id)}
           />
         </ErrorBoundary>
       </div>
@@ -120,6 +189,15 @@ const ExperienceWindow: React.FC<{
     if (pendingState.current) {
       const snapshot = pendingState.current;
       pendingState.current = null;
+      if (!isTauriRuntime()) {
+        // No core process behind this window: state lives in the browser.
+        try {
+          window.localStorage.setItem(webStateKey(initialExperienceId), JSON.stringify(snapshot));
+        } catch (error) {
+          console.warn("Failed to save app state", error);
+        }
+        return;
+      }
       invoke("save_experience_state", { experienceId: initialExperienceId, state: snapshot }).catch(
         (error) => console.warn("Failed to save app state", error)
       );
@@ -172,8 +250,10 @@ const ExperienceWindow: React.FC<{
 
   // The webview shows no native alert, so bookmark feedback lives inline.
   const [bookmarkNote, setBookmarkNote] = useState<string | null>(null);
+  // Bookmarks and native windows live in the desktop app's core.
+  const hasCore = isTauriRuntime();
   const isMacDesktop =
-    typeof navigator !== "undefined" && /Mac/.test(navigator.platform ?? "");
+    hasCore && typeof navigator !== "undefined" && /Mac/.test(navigator.platform ?? "");
 
   const handleOpenNative = useCallback(async () => {
     try {
@@ -208,6 +288,7 @@ const ExperienceWindow: React.FC<{
   // attached the window announces itself and generation replays the latest
   // contract and status.
   React.useEffect(() => {
+    if (!isTauriRuntime()) return;
     let unlistenContract: (() => void) | undefined;
     let unlistenStatus: (() => void) | undefined;
     (async () => {
@@ -297,7 +378,9 @@ const ExperienceWindow: React.FC<{
               Native window
             </button>
           )}
-          <button onClick={handleBookmark} disabled={assembling}>Bookmark</button>
+          {hasCore && (
+            <button onClick={handleBookmark} disabled={assembling}>Bookmark</button>
+          )}
         </div>
       </header>
       <ExperienceEditBar

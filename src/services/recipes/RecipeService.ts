@@ -9,7 +9,7 @@
 
 import { ComposedSpec } from '../../types/blueprint';
 import { Contract, ValidationWarning } from '../../types/contract';
-import { invoke } from '@tauri-apps/api/core';
+import { coreInvoke } from '../runtime-core/core-invoke';
 import { getRecipeDef } from '../operations/registry';
 import { resolveRecipeShape } from './recipe-check';
 
@@ -40,7 +40,7 @@ export async function instantiateRecipe(name: string): Promise<InstantiatedRecip
     assumptions: def.spec?.assumptions ?? [],
     openQuestions: def.spec?.openQuestions ?? [],
   };
-  const contract = (await invoke('runtime_finalize_contract', {
+  const contract = (await coreInvoke('runtime_finalize_contract', {
     shape,
     description: spec.goal,
   })) as Contract;
