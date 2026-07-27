@@ -859,12 +859,17 @@ func isEmbedPlayerUrl(_ src: String) -> Bool {
 }
 
 /// A hosted embed player: JavaScript stays on for the player itself, but
-/// main-frame navigation is confined to the allowlisted embed urls and
-/// popups never open, so link-outs are cancelled instead of browsed.
+/// main-frame navigation is confined to the embed shell and popups never
+/// open, so link-outs are cancelled instead of browsed. The embed sits in
+/// an iframe inside a shell document whose https base url gives the player
+/// the embedding context (a Referer) YouTube requires; loading the embed
+/// url as the top-level document plays nothing (its error 153).
 private struct EmbedPlayerView: NSViewRepresentable {
     let src: String
 
     final class Delegate: NSObject, WKNavigationDelegate, WKUIDelegate {
+        var loadedSrc = ""
+
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
@@ -874,8 +879,14 @@ private struct EmbedPlayerView: NSViewRepresentable {
                 decisionHandler(.allow)
                 return
             }
+            // The only allowed top-level document is the shell itself
+            // (its url is the embed host's origin); everything a link-out
+            // tries to open in place is cancelled.
             let url = navigationAction.request.url?.absoluteString ?? ""
-            decisionHandler(isEmbedPlayerUrl(url) ? .allow : .cancel)
+            let isShell = embedPlayerPrefixes.contains { prefix in
+                url == shellBase(forPrefix: prefix)
+            }
+            decisionHandler(isShell ? .allow : .cancel)
         }
 
         func webView(
@@ -893,24 +904,49 @@ private struct EmbedPlayerView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        configuration.preferences.isElementFullscreenEnabled = true
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
         view.uiDelegate = context.coordinator
         view.setValue(false, forKey: "drawsBackground")
-        load(view)
+        load(view, context.coordinator)
         return view
     }
 
     func updateNSView(_ view: WKWebView, context: Context) {
-        if view.url?.absoluteString != src {
-            load(view)
+        if context.coordinator.loadedSrc != src {
+            load(view, context.coordinator)
         }
     }
 
-    private func load(_ view: WKWebView) {
-        guard isEmbedPlayerUrl(src), let url = URL(string: src) else { return }
-        view.load(URLRequest(url: url))
+    private func load(_ view: WKWebView, _ delegate: Delegate) {
+        guard isEmbedPlayerUrl(src),
+            let prefix = embedPlayerPrefixes.first(where: { src.hasPrefix($0) }),
+            let base = URL(string: shellBase(forPrefix: prefix))
+        else { return }
+        delegate.loadedSrc = src
+        let escaped = src
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
+        let page = """
+            <!doctype html><meta charset="utf-8">
+            <style>html,body{margin:0;height:100%;background:#000}iframe{width:100%;height:100%;border:0;display:block}</style>
+            <iframe src="\(escaped)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+            """
+        view.loadHTMLString(page, baseURL: base)
     }
+}
+
+/// The shell document's url for an embed prefix: the host origin with a
+/// trailing slash ("https://www.youtube-nocookie.com/").
+func shellBase(forPrefix prefix: String) -> String {
+    guard let hostEnd = prefix.range(of: "/", range: prefix.index(prefix.startIndex, offsetBy: 8)..<prefix.endIndex) else {
+        return prefix
+    }
+    return String(prefix[..<hostEnd.lowerBound]) + "/"
 }
 
 struct VideoNode: View {

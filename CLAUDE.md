@@ -321,10 +321,12 @@ granted tokens only, and `file.save` writes solely through the save panel. Viewe
 elements `pdf` and `video` (plus `image`) bind `src` from pick's `url` output: embed
 and video tags in the webview, PDFKit and AVKit natively. The `video` element also
 plays hosted embed urls (an exact-prefix allowlist of YouTube embed hosts, identical in
-both faces: an iframe in the webview, a navigation-confined WKWebView with JavaScript on
-natively), and the youtube part's `youtube.parse` turns any pasted link form into that
-embed url, so "paste a link, press play" composes from an input, the part, and the
-element (the youtube-player eval). The `html` element is the
+both faces: an iframe in the webview, and natively a navigation-confined WKWebView with
+JavaScript on that loads the embed inside a shell document based on the embed host's
+https origin, because the player demands an embedding context with a Referer and answers
+a bare top-level load with its error 153), and the youtube part's `youtube.parse` turns
+any pasted link form into that embed url, so "paste a link, press play" composes from an
+input, the part, and the element (the youtube-player eval). The `html` element is the
 rich-content viewer: its bound `content` string renders through an allowlist
 sanitizer in the webview (`sanitize-html.ts`: formatting tags only, links keep text
 and tooltip but never navigate, images data:/https only) and through a sealed
