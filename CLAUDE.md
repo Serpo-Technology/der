@@ -314,7 +314,9 @@ whose link rows refetch through item.href, proven by the webpage-reader eval) (c
 frankfurter and openweather and coingecko and wikipedia
 and mailer (Resend) (integrations),
 ui-basics (entry_row, stat_tile, and the self-wired stopwatch pack), starter-apps (the
-apps.expense_tracker and apps.calculator recipes, proven in the eval corpus). Compute
+apps.expense_tracker, apps.calculator, and apps.webpage_reader recipes, proven in the
+eval corpus; the reader recipe makes reader-shaped requests deterministic where fresh
+composition of the two-chain wiring was stochastic). Compute
 parts may declare the `io:large` capability (consented at install review) to raise the
 wasm budgets to 32 MiB inputs, 512 MiB memory, and tenfold fuel for media payloads.
 User-mediated file IO is a builtin layer in `src-tauri/src/files.rs`, host-owned like

@@ -1822,7 +1822,8 @@
             "match": "/abandoned bend becomes a crescent lake/"
           }
         ]
-      }
+      },
+      "expectRecipe": "apps.webpage_reader"
     }
   ]
 }

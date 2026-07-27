@@ -83,7 +83,10 @@ fn committed_starter_bundle_verifies() {
         .iter()
         .map(|recipe| recipe.name.as_str())
         .collect();
-    assert_eq!(names, ["apps.expense_tracker", "apps.calculator"]);
+    assert_eq!(
+        names,
+        ["apps.expense_tracker", "apps.calculator", "apps.webpage_reader"]
+    );
     assert!(verified.wasm.is_empty());
 }
 

@@ -330,14 +330,14 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
   'http.get': {
     name: 'http.get',
     description:
-      'Fetches an http(s) URL. Returns {response, body}: "response" is the parsed JSON, "body" the raw text (HTML pages included).',
+      'Fetches an http(s) URL. Two separate outputs: "response" is the parsed JSON, "body" is the raw text (HTML pages included). body is never a field inside response.',
     inputs: [{ name: 'url', type: 'string', required: true, description: 'http(s) URL' }],
     outputs: [
-      { name: 'response', type: 'object', description: 'Parsed JSON payload' },
-      { name: 'body', type: 'string', description: 'Raw response text; what HTML consumers like page.blocks read' },
+      { name: 'response', type: 'object', description: 'Parsed JSON payload, for API calls' },
+      { name: 'body', type: 'string', description: 'Raw response text, for HTML consumers like page.blocks; route THIS output, never pick "body" out of response' },
     ],
     howto:
-      'Fetching real remote data ONLY; never for math on existing state (use expr.evaluate, stats, or transforms for that). A computed URL is a url input bound from an element or state with a format transform, e.g. transforms [{"type": "format", "parameters": {"template": "https://host/search?q={{value}}"}}]. Route the response into a state key and display it with pick/format; route body into state when the content is a page rather than an API payload.',
+      'Fetching real remote data ONLY; never for math on existing state (use expr.evaluate, stats, or transforms for that). A computed URL is a url input bound from an element or state with a format transform, e.g. transforms [{"type": "format", "parameters": {"template": "https://host/search?q={{value}}"}}]. For API calls route the response output into state and display it with pick/format. For pages route the body output into state with NO transform: {"name": "body", "target": "state", "targetId": "pageHtml"}.',
   },
 
   'file.pick': {

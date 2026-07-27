@@ -160,11 +160,12 @@
       "operations": [],
       "recipes": [
         "apps.expense_tracker",
-        "apps.calculator"
+        "apps.calculator",
+        "apps.webpage_reader"
       ],
       "bundleUrl": "der-labs.starter-apps.derpart",
-      "bundleSha256": "317fde462c2ff0215f190a9bd3dd3c61116f3127f0ce9a027b519bb7ec06dab9",
-      "bundleBytes": 50104
+      "bundleSha256": "dcb6c9f5a324a0d3694275b43178b10e7f624120b9446d8f9608d46d69fc8f3a",
+      "bundleBytes": 63808
     },
     {
       "id": "der-labs.stats-summary",
@@ -204,8 +205,8 @@
         "page.blocks"
       ],
       "bundleUrl": "der-labs.webpage.derpart",
-      "bundleSha256": "a82ff4adcdb4bc12b677a5a09e40cfe58cbeb0dc03c4ef7399d027d8e36afa12",
-      "bundleBytes": 134184
+      "bundleSha256": "23e8440018ce9b4ef03c2637d36d778c824e9f535ea6157da457b20c30cd0c48",
+      "bundleBytes": 134496
     },
     {
       "id": "der-labs.wikipedia",

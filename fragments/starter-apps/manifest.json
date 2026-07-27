@@ -1342,6 +1342,372 @@
           }
         ]
       }
+    },
+    {
+      "name": "apps.webpage_reader",
+      "title": "Webpage Reader",
+      "description": "Paste an article link and read the page as native content; shown links open in place.",
+      "keywords": [
+        "webpage",
+        "reader",
+        "article",
+        "browser",
+        "page",
+        "link",
+        "read"
+      ],
+      "spec": {
+        "goal": "Read any article link as native content, with shown links opening the same way",
+        "assumptions": [
+          "Pages are content pages; web apps only show their static text"
+        ],
+        "openQuestions": []
+      },
+      "contract": {
+        "name": "webpage-reader",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "title",
+            "type": "text",
+            "properties": {
+              "role": "title"
+            },
+            "dataBindings": [
+              {
+                "property": "content",
+                "source": "state",
+                "sourceId": "pageTitle"
+              }
+            ],
+            "eventBindings": []
+          },
+          {
+            "id": "input-bar",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8",
+              "align": "end"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "url-in",
+                "type": "input",
+                "properties": {
+                  "label": "URL",
+                  "placeholder": "https://example.com"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "open-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Open",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-fetch"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-parse"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "blocks-list",
+            "type": "list",
+            "properties": {
+              "emptyText": "No page loaded"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "pageBlocks"
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "block-heading",
+                "type": "text",
+                "properties": {
+                  "role": "title"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "text"
+                  }
+                ],
+                "eventBindings": [],
+                "visibleWhen": {
+                  "source": "item",
+                  "sourceId": "kind",
+                  "operator": "equals",
+                  "value": "heading"
+                }
+              },
+              {
+                "id": "block-paragraph",
+                "type": "text",
+                "properties": {
+                  "role": "body"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "text"
+                  }
+                ],
+                "eventBindings": [],
+                "visibleWhen": {
+                  "source": "item",
+                  "sourceId": "kind",
+                  "operator": "equals",
+                  "value": "paragraph"
+                }
+              },
+              {
+                "id": "block-item",
+                "type": "text",
+                "properties": {
+                  "role": "body"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "text"
+                  }
+                ],
+                "eventBindings": [],
+                "visibleWhen": {
+                  "source": "item",
+                  "sourceId": "kind",
+                  "operator": "equals",
+                  "value": "item"
+                }
+              },
+              {
+                "id": "block-quote",
+                "type": "text",
+                "properties": {
+                  "tone": "muted"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "text"
+                  }
+                ],
+                "eventBindings": [],
+                "visibleWhen": {
+                  "source": "item",
+                  "sourceId": "kind",
+                  "operator": "equals",
+                  "value": "quote"
+                }
+              },
+              {
+                "id": "block-code",
+                "type": "text",
+                "properties": {
+                  "tone": "danger"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "text"
+                  }
+                ],
+                "eventBindings": [],
+                "visibleWhen": {
+                  "source": "item",
+                  "sourceId": "kind",
+                  "operator": "equals",
+                  "value": "code"
+                }
+              },
+              {
+                "id": "block-image",
+                "type": "image",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "src",
+                    "source": "item",
+                    "sourceId": "src"
+                  },
+                  {
+                    "property": "alt",
+                    "source": "item",
+                    "sourceId": "text"
+                  }
+                ],
+                "eventBindings": [],
+                "visibleWhen": {
+                  "source": "item",
+                  "sourceId": "kind",
+                  "operator": "equals",
+                  "value": "image"
+                }
+              },
+              {
+                "id": "block-link",
+                "type": "button",
+                "properties": {
+                  "variant": "ghost",
+                  "size": "sm"
+                },
+                "dataBindings": [
+                  {
+                    "property": "text",
+                    "source": "item",
+                    "sourceId": "text"
+                  }
+                ],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-fetch-link"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-parse-link"
+                  }
+                ],
+                "visibleWhen": {
+                  "source": "item",
+                  "sourceId": "kind",
+                  "operator": "equals",
+                  "value": "link"
+                }
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-fetch",
+            "operationName": "http.get",
+            "inputs": [
+              {
+                "name": "url",
+                "source": "ui-element",
+                "sourceId": "url-in"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "body",
+                "target": "state",
+                "targetId": "pageHtml"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-parse",
+            "operationName": "page.blocks",
+            "inputs": [
+              {
+                "name": "html",
+                "source": "state",
+                "sourceId": "pageHtml"
+              },
+              {
+                "name": "url",
+                "source": "ui-element",
+                "sourceId": "url-in"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "blocks",
+                "target": "state",
+                "targetId": "pageBlocks"
+              },
+              {
+                "name": "title",
+                "target": "state",
+                "targetId": "pageTitle"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-fetch-link",
+            "operationName": "http.get",
+            "inputs": [
+              {
+                "name": "url",
+                "source": "item",
+                "sourceId": "href"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "body",
+                "target": "state",
+                "targetId": "pageHtml"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-parse-link",
+            "operationName": "page.blocks",
+            "inputs": [
+              {
+                "name": "html",
+                "source": "state",
+                "sourceId": "pageHtml"
+              },
+              {
+                "name": "url",
+                "source": "item",
+                "sourceId": "href"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "blocks",
+                "target": "state",
+                "targetId": "pageBlocks"
+              },
+              {
+                "name": "title",
+                "target": "state",
+                "targetId": "pageTitle"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      }
     }
   ]
 }
