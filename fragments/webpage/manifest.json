@@ -1,0 +1,66 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.webpage",
+  "name": "Webpage",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Turns a webpage's HTML into readable native content: headings, paragraphs, images, and links as typed blocks.",
+  "namespace": "page",
+  "capabilities": ["io:large"],
+  "wasmSha256": "5a383c3fc1bf4343bf64f8fb9d63b8c77bd69822b1c04c32f73945ee1666a79e",
+  "createdAt": "2026-07-27T12:00:00Z",
+  "operations": [
+    {
+      "name": "page.blocks",
+      "description": "Extracts a page's readable content from its HTML as typed blocks in document order, with navigation chrome, scripts, and forms stripped and relative urls resolved.",
+      "inputs": [
+        {
+          "name": "html",
+          "type": "string",
+          "required": true,
+          "description": "The page's HTML, from http.get's \"body\" output"
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "required": false,
+          "description": "The page's own url, so relative links and images resolve"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "blocks",
+          "type": "array",
+          "itemFields": ["kind", "level", "text", "src", "href"],
+          "description": "Content rows: kind is heading | paragraph | item | quote | code | image | link; headings carry level 1-3; images carry src; links (and linked headings) carry href"
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "description": "The page title"
+        },
+        {
+          "name": "count",
+          "type": "number",
+          "description": "How many blocks were extracted"
+        }
+      ],
+      "howto": "Webpage reader pattern: route http.get's \"body\" output to a state key, bind \"html\" from that key and \"url\" from the same link the fetch used, and route \"blocks\" to a state key a list element binds its items from. The list template holds one child per kind, each gated by visibleWhen on {\"source\": \"item\", \"sourceId\": \"kind\", \"operator\": \"equals\", \"value\": \"heading\"} (and paragraph, item, quote, code, image, link): text elements for the text kinds (bind content from item.text; give headings a large size knob), an image element binding src from item.src, and for link rows a button binding content from item.text. Give that link button click bindings that chain http.get with url from {\"source\": \"item\", \"sourceId\": \"href\"} and then page.blocks again: clicking a shown link then opens that page in place, which makes the app a native browser of readable pages. Two http.get operations are normal: one bound to the url input, one bound to item.href.",
+      "example": {
+        "id": "op-read-page",
+        "operationName": "page.blocks",
+        "executionType": "builtin",
+        "inputs": [
+          { "name": "html", "source": "state", "sourceId": "pageHtml" },
+          { "name": "url", "source": "ui-element", "sourceId": "url-in" }
+        ],
+        "outputs": [
+          { "name": "blocks", "target": "state", "targetId": "pageBlocks" },
+          { "name": "title", "target": "state", "targetId": "pageTitle" }
+        ],
+        "triggers": []
+      }
+    }
+  ]
+}

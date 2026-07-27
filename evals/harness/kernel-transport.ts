@@ -49,6 +49,17 @@ function hostCall(request: KernelRequest): { ok?: unknown; err?: string } {
       case 'dispatch': {
         const payload = request.request as DispatchPayload;
         const name = payload.operationName;
+        if (name === 'http.get') {
+          // Scenario stubs for http.get are keyed by url, so navigation
+          // steps can serve different pages.
+          const table = remoteStub(name) ?? {};
+          const url = String(payload.inputs.url ?? '');
+          const page = (table as Record<string, unknown>)[url];
+          if (!page) {
+            return { err: `Scenario has no http.get stub for ${url || '(empty url)'}` };
+          }
+          return { ok: page };
+        }
         const route = PART_ROUTES.get(name);
         if (route?.remote) {
           const stub = remoteStub(name);

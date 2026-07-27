@@ -58,6 +58,12 @@ and any language that can meet that shape can publish parts.
   youtu.be, shorts, live, a bare video id) becomes the embed url a video
   element plays, plus the watch and thumbnail urls and the link's `t=`
   start time in seconds.
+- `webpage/` provides `page.blocks`: a fetched page's HTML becomes typed
+  readable blocks (heading, paragraph, item, quote, code, image, link) in
+  document order, with navigation chrome, scripts, and forms stripped,
+  entities decoded, and relative urls resolved against the page url. A
+  block that is mostly one link becomes a link block, which is how reader
+  apps navigate. Declares `io:large` for real page sizes.
 - `frankfurter/` is an integration part for the free Frankfurter exchange
   rate API (`fx.rate`, no credential).
 - `coingecko/` is an integration part for CoinGecko spot prices

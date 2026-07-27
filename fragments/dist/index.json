@@ -194,6 +194,20 @@
       "bundleBytes": 12476
     },
     {
+      "id": "der-labs.webpage",
+      "name": "Webpage",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "page",
+      "description": "Turns a webpage's HTML into readable native content: headings, paragraphs, images, and links as typed blocks.",
+      "operations": [
+        "page.blocks"
+      ],
+      "bundleUrl": "der-labs.webpage.derpart",
+      "bundleSha256": "5e0690e144c9986badb4514bbbf4588a6d0f28164b9b76c4c19bba120afcab3a",
+      "bundleBytes": 132132
+    },
+    {
       "id": "der-labs.wikipedia",
       "name": "Wikipedia",
       "version": "1.0.0",

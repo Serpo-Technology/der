@@ -752,7 +752,7 @@
       }
     },
     "http.get": {
-      "description": "Fetches JSON from an http(s) URL. Returns {response}. Route the response with an OutputBinding into state.",
+      "description": "Fetches an http(s) URL. Returns {response, body}: \"response\" is the parsed JSON, \"body\" the raw text (HTML pages included).",
       "inputs": [
         {
           "name": "url",
@@ -765,9 +765,13 @@
         {
           "name": "response",
           "type": "object"
+        },
+        {
+          "name": "body",
+          "type": "string"
         }
       ],
-      "howto": "Fetching real remote data ONLY; never for math on existing state (use expr.evaluate, stats, or transforms for that). A computed URL is a url input bound from an element or state with a format transform, e.g. transforms [{\"type\": \"format\", \"parameters\": {\"template\": \"https://host/search?q={{value}}\"}}]. Route the response into a state key and display it with pick/format."
+      "howto": "Fetching real remote data ONLY; never for math on existing state (use expr.evaluate, stats, or transforms for that). A computed URL is a url input bound from an element or state with a format transform, e.g. transforms [{\"type\": \"format\", \"parameters\": {\"template\": \"https://host/search?q={{value}}\"}}]. Route the response into a state key and display it with pick/format; route body into state when the content is a page rather than an API payload."
     },
     "file.pick": {
       "description": "Opens the system file picker. Returns {file, url, name, size, mime}: \"file\" is a token file.read consumes; \"url\" is what pdf, video, and image elements bind their src to.",

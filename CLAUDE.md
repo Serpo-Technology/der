@@ -307,7 +307,11 @@ stats-summary and docs (markdownHtml/markdownText/textPdf/markdownPdf/docxText o
 minimal PDF writer) and imaging (info/resize/convert over the image crate, declaring
 `io:large`) and archive (zip.list/extract/create) and qr (qr.encode, built in C against
 the open ABI) and youtube (youtube.parse: any link form to embed/watch/thumbnail urls
-plus t= timestamps) (compute), frankfurter and openweather and coingecko and wikipedia
+plus t= timestamps) and webpage (page.blocks over io:large: a page's HTML to typed
+readable blocks with boilerplate stripped and relative urls resolved; with http.get's
+body output and a conditional-row list template this composes a native webpage reader
+whose link rows refetch through item.href, proven by the webpage-reader eval) (compute),
+frankfurter and openweather and coingecko and wikipedia
 and mailer (Resend) (integrations),
 ui-basics (entry_row, stat_tile, and the self-wired stopwatch pack), starter-apps (the
 apps.expense_tracker and apps.calculator recipes, proven in the eval corpus). Compute

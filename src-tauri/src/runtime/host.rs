@@ -209,8 +209,15 @@ impl HostDispatcher {
         implementation.insert("endpoint".to_string(), Value::String(url));
         implementation.insert("method".to_string(), Value::String("GET".to_string()));
         let data = self.remote_core(&HashMap::new(), &implementation)?;
+        // Non-JSON responses arrive as {"raw": text}; "body" carries the
+        // text either way so HTML pages read without an unwrapping step.
+        let body = match data.get("raw").and_then(Value::as_str) {
+            Some(raw) if data.as_object().map(|map| map.len()) == Some(1) => raw.to_string(),
+            _ => serde_json::to_string(&data).unwrap_or_default(),
+        };
         let mut outputs = Map::new();
         outputs.insert("response".to_string(), data);
+        outputs.insert("body".to_string(), Value::String(body));
         Ok(outputs)
     }
 

@@ -1755,6 +1755,74 @@
           }
         ]
       }
+    },
+    {
+      "id": "webpage-reader",
+      "prompt": "A webpage reader: I paste an article link, press Open, and the page's headings, paragraphs, and links show as native app elements I can read; clicking a shown link opens that page the same way",
+      "behavior": {
+        "stubs": {
+          "http.get": {
+            "https://example.org/rivers": {
+              "body": "<html><head><title>Field Notes</title><script>tracker();</script></head><body><nav><a href=\"/home\">Home</a> <a href=\"/archive\">Archive</a></nav><main><h1>Why rivers meander</h1><p>A river erodes its outer banks and deposits sediment on the inner banks, so every bend grows.</p><h2>The feedback loop</h2><p>Faster water on the outside of a bend erodes more, which sharpens the bend further.</p><ul><li><a href=\"/oxbow\">How oxbow lakes form</a></li></ul></main><footer>Newsletter signup</footer></body></html>",
+              "response": {
+                "raw": "<html><head><title>Field Notes</title><script>tracker();</script></head><body><nav><a href=\"/home\">Home</a> <a href=\"/archive\">Archive</a></nav><main><h1>Why rivers meander</h1><p>A river erodes its outer banks and deposits sediment on the inner banks, so every bend grows.</p><h2>The feedback loop</h2><p>Faster water on the outside of a bend erodes more, which sharpens the bend further.</p><ul><li><a href=\"/oxbow\">How oxbow lakes form</a></li></ul></main><footer>Newsletter signup</footer></body></html>"
+              }
+            },
+            "https://example.org/oxbow": {
+              "body": "<html><head><title>Oxbow Lakes</title></head><body><main><h1>How oxbow lakes form</h1><p>When a meander loop is cut off from the river, the abandoned bend becomes a crescent lake.</p></main></body></html>",
+              "response": {
+                "raw": "<html><head><title>Oxbow Lakes</title></head><body><main><h1>How oxbow lakes form</h1><p>When a meander loop is cut off from the river, the abandoned bend becomes a crescent lake.</p></main></body></html>"
+              }
+            }
+          }
+        },
+        "steps": [
+          {
+            "do": "type",
+            "into": [
+              "link",
+              "url",
+              "article",
+              "address",
+              "page"
+            ],
+            "value": "https://example.org/rivers"
+          },
+          {
+            "do": "click",
+            "on": [
+              "open",
+              "read",
+              "go",
+              "load",
+              "fetch"
+            ]
+          },
+          {
+            "expect": "text",
+            "match": "/Why rivers meander/"
+          },
+          {
+            "expect": "text",
+            "match": "/erodes its outer banks/"
+          },
+          {
+            "expect": "noText",
+            "match": "/Newsletter signup/"
+          },
+          {
+            "do": "click",
+            "on": [
+              "oxbow",
+              "how oxbow lakes form"
+            ]
+          },
+          {
+            "expect": "text",
+            "match": "/abandoned bend becomes a crescent lake/"
+          }
+        ]
+      }
     }
   ]
 }
