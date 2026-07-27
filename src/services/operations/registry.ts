@@ -831,12 +831,13 @@ export const ELEMENT_MANIFESTS: Record<string, ElementManifest> = {
   },
   video: {
     type: 'video',
-    description: 'Video player with controls for the file its "src" points at.',
+    description:
+      'Video player with controls; plays the media file or hosted embed url its "src" points at.',
     knobs: [],
     passthroughProps: ['src', 'emptyText', 'className'],
     bindableProps: ['src'],
     howto:
-      'Bind "src" from state fed by file.pick\'s "url" output, exactly like the pdf element.',
+      'Bind "src" from state fed by file.pick\'s "url" output, exactly like the pdf element. For YouTube links, chain youtube.parse (when that part is installed) from the pasted link and bind "src" to its embedUrl output; the player renders the embed directly.',
   },
   link: {
     type: 'link',

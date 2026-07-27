@@ -1,0 +1,67 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.youtube",
+  "name": "YouTube",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Turns any YouTube link into the urls a player needs: embed, watch, and thumbnail.",
+  "namespace": "youtube",
+  "capabilities": [],
+  "wasmSha256": "8f3eaf83dbcaeea1dfc7abbca023b6ac29ff371da2c729290e77b49d1a9ba86f",
+  "createdAt": "2026-07-27T09:00:00Z",
+  "operations": [
+    {
+      "name": "youtube.parse",
+      "description": "Reads a YouTube link (watch, youtu.be, shorts, live, or a bare video id) and returns the embed url a video element plays, plus the watch and thumbnail urls.",
+      "inputs": [
+        {
+          "name": "url",
+          "type": "string",
+          "required": true,
+          "description": "A YouTube video link in any common form; t= timestamps carry over"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "embedUrl",
+          "type": "string",
+          "description": "The playable embed url; bind a video element's src to it"
+        },
+        {
+          "name": "videoId",
+          "type": "string",
+          "description": "The 11-character video id"
+        },
+        {
+          "name": "watchUrl",
+          "type": "string",
+          "description": "The canonical watch page url"
+        },
+        {
+          "name": "thumbnailUrl",
+          "type": "string",
+          "description": "A preview image url for an image element"
+        },
+        {
+          "name": "startSeconds",
+          "type": "number",
+          "description": "Start position from the link's timestamp, 0 when none"
+        }
+      ],
+      "howto": "Video player pattern: an input where the link is pasted, a Play button whose click runs youtube.parse with \"url\" bound to that input, and the \"embedUrl\" output routed to a state key a video element binds \"src\" from. The video element plays embed urls directly; a malformed link fails the operation with a readable message, so no extra checking is needed.",
+      "example": {
+        "id": "op-parse-link",
+        "operationName": "youtube.parse",
+        "executionType": "builtin",
+        "inputs": [
+          { "name": "url", "source": "ui-element", "sourceId": "link-in" }
+        ],
+        "outputs": [
+          { "name": "embedUrl", "target": "state", "targetId": "videoUrl" }
+        ],
+        "triggers": []
+      }
+    }
+  ]
+}

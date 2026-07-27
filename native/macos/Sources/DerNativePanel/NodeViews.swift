@@ -846,6 +846,73 @@ struct DocumentNode: View {
     }
 }
 
+/// Urls that render as a hosted embed player instead of a media file. The
+/// exact https prefixes match the webview face's allowlist, so a bound src
+/// can never turn the player into a browser.
+let embedPlayerPrefixes = [
+    "https://www.youtube-nocookie.com/embed/",
+    "https://www.youtube.com/embed/",
+]
+
+func isEmbedPlayerUrl(_ src: String) -> Bool {
+    embedPlayerPrefixes.contains { src.hasPrefix($0) }
+}
+
+/// A hosted embed player: JavaScript stays on for the player itself, but
+/// main-frame navigation is confined to the allowlisted embed urls and
+/// popups never open, so link-outs are cancelled instead of browsed.
+private struct EmbedPlayerView: NSViewRepresentable {
+    let src: String
+
+    final class Delegate: NSObject, WKNavigationDelegate, WKUIDelegate {
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            guard navigationAction.targetFrame?.isMainFrame == true else {
+                decisionHandler(.allow)
+                return
+            }
+            let url = navigationAction.request.url?.absoluteString ?? ""
+            decisionHandler(isEmbedPlayerUrl(url) ? .allow : .cancel)
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            createWebViewWith configuration: WKWebViewConfiguration,
+            for navigationAction: WKNavigationAction,
+            windowFeatures: WKWindowFeatures
+        ) -> WKWebView? {
+            nil
+        }
+    }
+
+    func makeCoordinator() -> Delegate { Delegate() }
+
+    func makeNSView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        let view = WKWebView(frame: .zero, configuration: configuration)
+        view.navigationDelegate = context.coordinator
+        view.uiDelegate = context.coordinator
+        view.setValue(false, forKey: "drawsBackground")
+        load(view)
+        return view
+    }
+
+    func updateNSView(_ view: WKWebView, context: Context) {
+        if view.url?.absoluteString != src {
+            load(view)
+        }
+    }
+
+    private func load(_ view: WKWebView) {
+        guard isEmbedPlayerUrl(src), let url = URL(string: src) else { return }
+        view.load(URLRequest(url: url))
+    }
+}
+
 struct VideoNode: View {
     let node: ResolvedNode
     @State private var player: AVPlayer?
@@ -855,6 +922,10 @@ struct VideoNode: View {
         let src = node.prop("src")?.stringValue ?? ""
         if src.isEmpty {
             ViewerEmpty(text: node.prop("emptyText")?.stringValue ?? "Open a video to play it")
+        } else if isEmbedPlayerUrl(src) {
+            EmbedPlayerView(src: src)
+                .frame(minHeight: 280)
+                .aspectRatio(16 / 9, contentMode: .fit)
         } else {
             VideoPlayer(player: player)
                 .frame(minHeight: 280)

@@ -54,6 +54,10 @@ and any language that can meet that shape can publish parts.
 - `dates/` provides `date.diffDays` and `date.addDays`: civil-calendar day
   arithmetic for countdowns and deadlines. Dates are `YYYY-MM-DD` (a full
   ISO timestamp also parses).
+- `youtube/` provides `youtube.parse`: any YouTube link form (watch,
+  youtu.be, shorts, live, a bare video id) becomes the embed url a video
+  element plays, plus the watch and thumbnail urls and the link's `t=`
+  start time in seconds.
 - `frankfurter/` is an integration part for the free Frankfurter exchange
   rate API (`fx.rate`, no credential).
 - `coingecko/` is an integration part for CoinGecko spot prices

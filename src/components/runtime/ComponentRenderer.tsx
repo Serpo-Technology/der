@@ -19,6 +19,7 @@ import { ELEMENT_MANIFESTS } from '../../services/operations/registry';
 import type { ResolvedNode } from '../../services/runtime-view/resolve-view';
 import { sanitizeHtml } from '../../services/runtime-view/sanitize-html';
 import type { ItemScope } from '../../services/runtime-view/resolve-view';
+import { isEmbedPlayerUrl } from './embed-player';
 
 export type { ItemScope } from '../../services/runtime-view/resolve-view';
 
@@ -575,6 +576,19 @@ function DocumentComponent({ src, name, emptyText, ...props }: any) {
 function VideoComponent({ src, emptyText, ...props }: any) {
   if (!src) {
     return <div className="der-viewer-empty">{emptyText || 'Open a video to play it'}</div>;
+  }
+  if (isEmbedPlayerUrl(src)) {
+    return (
+      <iframe
+        src={src}
+        title="Video player"
+        style={{ width: '100%', aspectRatio: '16 / 9', border: 0 }}
+        allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+        allowFullScreen
+        referrerPolicy="strict-origin-when-cross-origin"
+        {...props}
+      />
+    );
   }
   return <video src={src} controls style={{ width: '100%', maxHeight: 480 }} {...props} />;
 }

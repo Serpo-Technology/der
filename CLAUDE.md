@@ -306,7 +306,8 @@ members); committed signed bundles keep `cargo test` hermetic; rebuilding needs
 stats-summary and docs (markdownHtml/markdownText/textPdf/markdownPdf/docxText over a
 minimal PDF writer) and imaging (info/resize/convert over the image crate, declaring
 `io:large`) and archive (zip.list/extract/create) and qr (qr.encode, built in C against
-the open ABI) (compute), frankfurter and openweather and coingecko and wikipedia
+the open ABI) and youtube (youtube.parse: any link form to embed/watch/thumbnail urls
+plus t= timestamps) (compute), frankfurter and openweather and coingecko and wikipedia
 and mailer (Resend) (integrations),
 ui-basics (entry_row, stat_tile, and the self-wired stopwatch pack), starter-apps (the
 apps.expense_tracker and apps.calculator recipes, proven in the eval corpus). Compute
@@ -318,7 +319,12 @@ renderer URL (the asset protocol scope for the webview; the bridge rewrites gran
 asset URLs to file URLs for the panel), `file.read` returns base64 plus UTF-8 text for
 granted tokens only, and `file.save` writes solely through the save panel. Viewer
 elements `pdf` and `video` (plus `image`) bind `src` from pick's `url` output: embed
-and video tags in the webview, PDFKit and AVKit natively. The `html` element is the
+and video tags in the webview, PDFKit and AVKit natively. The `video` element also
+plays hosted embed urls (an exact-prefix allowlist of YouTube embed hosts, identical in
+both faces: an iframe in the webview, a navigation-confined WKWebView with JavaScript on
+natively), and the youtube part's `youtube.parse` turns any pasted link form into that
+embed url, so "paste a link, press play" composes from an input, the part, and the
+element (the youtube-player eval). The `html` element is the
 rich-content viewer: its bound `content` string renders through an allowlist
 sanitizer in the webview (`sanitize-html.ts`: formatting tags only, links keep text
 and tooltip but never navigate, images data:/https only) and through a sealed

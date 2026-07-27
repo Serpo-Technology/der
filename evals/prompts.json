@@ -1722,6 +1722,39 @@
           }
         ]
       }
+    },
+    {
+      "id": "youtube-player",
+      "prompt": "A video player: I paste a YouTube link, press Play, and the video plays right in the app",
+      "behavior": {
+        "steps": [
+          {
+            "do": "type",
+            "into": [
+              "link",
+              "url",
+              "youtube",
+              "video"
+            ],
+            "value": "https://youtu.be/dQw4w9WgXcQ?t=43"
+          },
+          {
+            "do": "click",
+            "on": [
+              "play",
+              "add",
+              "load",
+              "watch",
+              "go",
+              "submit"
+            ]
+          },
+          {
+            "expect": "viewer",
+            "match": "/youtube-nocookie\\.com\\/embed\\/dQw4w9WgXcQ/"
+          }
+        ]
+      }
     }
   ]
 }

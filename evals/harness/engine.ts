@@ -229,11 +229,11 @@ async function runOne(step: BehaviorStep, root: HTMLElement): Promise<void> {
         }
       }, { timeout: 4000 });
     } else if (step.expect === 'viewer') {
-      // A media element wired up: some embed/video/img carries a src.
+      // A media element wired up: some embed/video/iframe/img carries a src.
       const matches = toMatcher(step.match ?? '');
       await waitFor(() => {
         const sources = Array.from(
-          root.querySelectorAll<HTMLElement>('embed, video, img')
+          root.querySelectorAll<HTMLElement>('embed, video, iframe, img')
         ).map((node) => node.getAttribute('src') ?? '');
         if (!sources.some((src) => src.length > 0 && matches(src))) {
           throw new Error(

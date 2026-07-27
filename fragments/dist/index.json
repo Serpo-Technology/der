@@ -206,6 +206,20 @@
       "bundleUrl": "der-labs.wikipedia.derpart",
       "bundleSha256": "2cb85a06872261e45b5512186e2c86300023827478c21f2bcf576f80799dc2e5",
       "bundleBytes": 3024
+    },
+    {
+      "id": "der-labs.youtube",
+      "name": "YouTube",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "youtube",
+      "description": "Turns any YouTube link into the urls a player needs: embed, watch, and thumbnail.",
+      "operations": [
+        "youtube.parse"
+      ],
+      "bundleUrl": "der-labs.youtube.derpart",
+      "bundleSha256": "cb101c078964708fa3b3942e5a6413733964cf90723199b2fc5f724f7a23d10a",
+      "bundleBytes": 115676
     }
   ]
 }
