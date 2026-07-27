@@ -204,8 +204,8 @@
         "page.blocks"
       ],
       "bundleUrl": "der-labs.webpage.derpart",
-      "bundleSha256": "5e0690e144c9986badb4514bbbf4588a6d0f28164b9b76c4c19bba120afcab3a",
-      "bundleBytes": 132132
+      "bundleSha256": "a82ff4adcdb4bc12b677a5a09e40cfe58cbeb0dc03c4ef7399d027d8e36afa12",
+      "bundleBytes": 134184
     },
     {
       "id": "der-labs.wikipedia",

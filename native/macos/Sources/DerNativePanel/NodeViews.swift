@@ -22,6 +22,8 @@ final class TreeModel: ObservableObject {
     @Published var editNote: String?
     @Published var editFailed = false
     @Published var bookmarked = false
+    @Published var operationError: String?
+    private var dismissedError: String?
 
     init(windowId: String, tree: [ResolvedNode], assembling: Bool = false) {
         self.windowId = windowId
@@ -157,6 +159,19 @@ final class TreeModel: ObservableObject {
         Outbound.shared.dispatch(windowId: windowId, operationIds: operationIds, item: item)
     }
 
+    /// A failed chain shows its root failure on the window's error strip,
+    /// exactly like the webview face. A message the user dismissed stays
+    /// dismissed until a different failure arrives.
+    func applyOperationFailure(_ message: String) {
+        guard message != dismissedError else { return }
+        operationError = message
+    }
+
+    func dismissOperationError() {
+        dismissedError = operationError
+        operationError = nil
+    }
+
     func write(_ elementId: String, _ value: Any) {
         Outbound.shared.setElement(windowId: windowId, elementId: elementId, value: value)
     }
@@ -197,6 +212,22 @@ struct RootView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(.quaternary.opacity(0.4))
+            }
+            if let error = model.operationError {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(error)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                    Spacer()
+                    Button("Dismiss") { model.dismissOperationError() }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.orange.opacity(0.12))
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {

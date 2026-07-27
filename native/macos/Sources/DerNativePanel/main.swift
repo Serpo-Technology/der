@@ -78,6 +78,10 @@ final class PanelWindows: NSObject, NSWindowDelegate {
             guard let requestId = message.requestId else { return }
             presentMailAccountSheet(requestId: requestId, prefill: message.account)
         case "operationFailed":
+            guard let windowId = message.windowId else { return }
+            windows[windowId]?.model.applyOperationFailure(
+                message.message ?? "An operation failed"
+            )
             NSSound.beep()
         default:
             Outbound.shared.send(["event": "log", "message": "unknown cmd \(message.cmd)"])

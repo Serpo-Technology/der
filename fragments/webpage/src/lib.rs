@@ -145,6 +145,29 @@ const EXCLUDED: &[&str] = &[
 /// Elements whose raw text runs to their closing tag ('<' is content).
 const RAW_TEXT: &[&str] = &["script", "style", "textarea"];
 
+/// Void elements never open an exclusion (they have no subtree).
+const VOID: &[&str] = &[
+    "img", "br", "hr", "input", "meta", "link", "source", "wbr", "area",
+    "base", "col", "embed", "track", "param",
+];
+
+/// Landmarks and hidden subtrees that never hold readable content.
+fn excluded_by_attrs(tag: &Tag) -> bool {
+    if has_attr(tag, "hidden") {
+        return true;
+    }
+    if attr(tag, "aria-hidden") == Some("true") {
+        return true;
+    }
+    matches!(
+        attr(tag, "role"),
+        Some(
+            "navigation" | "banner" | "contentinfo" | "complementary" | "search"
+                | "menu" | "menubar" | "toolbar" | "alert"
+        )
+    )
+}
+
 struct Tag<'a> {
     name: String,
     closing: bool,
@@ -152,15 +175,27 @@ struct Tag<'a> {
     after: usize,
 }
 
+enum LinkTarget {
+    /// A navigable http(s) url.
+    Http(String),
+    /// An in-page fragment or javascript link: reader chrome.
+    Chrome,
+    /// Real but unopenable here (mailto, tel): the text stays.
+    Other,
+}
+
 struct Extractor {
     title: String,
     blocks: Vec<Block>,
     buffer: String,
     kind: Option<(Kind, Option<i64>)>,
-    /// (buffer start, buffer end, resolved href) for links in the block.
-    links: Vec<(usize, usize, String)>,
-    open_link: Option<(usize, String)>,
+    /// (buffer start, buffer end, target) for links in the block.
+    links: Vec<(usize, usize, LinkTarget)>,
+    open_link: Option<(usize, LinkTarget)>,
     excluded_depth: usize,
+    /// The element that opened an attribute-based exclusion, with a count
+    /// of same-named elements nested inside it.
+    attr_excluded: Option<(String, i32)>,
     in_pre: bool,
     truncated: bool,
 }
@@ -174,6 +209,7 @@ fn extract(html: &str, base: &str) -> (String, Vec<Block>) {
         links: Vec::new(),
         open_link: None,
         excluded_depth: 0,
+        attr_excluded: None,
         in_pre: false,
         truncated: false,
     };
@@ -262,6 +298,26 @@ impl Extractor {
 
     fn tag(&mut self, tag: &Tag, base: &str) {
         let name = tag.name.as_str();
+        // An attribute-based exclusion tracks nesting of its own element
+        // name so the matching close ends it.
+        if let Some((owner, nested)) = &mut self.attr_excluded {
+            if name == owner.as_str() {
+                if tag.closing {
+                    if *nested == 0 {
+                        self.attr_excluded = None;
+                        self.excluded_depth = self.excluded_depth.saturating_sub(1);
+                        return;
+                    }
+                    *nested -= 1;
+                } else {
+                    *nested += 1;
+                }
+            }
+        } else if !tag.closing && self.excluded_depth == 0 && excluded_by_attrs(tag) && !VOID.contains(&name) {
+            self.attr_excluded = Some((tag.name.clone(), 0));
+            self.excluded_depth += 1;
+            return;
+        }
         if EXCLUDED.contains(&name) {
             if tag.closing {
                 self.excluded_depth = self.excluded_depth.saturating_sub(1);
@@ -350,14 +406,24 @@ impl Extractor {
             }
             "a" => {
                 if tag.closing {
-                    if let Some((start, href)) = self.open_link.take() {
+                    if let Some((start, target)) = self.open_link.take() {
                         let end = self.buffer.len();
                         if end > start {
-                            self.links.push((start, end, href));
+                            self.links.push((start, end, target));
                         }
                     }
-                } else if let Some(href) = attr(tag, "href").and_then(|h| resolve_url(base, h)) {
-                    self.open_link = Some((self.buffer.len(), href));
+                } else if let Some(href) = attr(tag, "href") {
+                    let trimmed = href.trim();
+                    let lower = trimmed.to_ascii_lowercase();
+                    let target = if lower.starts_with('#') || lower.starts_with("javascript:") {
+                        LinkTarget::Chrome
+                    } else {
+                        match resolve_url(base, trimmed) {
+                            Some(url) => LinkTarget::Http(url),
+                            None => LinkTarget::Other,
+                        }
+                    };
+                    self.open_link = Some((self.buffer.len(), target));
                 }
             }
             _ => {}
@@ -383,7 +449,9 @@ impl Extractor {
         text.truncate_floor(MAX_BLOCK_CHARS);
 
         // A block whose text is mostly one link reads as a link: list rows
-        // can then open it. Headings keep their kind and carry the href.
+        // can then open it. Headings keep their kind and carry the href,
+        // and a non-heading block that is only an in-page link (skip links,
+        // tables of contents) is chrome and drops entirely.
         let mut kind_name = kind.name();
         let mut href = None;
         if kind != Kind::Code && kind != Kind::Quote {
@@ -393,9 +461,19 @@ impl Extractor {
             {
                 let span = end.min(text.len()).saturating_sub(start.min(text.len()));
                 if span * 2 >= text.trim().len() && span > 0 {
-                    href = Some(target);
-                    if kind != Kind::Heading {
-                        kind_name = "link";
+                    match target {
+                        LinkTarget::Http(url) => {
+                            href = Some(url);
+                            if kind != Kind::Heading {
+                                kind_name = "link";
+                            }
+                        }
+                        LinkTarget::Chrome => {
+                            if kind != Kind::Heading {
+                                return;
+                            }
+                        }
+                        LinkTarget::Other => {}
                     }
                 }
             }
@@ -544,6 +622,11 @@ fn attr<'a>(tag: &'a Tag, name: &str) -> Option<&'a str> {
         .find(|(key, _)| key == name)
         .map(|(_, value)| *value)
         .filter(|value| !value.is_empty())
+}
+
+/// Presence check for value-less attributes like `hidden`.
+fn has_attr(tag: &Tag, name: &str) -> bool {
+    tag.attrs.iter().any(|(key, _)| key == name)
 }
 
 fn decode_entities(text: &str) -> String {
@@ -791,6 +874,27 @@ let b = 2;</pre>
         assert_eq!(resolve_url(base, "#frag"), None);
         assert_eq!(resolve_url(base, "javascript:void(0)"), None);
         assert_eq!(resolve_url(base, "mailto:a@b.c"), None);
+    }
+
+    #[test]
+    fn drops_chrome_and_hidden_subtrees() {
+        let html = r##"<body>
+<a class="jump" href="#bodyContent">Jump to content</a>
+<div role="navigation"><div><a href="/nav">Nav entry</a></div></div>
+<div aria-hidden="true"><p>Screen-reader chrome</p></div>
+<ul><li><a href="#s1">1. Introduction</a></li><li><a href="#s2">2. History</a></li></ul>
+<h2><a href="#anchor">Linked Heading</a></h2>
+<p>Real content stays.</p>
+</body>"##;
+        let (_, blocks) = extract(html, "https://example.org/a");
+        let all: String = blocks.iter().map(|b| b.text.as_str()).collect::<Vec<_>>().join("|");
+        assert!(!all.contains("Jump to content"), "got: {}", all);
+        assert!(!all.contains("Nav entry"), "got: {}", all);
+        assert!(!all.contains("Screen-reader chrome"), "got: {}", all);
+        assert!(!all.contains("Introduction"), "got: {}", all);
+        assert!(all.contains("Linked Heading"));
+        assert!(all.contains("Real content stays."));
+        assert!(blocks.iter().any(|b| b.kind == "heading" && b.text == "Linked Heading"));
     }
 
     #[test]

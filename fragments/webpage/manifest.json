@@ -7,8 +7,10 @@
   "publisher": "der-labs",
   "description": "Turns a webpage's HTML into readable native content: headings, paragraphs, images, and links as typed blocks.",
   "namespace": "page",
-  "capabilities": ["io:large"],
-  "wasmSha256": "5a383c3fc1bf4343bf64f8fb9d63b8c77bd69822b1c04c32f73945ee1666a79e",
+  "capabilities": [
+    "io:large"
+  ],
+  "wasmSha256": "77d1262ddc9e800be29b27c0c1b30db51a15d467f554b7a8ce37221149bef839",
   "createdAt": "2026-07-27T12:00:00Z",
   "operations": [
     {
@@ -32,7 +34,13 @@
         {
           "name": "blocks",
           "type": "array",
-          "itemFields": ["kind", "level", "text", "src", "href"],
+          "itemFields": [
+            "kind",
+            "level",
+            "text",
+            "src",
+            "href"
+          ],
           "description": "Content rows: kind is heading | paragraph | item | quote | code | image | link; headings carry level 1-3; images carry src; links (and linked headings) carry href"
         },
         {
@@ -52,12 +60,28 @@
         "operationName": "page.blocks",
         "executionType": "builtin",
         "inputs": [
-          { "name": "html", "source": "state", "sourceId": "pageHtml" },
-          { "name": "url", "source": "ui-element", "sourceId": "url-in" }
+          {
+            "name": "html",
+            "source": "state",
+            "sourceId": "pageHtml"
+          },
+          {
+            "name": "url",
+            "source": "ui-element",
+            "sourceId": "url-in"
+          }
         ],
         "outputs": [
-          { "name": "blocks", "target": "state", "targetId": "pageBlocks" },
-          { "name": "title", "target": "state", "targetId": "pageTitle" }
+          {
+            "name": "blocks",
+            "target": "state",
+            "targetId": "pageBlocks"
+          },
+          {
+            "name": "title",
+            "target": "state",
+            "targetId": "pageTitle"
+          }
         ],
         "triggers": []
       }

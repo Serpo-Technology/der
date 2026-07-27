@@ -226,8 +226,15 @@ pub(crate) async fn execute_remote_core(
         return Err(format!("Remote endpoint must be an http(s) URL: {}", endpoint));
     }
 
+    // A real User-Agent on every operation request: services like Wikipedia
+    // answer 403 to anonymous clients, and reqwest sends no default.
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
+        .user_agent(concat!(
+            "DER/",
+            env!("CARGO_PKG_VERSION"),
+            " (+https://github.com/Serpo-Technology/der)"
+        ))
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
