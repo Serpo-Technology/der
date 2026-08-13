@@ -457,6 +457,9 @@ in production. `runtime/sessions.rs` is the live-session surface: `runtime_open_
 manifests on disk, saved data merged), `runtime_resolve_view`, `runtime_set_element`,
 `runtime_dispatch_event` (off the async core threads), `runtime_close_session`; its
 host-free cores are integration-tested by driving the committed stopwatch pack natively.
+Every session sits behind its own lock (the map's lock only looks cells up) and the
+panel's window events run on per-window workers, so one app's slow chain or open
+dialog never stalls another app; the parked-chain bridge test freezes the property.
 `runtime/schedule.rs` is background refresh: a bookmarked app can opt in
 (the home row's context menu natively, the bookmark card in the webview; a
 `backgroundMinutes` field on the bookmark record) and the core then runs the

@@ -22,16 +22,27 @@ pub use der_runtime::entry::{open_session_core, resolve_entry_view, SessionEntry
 // Tauri surface
 // ---------------------------------------------------------------------------
 
-type SessionsMap = HashMap<String, (SessionEntry, Vec<Value>)>;
+/// One window's session plus its contract's elements (the tree source).
+pub(crate) type SessionCell = Arc<Mutex<(SessionEntry, Vec<Value>)>>;
 
-/// Sessions plus each contract's elements (the tree source), keyed by id.
-/// Arc so blocking dispatch work can own a handle off the async runtime.
+type SessionsMap = HashMap<String, SessionCell>;
+
+/// Sessions keyed by id, each behind its own lock: the map's lock is held
+/// only to look a cell up, so a slow operation in one window's chain never
+/// blocks another window's dispatches. Per-window ordering still holds
+/// because each face serializes its own calls (the webview client's FIFO
+/// queue, the panel's per-window worker).
 #[derive(Default, Clone)]
 pub struct RuntimeSessionsState(Arc<Mutex<SessionsMap>>);
 
-fn with_sessions<T>(state: &RuntimeSessionsState, run: impl FnOnce(&mut SessionsMap) -> T) -> T {
-    let mut guard = state.0.lock().unwrap();
-    run(&mut guard)
+fn session_cell(state: &RuntimeSessionsState, session_id: &str) -> Result<SessionCell, String> {
+    state
+        .0
+        .lock()
+        .unwrap()
+        .get(session_id)
+        .cloned()
+        .ok_or_else(|| format!("No open session {}", session_id))
 }
 
 /// Installed fragment defs and part operation routes, from the manifests on
@@ -131,9 +142,11 @@ pub async fn runtime_open_session(
     let session_id = format!("rs-{}", uuid::Uuid::new_v4());
     let tree = resolve_entry_view(&entry, &elements);
     let session_state = entry.session().state().clone();
-    with_sessions(&state, |sessions| {
-        sessions.insert(session_id.clone(), (entry, elements));
-    });
+    state
+        .0
+        .lock()
+        .unwrap()
+        .insert(session_id.clone(), Arc::new(Mutex::new((entry, elements))));
     Ok(SessionOpened {
         session_id,
         tree,
@@ -146,12 +159,10 @@ pub async fn runtime_resolve_view(
     state: tauri::State<'_, RuntimeSessionsState>,
     session_id: String,
 ) -> Result<Vec<Value>, String> {
-    with_sessions(&state, |sessions| {
-        let (entry, elements) = sessions
-            .get(&session_id)
-            .ok_or_else(|| format!("No open session {}", session_id))?;
-        Ok(resolve_entry_view(entry, elements))
-    })
+    let cell = session_cell(&state, &session_id)?;
+    let guard = cell.lock().unwrap();
+    let (entry, elements) = &*guard;
+    Ok(resolve_entry_view(entry, elements))
 }
 
 #[tauri::command]
@@ -161,13 +172,10 @@ pub async fn runtime_set_element(
     element_id: String,
     value: Value,
 ) -> Result<(), String> {
-    with_sessions(&state, |sessions| {
-        let (entry, _) = sessions
-            .get_mut(&session_id)
-            .ok_or_else(|| format!("No open session {}", session_id))?;
-        entry.session_mut().set_element(&element_id, value);
-        Ok(())
-    })
+    let cell = session_cell(&state, &session_id)?;
+    let mut guard = cell.lock().unwrap();
+    guard.0.session_mut().set_element(&element_id, value);
+    Ok(())
 }
 
 #[tauri::command]
@@ -179,25 +187,22 @@ pub async fn runtime_dispatch_event(
 ) -> Result<EventOutcome, String> {
     // Dispatch may block on part or remote execution; keep it off the async
     // runtime's core threads.
-    let sessions = state.inner().clone();
+    let cell = session_cell(&state, &session_id)?;
     tauri::async_runtime::spawn_blocking(move || {
-        with_sessions(&sessions, |entries| {
-            let (entry, elements) = entries
-                .get_mut(&session_id)
-                .ok_or_else(|| format!("No open session {}", session_id))?;
-            let outcome = entry
-                .session_mut()
-                .run_chain_detailed(&operation_ids, item.as_ref());
-            let (failed, error) = match outcome {
-                Some((operation_id, message)) => (Some(operation_id), Some(message)),
-                None => (None, None),
-            };
-            Ok(EventOutcome {
-                failed,
-                error,
-                tree: resolve_entry_view(entry, elements),
-                state: entry.session().state().clone(),
-            })
+        let mut guard = cell.lock().unwrap();
+        let (entry, elements) = &mut *guard;
+        let outcome = entry
+            .session_mut()
+            .run_chain_detailed(&operation_ids, item.as_ref());
+        let (failed, error) = match outcome {
+            Some((operation_id, message)) => (Some(operation_id), Some(message)),
+            None => (None, None),
+        };
+        Ok(EventOutcome {
+            failed,
+            error,
+            tree: resolve_entry_view(entry, elements),
+            state: entry.session().state().clone(),
         })
     })
     .await
@@ -209,10 +214,8 @@ pub async fn runtime_close_session(
     state: tauri::State<'_, RuntimeSessionsState>,
     session_id: String,
 ) -> Result<(), String> {
-    with_sessions(&state, |sessions| {
-        sessions.remove(&session_id);
-        Ok(())
-    })
+    state.0.lock().unwrap().remove(&session_id);
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

@@ -37,14 +37,35 @@ pub struct WindowSession {
 
 /// Fired after every session mutation with the experience id and its state,
 /// so native windows persist per-app data exactly like webview windows.
-pub type StateChanged = Box<dyn Fn(&str, &Map<String, Value>) + Send>;
+pub type StateChanged = Arc<dyn Fn(&str, &Map<String, Value>) + Send + Sync>;
 
 /// Host presentation step over outgoing trees (granted asset URLs become
 /// file URLs the native views can open).
-pub type TreeRewriter = Box<dyn Fn(&mut Vec<Value>) + Send>;
+pub type TreeRewriter = Arc<dyn Fn(&mut Vec<Value>) + Send + Sync>;
+
+/// One panel window's session behind its own lock: window events run under
+/// it, so a slow chain in one window never stalls another window's events.
+pub type WindowCell = Arc<Mutex<WindowSession>>;
+
+/// The clonable handles a window event needs outside the bridge lock.
+#[derive(Clone)]
+pub struct WindowShared {
+    pub transport: Arc<Mutex<Box<dyn SidecarTransport>>>,
+    on_change: Option<StateChanged>,
+    tree_rewriter: Option<TreeRewriter>,
+}
+
+impl WindowShared {
+    fn rewritten(&self, mut tree: Vec<Value>) -> Vec<Value> {
+        if let Some(rewriter) = &self.tree_rewriter {
+            rewriter(&mut tree);
+        }
+        tree
+    }
+}
 
 pub struct SidecarBridge {
-    windows: HashMap<String, WindowSession>,
+    windows: HashMap<String, WindowCell>,
     transport: Arc<Mutex<Box<dyn SidecarTransport>>>,
     on_change: Option<StateChanged>,
     tree_rewriter: Option<TreeRewriter>,
@@ -70,6 +91,21 @@ impl SidecarBridge {
 
     pub fn set_tree_rewriter(&mut self, rewriter: TreeRewriter) {
         self.tree_rewriter = Some(rewriter);
+    }
+
+    /// The handles a per-window worker needs to serve events without the
+    /// bridge: the window's own cell plus the shared send-side.
+    pub fn window_handles(&self, window_id: &str) -> Option<(WindowCell, WindowShared)> {
+        self.windows.get(window_id).map(|cell| {
+            (
+                cell.clone(),
+                WindowShared {
+                    transport: self.transport.clone(),
+                    on_change: self.on_change.clone(),
+                    tree_rewriter: self.tree_rewriter.clone(),
+                },
+            )
+        })
     }
 
     /// The transport under its own short-lived lock: usable while the
@@ -110,13 +146,13 @@ impl SidecarBridge {
         }))?;
         self.windows.insert(
             window_id.to_string(),
-            WindowSession {
+            Arc::new(Mutex::new(WindowSession {
                 entry,
                 elements,
                 experience_id: experience_id.to_string(),
                 contract,
                 assembling,
-            },
+            })),
         );
         Ok(())
     }
@@ -124,9 +160,10 @@ impl SidecarBridge {
     /// The experience and contract behind a panel window, for edits and
     /// bookmarks initiated from the window itself.
     pub fn window_info(&self, window_id: &str) -> Option<(String, Value)> {
-        self.windows
-            .get(window_id)
-            .map(|window| (window.experience_id.clone(), window.contract.clone()))
+        self.windows.get(window_id).map(|cell| {
+            let window = cell.lock().unwrap();
+            (window.experience_id.clone(), window.contract.clone())
+        })
     }
 
     /// Sends any prebuilt message to the panel (management snapshots).
@@ -144,7 +181,7 @@ impl SidecarBridge {
         let assembling: Vec<String> = self
             .windows
             .iter()
-            .filter(|(_, window)| window.assembling)
+            .filter(|(_, cell)| cell.lock().unwrap().assembling)
             .map(|(window_id, _)| window_id.clone())
             .collect();
         for window_id in assembling {
@@ -156,15 +193,15 @@ impl SidecarBridge {
     pub fn window_for_experience(&self, experience_id: &str) -> Option<String> {
         self.windows
             .iter()
-            .find(|(_, window)| window.experience_id == experience_id)
+            .find(|(_, cell)| cell.lock().unwrap().experience_id == experience_id)
             .map(|(window_id, _)| window_id.clone())
     }
 
     pub fn state_of_experience(&self, experience_id: &str) -> Option<Map<String, Value>> {
         self.windows
             .values()
-            .find(|window| window.experience_id == experience_id)
-            .map(|window| window.entry.session().state().clone())
+            .find(|cell| cell.lock().unwrap().experience_id == experience_id)
+            .map(|cell| cell.lock().unwrap().entry.session().state().clone())
     }
 
     /// Swaps an open window's session (a contract edit or the next assembly
@@ -181,7 +218,8 @@ impl SidecarBridge {
         let window_id = self
             .window_for_experience(experience_id)
             .ok_or_else(|| format!("No native window for experience {}", experience_id))?;
-        if let Some(window) = self.windows.get_mut(&window_id) {
+        if let Some(cell) = self.windows.get(&window_id) {
+            let mut window = cell.lock().unwrap();
             window.entry = entry;
             window.elements = elements;
             window.contract = contract;
@@ -238,16 +276,6 @@ impl SidecarBridge {
         self.windows.len()
     }
 
-    fn notify_change(&self, window_id: &str) {
-        if let (Some(on_change), Some(window)) = (&self.on_change, self.windows.get(window_id)) {
-            // Assembly drafts are inert; nothing they hold is worth saving.
-            if window.assembling {
-                return;
-            }
-            on_change(&window.experience_id, window.entry.session().state());
-        }
-    }
-
     /// One inbound panel message: element writes and dispatches mutate the
     /// window's session and answer with a fresh tree; a closed window drops
     /// its session. Home actions (create, openBookmark) are app-level and
@@ -260,55 +288,17 @@ impl SidecarBridge {
             .unwrap_or("")
             .to_string();
         match event {
-            "setElement" => {
-                let element_id = message
-                    .get("elementId")
-                    .and_then(Value::as_str)
-                    .ok_or("setElement without an elementId")?;
-                let value = message.get("value").cloned().unwrap_or(Value::Null);
-                let window = self
-                    .windows
-                    .get_mut(&window_id)
+            "setElement" | "dispatch" => {
+                let (cell, shared) = self
+                    .window_handles(&window_id)
                     .ok_or_else(|| format!("No native window {}", window_id))?;
-                window.entry.session_mut().set_element(element_id, value);
-                self.notify_change(&window_id);
-                self.send_update(&window_id).map(|_| None)
-            }
-            "dispatch" => {
-                let operation_ids: Vec<String> = message
-                    .get("operationIds")
-                    .and_then(Value::as_array)
-                    .map(|ids| {
-                        ids.iter()
-                            .filter_map(Value::as_str)
-                            .map(str::to_string)
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let item = message.get("item").filter(|value| !value.is_null()).cloned();
-                let window = self
-                    .windows
-                    .get_mut(&window_id)
-                    .ok_or_else(|| format!("No native window {}", window_id))?;
-                let failed = window
-                    .entry
-                    .session_mut()
-                    .run_chain_detailed(&operation_ids, item.as_ref());
-                if let Some((operation_id, message)) = failed {
-                    self.transport.lock().unwrap().send(&json!({
-                        "cmd": "operationFailed",
-                        "windowId": window_id,
-                        "operationId": operation_id,
-                        "message": message,
-                    }))?;
-                }
-                self.notify_change(&window_id);
-                self.send_update(&window_id).map(|_| None)
+                run_window_event(&window_id, &cell, &shared, message).map(|_| None)
             }
             "windowClosed" => {
-                if let Some(window) = self.windows.remove(&window_id) {
+                if let Some(cell) = self.windows.remove(&window_id) {
+                    let window = cell.lock().unwrap();
                     if window.assembling {
-                        self.assembly_dismissed.insert(window.experience_id);
+                        self.assembly_dismissed.insert(window.experience_id.clone());
                     }
                 }
                 Ok(None)
@@ -324,24 +314,154 @@ impl SidecarBridge {
     }
 
     fn send_update(&mut self, window_id: &str) -> Result<(), String> {
-        let window = self
-            .windows
-            .get(window_id)
+        let (cell, shared) = self
+            .window_handles(window_id)
             .ok_or_else(|| format!("No native window {}", window_id))?;
-        let tree = self.rewritten(resolve_entry_view(&window.entry, &window.elements));
-        let assembling = window.assembling;
-        // Edits can change the look; every update re-states it.
-        let (theme, accent, background) = contract_look(&window.contract);
-        self.transport.lock().unwrap().send(&json!({
-            "cmd": "update",
-            "windowId": window_id,
-            "tree": tree,
-            "assembling": assembling,
-            "theme": theme,
-            "accent": accent,
-            "background": background,
-        }))
+        send_window_update(window_id, &cell, &shared)
     }
+}
+
+fn send_window_update(
+    window_id: &str,
+    cell: &WindowCell,
+    shared: &WindowShared,
+) -> Result<(), String> {
+    let (tree, assembling, look) = {
+        let window = cell.lock().unwrap();
+        (
+            shared.rewritten(resolve_entry_view(&window.entry, &window.elements)),
+            window.assembling,
+            // Edits can change the look; every update re-states it.
+            contract_look(&window.contract),
+        )
+    };
+    let (theme, accent, background) = look;
+    shared.transport.lock().unwrap().send(&json!({
+        "cmd": "update",
+        "windowId": window_id,
+        "tree": tree,
+        "assembling": assembling,
+        "theme": theme,
+        "accent": accent,
+        "background": background,
+    }))
+}
+
+/// Hands a window event to that window's worker, spawning it on first use.
+/// The worker owns the window's cell and shared handles, so it serves the
+/// queue without ever taking the bridge lock; a stale worker (window gone)
+/// drains harmlessly against the cell it holds.
+fn route_window_event(
+    bridge: &Arc<Mutex<SidecarBridge>>,
+    workers: &mut HashMap<String, std::sync::mpsc::Sender<Value>>,
+    message: Value,
+) {
+    let window_id = message
+        .get("windowId")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if window_id.is_empty() {
+        eprintln!("native panel window event without a windowId");
+        return;
+    }
+    if let Some(sender) = workers.get(&window_id) {
+        if sender.send(message).is_ok() {
+            return;
+        }
+        workers.remove(&window_id);
+        return;
+    }
+    let Some((cell, shared)) = bridge.lock().unwrap().window_handles(&window_id) else {
+        eprintln!("native panel event for unknown window {}", window_id);
+        return;
+    };
+    let (tx, rx) = std::sync::mpsc::channel::<Value>();
+    let worker_id = window_id.clone();
+    let spawned = std::thread::Builder::new()
+        .name(format!("der-window-{}", window_id))
+        .spawn(move || {
+            while let Ok(event) = rx.recv() {
+                if let Err(error) = run_window_event(&worker_id, &cell, &shared, &event) {
+                    eprintln!("native window event failed: {}", error);
+                }
+            }
+        });
+    match spawned {
+        Ok(_) => {
+            let _ = tx.send(message);
+            workers.insert(window_id, tx);
+        }
+        Err(error) => eprintln!("could not start a window worker: {}", error),
+    }
+}
+
+fn notify_window_change(cell: &WindowCell, shared: &WindowShared) {
+    if let Some(on_change) = &shared.on_change {
+        let window = cell.lock().unwrap();
+        // Assembly drafts are inert; nothing they hold is worth saving.
+        if window.assembling {
+            return;
+        }
+        on_change(&window.experience_id, window.entry.session().state());
+    }
+}
+
+/// One window event, served under the window's own lock: element writes and
+/// dispatch chains mutate the session and answer with a fresh tree. This is
+/// what per-window workers run, so one window's slow chain (or open dialog)
+/// never stalls another window's events.
+pub fn run_window_event(
+    window_id: &str,
+    cell: &WindowCell,
+    shared: &WindowShared,
+    message: &Value,
+) -> Result<(), String> {
+    let event = message.get("event").and_then(Value::as_str).unwrap_or("");
+    match event {
+        "setElement" => {
+            let element_id = message
+                .get("elementId")
+                .and_then(Value::as_str)
+                .ok_or("setElement without an elementId")?;
+            let value = message.get("value").cloned().unwrap_or(Value::Null);
+            cell.lock()
+                .unwrap()
+                .entry
+                .session_mut()
+                .set_element(element_id, value);
+        }
+        "dispatch" => {
+            let operation_ids: Vec<String> = message
+                .get("operationIds")
+                .and_then(Value::as_array)
+                .map(|ids| {
+                    ids.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let item = message.get("item").filter(|value| !value.is_null()).cloned();
+            let failed = cell
+                .lock()
+                .unwrap()
+                .entry
+                .session_mut()
+                .run_chain_detailed(&operation_ids, item.as_ref());
+            if let Some((operation_id, text)) = failed {
+                shared.transport.lock().unwrap().send(&json!({
+                    "cmd": "operationFailed",
+                    "windowId": window_id,
+                    "operationId": operation_id,
+                    "message": text,
+                }))?;
+            }
+        }
+        other => return Err(format!("Not a window event: \"{}\"", other)),
+    }
+    notify_window_change(cell, shared);
+    send_window_update(window_id, cell, shared)
 }
 
 /// Granted asset URLs become file URLs the native views can open; anything
@@ -816,7 +936,7 @@ fn ensure_running(app: &tauri::AppHandle) -> Result<Arc<Mutex<SidecarBridge>>, S
         stdin,
     }))));
     let persist_app = app.clone();
-    bridge.lock().unwrap().set_on_change(Box::new(move |experience_id, state| {
+    bridge.lock().unwrap().set_on_change(Arc::new(move |experience_id: &str, state: &Map<String, Value>| {
         let snapshot = Value::Object(state.clone());
         if let Err(error) =
             crate::write_experience_state_file(&persist_app, experience_id, &snapshot)
@@ -828,11 +948,14 @@ fn ensure_running(app: &tauri::AppHandle) -> Result<Arc<Mutex<SidecarBridge>>, S
     bridge
         .lock()
         .unwrap()
-        .set_tree_rewriter(Box::new(move |tree| rewrite_granted_srcs(&rewrite_app, tree)));
+        .set_tree_rewriter(Arc::new(move |tree: &mut Vec<Value>| rewrite_granted_srcs(&rewrite_app, tree)));
 
-    // Panel events run on a sequential worker so ordering holds, while the
-    // reader stays free: a dispatch that opens a file dialog blocks the
-    // worker, and the dialog's reply still arrives through the reader.
+    // App-level events (home actions, management, window lifecycle) run on
+    // one sequential worker so their ordering holds. Window events run on a
+    // worker PER WINDOW under that window's own lock, so a slow chain or an
+    // open dialog in one app never stalls another app's clicks. The reader
+    // stays free throughout, which is what lets a dialog-blocked chain
+    // receive its reply.
     let (work_tx, work_rx) = std::sync::mpsc::channel::<Value>();
     let worker_bridge = bridge.clone();
     let worker_app = app.clone();
@@ -851,9 +974,12 @@ fn ensure_running(app: &tauri::AppHandle) -> Result<Arc<Mutex<SidecarBridge>>, S
         .map_err(|error| error.to_string())?;
 
     let reader_app = app.clone();
+    let reader_bridge = bridge.clone();
     std::thread::Builder::new()
         .name("der-native-panel-reader".into())
         .spawn(move || {
+            let mut window_workers: HashMap<String, std::sync::mpsc::Sender<Value>> =
+                HashMap::new();
             let reader = BufReader::new(stdout);
             for line in reader.lines() {
                 let Ok(line) = line else { break };
@@ -862,9 +988,30 @@ fn ensure_running(app: &tauri::AppHandle) -> Result<Arc<Mutex<SidecarBridge>>, S
                 }
                 match serde_json::from_str::<Value>(&line) {
                     Ok(message) => {
-                        match message.get("event").and_then(Value::as_str) {
-                            Some("fileDialog") => resolve_file_dialog(&reader_app, &message),
-                            Some("mailAccount") => resolve_mail_dialog(&reader_app, &message),
+                        let event = message.get("event").and_then(Value::as_str).unwrap_or("");
+                        match event {
+                            "fileDialog" => resolve_file_dialog(&reader_app, &message),
+                            "mailAccount" => resolve_mail_dialog(&reader_app, &message),
+                            "setElement" | "dispatch" => {
+                                route_window_event(
+                                    &reader_bridge,
+                                    &mut window_workers,
+                                    message,
+                                );
+                            }
+                            "windowClosed" => {
+                                // The window's queue ends; queued events on
+                                // the dropped sender still finish against
+                                // the cell they hold.
+                                if let Some(window_id) =
+                                    message.get("windowId").and_then(Value::as_str)
+                                {
+                                    window_workers.remove(window_id);
+                                }
+                                if work_tx.send(message).is_err() {
+                                    break;
+                                }
+                            }
                             _ => {
                                 if work_tx.send(message).is_err() {
                                     break;

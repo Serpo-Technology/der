@@ -160,7 +160,7 @@ fn session_mutations_fire_the_persistence_callback() {
     let (mut bridge, _recorder) = open_bridge();
     let saved: Arc<Mutex<Vec<(String, Value)>>> = Arc::new(Mutex::new(Vec::new()));
     let sink = saved.clone();
-    bridge.set_on_change(Box::new(move |experience_id, state| {
+    bridge.set_on_change(std::sync::Arc::new(move |experience_id: &str, state: &serde_json::Map<String, Value>| {
         sink.lock()
             .unwrap()
             .push((experience_id.to_string(), Value::Object(state.clone())));
@@ -306,7 +306,7 @@ fn assembling_windows_never_persist_and_close_on_failure() {
 
     let saved: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let sink = saved.clone();
-    bridge.set_on_change(Box::new(move |experience_id, _state| {
+    bridge.set_on_change(std::sync::Arc::new(move |experience_id: &str, _state: &serde_json::Map<String, Value>| {
         sink.lock().unwrap().push(experience_id.to_string());
     }));
     bridge
@@ -410,4 +410,125 @@ fn a_dispatch_can_send_through_the_transport_while_the_bridge_is_held() {
         .expect("dispatch completes");
     let sent = recorder.0.lock().unwrap();
     assert!(sent.iter().any(|m| m["cmd"] == json!("pickFile")));
+}
+
+/// Two windows, two workers: window A's chain parks inside its dispatcher
+/// while window B keeps serving events. This is the multi-experience
+/// isolation property: one app's slow operation (or open dialog) never
+/// stalls another app.
+#[test]
+fn a_parked_chain_in_one_window_never_stalls_another() {
+    use dynamic_experience_runtime_lib::runtime::session::{DispatchRequest, OperationDispatcher};
+    use dynamic_experience_runtime_lib::runtime::sidecar::run_window_event;
+    use std::sync::mpsc;
+
+    /// Parks the dispatching thread until released.
+    struct ParkedDispatcher {
+        entered: mpsc::Sender<()>,
+        release: Mutex<mpsc::Receiver<()>>,
+    }
+    impl OperationDispatcher for ParkedDispatcher {
+        fn dispatch(&self, _request: &DispatchRequest) -> Result<Map<String, Value>, String> {
+            self.entered.send(()).ok();
+            self.release.lock().unwrap().recv().ok();
+            Ok(Map::new())
+        }
+    }
+
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+
+    let recorder = Recorder::default();
+    let mut bridge = SidecarBridge::new(Box::new(recorder.clone()));
+
+    // Window A: a button whose chain routes to the parked dispatcher.
+    let slow_contract = json!({
+        "name": "slow",
+        "elements": [
+            { "id": "fetch-btn", "type": "button", "properties": { "text": "Fetch" },
+              "eventBindings": [ { "event": "click", "operationId": "op-slow" } ] }
+        ],
+        "operations": [
+            { "id": "op-slow", "operationName": "http.get",
+              "inputs": [ { "name": "url", "source": "constant", "sourceId": "https://example.com/x" } ],
+              "outputs": [] }
+        ]
+    });
+    let slow_entry = open_session_core(
+        &slow_contract,
+        Map::new(),
+        Map::new(),
+        Box::new(ScriptedEnv {
+            ids: VecDeque::new(),
+            randoms: VecDeque::new(),
+            epoch_ms: 0,
+            tz_offset_minutes: 0,
+        }),
+        Some(Box::new(ParkedDispatcher {
+            entered: entered_tx,
+            release: Mutex::new(release_rx),
+        })),
+    )
+    .expect("slow session opens");
+    let slow_elements = slow_contract["elements"].as_array().cloned().unwrap();
+    bridge
+        .open_window("w-slow", "exp-slow", "Slow", slow_entry, slow_elements, slow_contract.clone(), false)
+        .expect("opens");
+
+    // Window B: the plain counter.
+    let contract = counter_contract();
+    let entry = open_session_core(
+        &contract,
+        Map::new(),
+        Map::new(),
+        Box::new(ScriptedEnv {
+            ids: VecDeque::new(),
+            randoms: VecDeque::new(),
+            epoch_ms: 0,
+            tz_offset_minutes: 0,
+        }),
+        None,
+    )
+    .expect("counter session opens");
+    let elements = contract["elements"].as_array().cloned().unwrap();
+    bridge
+        .open_window("w-fast", "exp-fast", "Fast", entry, elements, contract.clone(), false)
+        .expect("opens");
+
+    let (slow_cell, slow_shared) = bridge.window_handles("w-slow").expect("handles");
+    let (fast_cell, fast_shared) = bridge.window_handles("w-fast").expect("handles");
+
+    // Park window A's chain on its own worker thread.
+    let parked = std::thread::spawn(move || {
+        run_window_event(
+            "w-slow",
+            &slow_cell,
+            &slow_shared,
+            &json!({ "event": "dispatch", "windowId": "w-slow", "operationIds": ["op-slow"] }),
+        )
+    });
+    entered_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("the slow chain reached its dispatcher");
+
+    // Window B keeps serving while A is parked.
+    run_window_event(
+        "w-fast",
+        &fast_cell,
+        &fast_shared,
+        &json!({ "event": "dispatch", "windowId": "w-fast", "operationIds": ["op-add"] }),
+    )
+    .expect("fast window dispatches while the slow one is parked");
+    let fast_updated = recorder.0.lock().unwrap().iter().any(|message| {
+        message["cmd"] == "update"
+            && message["windowId"] == "w-fast"
+            && format!("{}", message["tree"]).contains("Clicks: 1")
+    });
+    assert!(fast_updated, "window B answered with a fresh tree while window A was parked");
+
+    release_tx.send(()).expect("release the parked chain");
+    parked
+        .join()
+        .expect("worker joins")
+        .expect("slow chain finishes after release");
 }
