@@ -57,7 +57,7 @@ function envelope(overrides: Record<string, unknown> = {}): string {
 
 describe('parseShareableText', () => {
   it('round-trips the app\'s own export format exactly as Rust emits it', async () => {
-    // Mirrors share_experience in src-tauri/src/lib.rs byte for byte: absent
+    // Mirrors share_experience in platform/host/src/lib.rs byte for byte: absent
     // options serialize as null and the date keys are snake_case.
     const rustWire = JSON.stringify({
       contract: COUNTER_CONTRACT,

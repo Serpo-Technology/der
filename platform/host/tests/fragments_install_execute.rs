@@ -10,7 +10,7 @@ use dynamic_experience_runtime_lib::fragments::{
 };
 use serde_json::{json, Value};
 
-const BUNDLE_PATH: &str = "../fragments/dist/der-labs.stats-summary.derpart";
+const BUNDLE_PATH: &str = "../../fragments/dist/der-labs.stats-summary.derpart";
 
 fn bundle_bytes() -> Vec<u8> {
     std::fs::read(BUNDLE_PATH).expect("committed demo bundle present")

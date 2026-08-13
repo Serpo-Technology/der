@@ -7,7 +7,7 @@ use der_runtime::vectors::run_family;
 use serde_json::Value;
 
 fn fixture(name: &str) -> Value {
-    let raw = std::fs::read_to_string(format!("../runtime-conformance/{}", name))
+    let raw = std::fs::read_to_string(format!("../../runtime-conformance/{}", name))
         .expect("conformance fixtures present");
     serde_json::from_str(&raw).expect("fixtures parse")
 }

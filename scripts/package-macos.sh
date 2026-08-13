@@ -13,15 +13,15 @@ cd "$(dirname "$0")/.."
 triple="$(rustc -vV | sed -n 's/^host: //p')"
 
 echo "building the native panel (release)"
-(cd native/macos && swift build -c release)
+(cd platform/macos && swift build -c release)
 
-mkdir -p src-tauri/binaries
-cp "native/macos/.build/release/DerNativePanel" "src-tauri/binaries/DerNativePanel-${triple}"
+mkdir -p platform/host/binaries
+cp "platform/macos/.build/release/DerNativePanel" "platform/host/binaries/DerNativePanel-${triple}"
 
 echo "building the app bundle"
-npm run tauri build -- --config src-tauri/tauri.macos-app.conf.json
+npm run tauri build -- --config tauri.macos-app.conf.json
 
-app="src-tauri/target/release/bundle/macos/DER.app"
+app="platform/host/target/release/bundle/macos/DER.app"
 
 if [[ -n "${DER_SIGNING_IDENTITY:-}" ]]; then
   echo "codesigning with ${DER_SIGNING_IDENTITY}"
@@ -40,7 +40,7 @@ if [[ -n "${DER_NOTARY_PROFILE:-}" ]]; then
 fi
 
 if [[ "${DER_MAKE_DMG:-}" == "1" ]]; then
-  dmg="src-tauri/target/release/bundle/macos/DER.dmg"
+  dmg="platform/host/target/release/bundle/macos/DER.dmg"
   echo "building ${dmg}"
   staging="$(mktemp -d)"
   cp -R "${app}" "${staging}/DER.app"

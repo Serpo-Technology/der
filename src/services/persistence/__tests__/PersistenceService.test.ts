@@ -420,7 +420,7 @@ describe('PersistenceService', () => {
 
     it('sends the Rust command a camelCase envelope with no nulls', async () => {
       // The accepted wire shape is pinned on the Rust side by the
-      // share_wire_tests module in src-tauri/src/lib.rs.
+      // share_wire_tests module in platform/host/src/lib.rs.
       const jsonData = JSON.stringify({
         contract: mockContract,
         metadata: {

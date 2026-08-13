@@ -72,7 +72,7 @@ npm run tauri dev          # webview-first development run
 For the native face, build the panel once and run in native mode:
 
 ```bash
-cd native/macos && swift build && cd ../..
+cd platform/macos && swift build && cd ../..
 DER_NATIVE_MODE=1 npm run tauri dev
 ```
 
@@ -116,7 +116,7 @@ signing.
 ```bash
 npm run test               # vitest suite
 npm run type-check
-cd src-tauri && cargo test # Rust suites, conformance included
+cd platform/host && cargo test # Rust suites, conformance included
 npm run eval -- --provider mercury   # generation + behavioral scoring
 ```
 

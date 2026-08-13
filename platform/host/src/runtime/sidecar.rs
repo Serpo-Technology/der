@@ -581,17 +581,17 @@ fn panel_binary() -> Result<std::path::PathBuf, String> {
         return Ok(bundled);
     }
     for candidate in [
-        "../native/macos/.build/release/DerNativePanel",
-        "../native/macos/.build/debug/DerNativePanel",
-        "native/macos/.build/release/DerNativePanel",
-        "native/macos/.build/debug/DerNativePanel",
+        "../macos/.build/release/DerNativePanel",
+        "../macos/.build/debug/DerNativePanel",
+        "platform/macos/.build/release/DerNativePanel",
+        "platform/macos/.build/debug/DerNativePanel",
     ] {
         let path = std::path::PathBuf::from(candidate);
         if path.exists() {
             return Ok(path);
         }
     }
-    Err("The native panel is not built; run \"swift build\" in native/macos first".to_string())
+    Err("The native panel is not built; run \"swift build\" in platform/macos first".to_string())
 }
 
 /// Home actions arrive from the panel and go back into the app: create and

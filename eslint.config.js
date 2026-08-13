@@ -7,7 +7,7 @@ import tsParser from '@typescript-eslint/parser';
 
 export default [
   {
-    ignores: ['dist', 'src-tauri'],
+    ignores: ['dist', 'platform'],
   },
   {
     files: ['**/*.{ts,tsx}'],

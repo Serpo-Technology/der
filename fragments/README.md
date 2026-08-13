@@ -91,7 +91,7 @@ and any language that can meet that shape can publish parts.
   judged by bundle signatures and the pinned trust store.
 
 These crates are standalone. None of them belongs to a cargo workspace,
-and none is part of the `src-tauri` build.
+and none is part of the `platform/host` build.
 
 ## Rebuilding the demo part
 

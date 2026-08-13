@@ -306,7 +306,7 @@ func launchDerIfStandalone() -> Bool {
     for build in ["release", "debug"] {
         candidates.append(
             panelDir
-                .appendingPathComponent("../../../../src-tauri/target/\(build)/dynamic-experience-runtime")
+                .appendingPathComponent("../../../../platform/host/target/\(build)/dynamic-experience-runtime")
                 .standardizedFileURL.path
         )
     }

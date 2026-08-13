@@ -30,8 +30,8 @@ fragments/*/target/
 # Signed bundles under fragments/dist stay tracked (the bare dist rule above matches it)
 !fragments/dist/
 llama.cpp/
-native/macos/.build/
-src-tauri/binaries/
+platform/macos/.build/
+platform/host/binaries/
 
 # Kernel crates: build output stays local, the dist wasm artifact is committed
 runtime-core/target/

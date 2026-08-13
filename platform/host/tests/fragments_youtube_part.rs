@@ -6,7 +6,7 @@ use dynamic_experience_runtime_lib::fragments::{
 };
 use serde_json::json;
 
-const YOUTUBE_BUNDLE: &str = "../fragments/dist/der-labs.youtube.derpart";
+const YOUTUBE_BUNDLE: &str = "../../fragments/dist/der-labs.youtube.derpart";
 
 fn install(state: &FragmentsState, dir: &std::path::Path) -> String {
     let raw = std::fs::read(YOUTUBE_BUNDLE).expect("committed bundle present");

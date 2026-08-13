@@ -12,7 +12,10 @@ owns interpretation, validation, and operation execution; the SwiftUI panel and 
 webview are parallel renderer faces over it, and the Rust backend also handles storage and
 window/tray management.
 
-The app itself lives at the repository root (`src/`, `src-tauri/`). This file is the
+The app lives at the repository root: `src/` is the webview face, `runtime-core/` the
+kernel crate, and `platform/` the platform layer (`platform/host/` is the Rust core
+process carrying the Tauri shell, host capabilities, and the bridge; `platform/macos/`
+is the SwiftUI panel; further native faces join beside it). This file is the
 authoritative architecture record; read the Architecture section before structural changes.
 
 ## Commands
@@ -36,7 +39,7 @@ npx vitest run src/models/__tests__/contract.test.ts
 npx vitest run -t "substring of the test name"
 ```
 
-Rust code under `src-tauri/` is outside the ESLint/tsc setup; build it with `cargo` or the
+Rust code under `platform/host/` is outside the ESLint/tsc setup; build it with `cargo` or the
 `tauri` commands above.
 
 ## Architecture
@@ -111,7 +114,7 @@ not in these singletons.
 
 ### Frontend/backend boundary
 
-The frontend reaches Rust through `@tauri-apps/api` `invoke`. `src-tauri/src/lib.rs` registers the
+The frontend reaches Rust through `@tauri-apps/api` `invoke`. `platform/host/src/lib.rs` registers the
 commands (storage, `execute_operation`, window/tray control) plus the newer modules: `llm.rs`
 (the `llm_chat` command that performs all LLM HTTP via reqwest), `settings.rs` (LLM settings and
 credentials under `app_data_dir/settings/`, redacted reads), `oauth.rs` (Claude subscription
@@ -282,7 +285,7 @@ opens the result exactly like a generated app with no model call. The Parts view
 part's recipes with an Open button (unavailable ones disabled with the validation problems)
 and the install review lists them under Apps. A `.derpart` bundle (verbatim-signed manifest + base64 wasm;
 Ed25519 over `DERPART-SIG-V1\0 || manifest bytes`; wasm bound by `wasmSha256` in the manifest)
-is verified and executed by the hardened wasmtime host in `src-tauri/src/fragments.rs` (imports
+is verified and executed by the hardened wasmtime host in `platform/host/src/fragments.rs` (imports
 gated by declared, install-consented capabilities, zero by default; wasi:clocks and
 wasi:random exist today and execution links WASI with no ambient authority; fuel +
 epoch deadline + memory limiter, fresh instance per call,
@@ -303,7 +306,7 @@ to the bundles), auto-checks a saved registry on open, and shows per-part update
 signature/trust flow still judges installs. All operation lookups go through `getOperationDef()`
 (builtins win collisions), so the prompt catalog, the checker, and the dispatchers
 treat part operations exactly like builtins (the model still emits `executionType: "builtin"`).
-Parts and the signing tool live in `fragments/` as standalone crates (NOT src-tauri workspace
+Parts and the signing tool live in `fragments/` as standalone crates (NOT platform/host workspace
 members); committed signed bundles keep `cargo test` hermetic; rebuilding needs
 `rustup target add wasm32-unknown-unknown`. Current library: expr-evaluate and dates and
 stats-summary and docs (markdownHtml/markdownText/textPdf/markdownPdf/docxText over a
@@ -322,7 +325,7 @@ eval corpus; the reader recipe makes reader-shaped requests deterministic where 
 composition of the two-chain wiring was stochastic). Compute
 parts may declare the `io:large` capability (consented at install review) to raise the
 wasm budgets to 32 MiB inputs, 512 MiB memory, and tenfold fuel for media payloads.
-User-mediated file IO is a builtin layer in `src-tauri/src/files.rs`, host-owned like
+User-mediated file IO is a builtin layer in `platform/host/src/files.rs`, host-owned like
 http.get: `file.pick` opens the system picker and grants a session token plus a
 renderer URL (the asset protocol scope for the webview; the bridge rewrites granted
 asset URLs to file URLs for the panel), `file.read` returns base64 plus UTF-8 text for
@@ -345,7 +348,7 @@ these small bits (pick, read, convert, save) wired through state, proven end to 
 the pdf-viewer, image-shrink, and md-to-pdf eval prompts with stubbed dialogs and real
 wasm.
 The per-app record store is the platform layer for data that outgrows the
-state map: `store.put` / `store.query` / `store.remove` (`src-tauri/src/store.rs`)
+state map: `store.put` / `store.query` / `store.remove` (`platform/host/src/store.rs`)
 keep JSON collections under `stores/<experienceId>/`, confined to the owning
 experience (the dispatcher carries the experience id; the webview executor
 passes it via the operation context). put upserts by id (generated when
@@ -354,7 +357,7 @@ equals or case-insensitive contains, empty keeps everything, mirroring the
 transforms), sorts numeric-aware, and pages ({items, count, total}); rows
 carry whatever fields puts wrote, so the row-shape checker skips such lists.
 The notes-archive eval proves the class against an in-memory harness store.
-The `email.*` builtins are the same pattern for mail (`src-tauri/src/mail.rs`):
+The `email.*` builtins are the same pattern for mail (`platform/host/src/mail.rs`):
 `email.send` (lettre over rustls), and the receive side `email.list` / `email.fetch`
 (the imap crate over a rustls stream, implicit TLS only, usually port 993;
 envelopes decode RFC 2047 words and bodies parse via mailparse, preferring
@@ -391,7 +394,7 @@ operations with structured input assembly, sessions, view resolution, validation
 streaming recovery, and the compose orchestration) lives in the standalone `der-runtime`
 crate (`runtime-core/`), host-free by construction, and it is the ONLY implementation:
 the TypeScript twin is deleted. The desktop core links the crate natively
-(`src-tauri/src/runtime/` re-exports it and adds the host: dispatcher, live sessions,
+(`platform/host/src/runtime/` re-exports it and adds the host: dispatcher, live sessions,
 sidecar, manage, schedule), and `runtime-wasm/` compiles the same crate to wasm32 behind
 the parts' `der_alloc`/`der_run` envelope with one `env.host_call` import for dispatch
 and entropy (`scripts/build-runtime-wasm.sh`; the artifact in `runtime-wasm/dist/` is
@@ -466,7 +469,7 @@ this; the timer howto teaches minutes-scale refresh timers.
 processes: the bridge owns the sessions, speaks newline-delimited JSON over the panel's
 stdio (`open`/`update`/`close` out; `setElement`/`dispatch`/`windowClosed` in), and answers
 every user action with a fresh tree; the panel is a pure view and secrets never leave the
-host. `native/macos/` is the SwiftUI panel (SwiftPM, built with `swift build`, found via
+host. `platform/macos/` is the SwiftUI panel (SwiftPM, built with `swift build`, found via
 `DER_NATIVE_RENDERER` or the dev build path); the standalone experience window shows a
 "Native window" button on macOS. `swift test` decodes the committed view vectors, holding
 the panel's protocol types to the same trees as the other two resolvers. Native mode
@@ -524,8 +527,8 @@ the background. File dialogs in native mode are PRESENTED BY THE PANEL (`pickFil
 `saveFile` request-reply over the protocol with a pending map in the core; panel events
 run on a sequential worker thread so a dialog-blocked chain never deadlocks the reader);
 the webview face keeps the dialog plugin. `scripts/package-macos.sh` builds the installable app:
-the panel compiles in release mode, stages under `src-tauri/binaries/` (gitignored), and
-`tauri build --config src-tauri/tauri.macos-app.conf.json` bundles it as an externalBin in
+the panel compiles in release mode, stages under `platform/host/binaries/` (gitignored), and
+`tauri build --config platform/host/tauri.macos-app.conf.json` bundles it as an externalBin in
 DER.app; a packaged build with the bundled panel runs native-first by default
 (`DER_NATIVE_MODE=0` opts out), while dev builds stay webview-first behind the flag.
 `runtime/streaming.rs` is the truncated-stream recovery (UTF-16 indices) and the

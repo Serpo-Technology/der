@@ -4,7 +4,7 @@ Renderer processes that display experiences in real OS windows. A panel is a
 pure view: the runtime core resolves every tree, executes every operation,
 and holds every secret; the panel maps resolved nodes onto native controls
 and reports user actions back. The wire protocol is newline-delimited JSON
-over the panel's stdio, spoken by `src-tauri/src/runtime/sidecar.rs`:
+over the panel's stdio, spoken by `platform/host/src/runtime/sidecar.rs`:
 `open`/`update`/`close`/`operationFailed` inbound to the panel,
 `setElement`/`dispatch`/`windowClosed` outbound.
 
@@ -13,11 +13,11 @@ over the panel's stdio, spoken by `src-tauri/src/runtime/sidecar.rs`:
 A SwiftUI panel (SwiftPM executable, macOS 13+). Build it once:
 
 ```
-cd native/macos
+cd platform/macos
 swift build
 ```
 
-The app finds the built binary at `native/macos/.build/{debug,release}/DerNativePanel`
+The app finds the built binary at `platform/macos/.build/{debug,release}/DerNativePanel`
 (or wherever `DER_NATIVE_RENDERER` points) and starts it on demand. Every
 open experience window shows a "Native window" button on macOS; clicking it
 opens the same app as an NSWindow with native controls, running against the
@@ -48,7 +48,7 @@ path and hands over.
 ```
 
 builds the panel in release mode, stages it as a bundled sidecar, and
-produces `src-tauri/target/release/bundle/macos/DER.app` (plus a dmg). The
+produces `platform/host/target/release/bundle/macos/DER.app` (plus a dmg). The
 packaged app runs native-first out of the box because the panel ships
 inside its bundle; `DER_NATIVE_MODE=0` forces the webview windows back.
 Installed and dev builds share the same app data (settings, parts,

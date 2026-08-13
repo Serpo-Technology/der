@@ -7,7 +7,7 @@ use dynamic_experience_runtime_lib::fragments::{
 };
 use serde_json::json;
 
-const WEBPAGE_BUNDLE: &str = "../fragments/dist/der-labs.webpage.derpart";
+const WEBPAGE_BUNDLE: &str = "../../fragments/dist/der-labs.webpage.derpart";
 
 fn install(state: &FragmentsState, dir: &std::path::Path) -> String {
     let raw = std::fs::read(WEBPAGE_BUNDLE).expect("committed bundle present");

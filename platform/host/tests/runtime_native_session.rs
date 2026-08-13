@@ -62,7 +62,7 @@ fn click_chain(tree: &[Value], id: &str) -> Vec<String> {
 
 #[test]
 fn the_committed_stopwatch_pack_runs_natively() {
-    let raw = std::fs::read("../fragments/dist/der-labs.ui-basics.derpart")
+    let raw = std::fs::read("../../fragments/dist/der-labs.ui-basics.derpart")
         .expect("committed bundle present");
     let envelope: Value = serde_json::from_slice(&raw).unwrap();
     let manifest: Value = serde_json::from_slice(

@@ -4,8 +4,8 @@ use dynamic_experience_runtime_lib::fragments::{
     commit_core, list_core, stage_core, verify_bundle, FragmentsState,
 };
 
-const BUNDLE: &str = "../fragments/dist/der-labs.openweather.derpart";
-const FX_BUNDLE: &str = "../fragments/dist/der-labs.frankfurter.derpart";
+const BUNDLE: &str = "../../fragments/dist/der-labs.openweather.derpart";
+const FX_BUNDLE: &str = "../../fragments/dist/der-labs.frankfurter.derpart";
 
 #[test]
 fn integration_bundle_verifies_with_confined_service() {

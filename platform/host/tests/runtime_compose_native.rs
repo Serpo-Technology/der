@@ -20,7 +20,7 @@ use dynamic_experience_runtime_lib::runtime::sessions::{open_session_core, resol
 use serde_json::{json, Value};
 
 fn decoded_manifest(bundle: &str) -> Value {
-    let raw = std::fs::read(format!("../fragments/dist/{}", bundle)).expect("committed bundle");
+    let raw = std::fs::read(format!("../../fragments/dist/{}", bundle)).expect("committed bundle");
     let envelope: Value = serde_json::from_slice(&raw).expect("bundle envelope parses");
     serde_json::from_slice(
         &BASE64

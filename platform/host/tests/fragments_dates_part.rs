@@ -6,7 +6,7 @@ use dynamic_experience_runtime_lib::fragments::{
 };
 use serde_json::json;
 
-const DATES_BUNDLE: &str = "../fragments/dist/der-labs.dates.derpart";
+const DATES_BUNDLE: &str = "../../fragments/dist/der-labs.dates.derpart";
 
 fn install(state: &FragmentsState, dir: &std::path::Path) -> String {
     let raw = std::fs::read(DATES_BUNDLE).expect("committed bundle present");

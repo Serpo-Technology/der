@@ -5,7 +5,7 @@ use dynamic_experience_runtime_lib::fragments::{
     commit_core, list_core, stage_core, verify_bundle, FragmentErrorKind, FragmentsState,
 };
 
-const UI_BUNDLE: &str = "../fragments/dist/der-labs.ui-basics.derpart";
+const UI_BUNDLE: &str = "../../fragments/dist/der-labs.ui-basics.derpart";
 
 #[test]
 fn ui_only_bundle_verifies_without_a_module() {

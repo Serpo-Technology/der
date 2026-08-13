@@ -9,7 +9,7 @@ use serde_json::json;
 
 #[test]
 fn c_part_encodes_a_qr_png_under_the_host() {
-    let raw = std::fs::read("../fragments/dist/der-labs.qr.derpart").expect("committed bundle");
+    let raw = std::fs::read("../../fragments/dist/der-labs.qr.derpart").expect("committed bundle");
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("der-labs.qr.derpart");
     std::fs::write(&path, &raw).unwrap();
