@@ -1946,6 +1946,56 @@
           }
         ]
       }
+    },
+    {
+      "id": "rar-extract",
+      "prompt": "An app to open RAR archives: I pick a .rar file, see what is inside with sizes, and extract a file from it to save",
+      "behavior": {
+        "file": {
+          "name": "archive.rar",
+          "mime": "application/vnd.rar",
+          "path": "platform/host/tests/fixtures/rar/multi.rar"
+        },
+        "steps": [
+          {
+            "do": "click",
+            "on": [
+              "open",
+              "pick",
+              "choose"
+            ]
+          },
+          {
+            "expect": "text",
+            "match": "/test1\\.bin/"
+          },
+          {
+            "expect": "text",
+            "match": "/4096|4\\.1|4 KB|4096 bytes/i"
+          },
+          {
+            "do": "clickInRow",
+            "row": "test2.bin",
+            "on": [
+              "extract",
+              "save",
+              "get"
+            ]
+          },
+          {
+            "do": "click",
+            "on": [
+              "save",
+              "download"
+            ],
+            "optional": true
+          },
+          {
+            "expect": "fileSaved",
+            "match": "/test2\\.bin/"
+          }
+        ]
+      }
     }
   ]
 }

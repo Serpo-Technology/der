@@ -156,14 +156,20 @@ function saveCore(inputs: Record<string, unknown>): Record<string, unknown> {
   // check magic prefixes; base64 data records as it arrived.
   const handle = str(inputs.file) || (str(inputs.data).startsWith('derfile-') ? str(inputs.data) : '');
   let data = str(inputs.data);
+  let name = str(inputs.name);
   if (handle) {
     const path = grantedPath(handle);
     if (!path) {
       throw new Error('file.save was handed a file handle that is not granted');
     }
     data = readFileSync(path).toString('base64');
+    // The desktop host suggests the granted file's own name when the
+    // contract supplies none; the stub mirrors that.
+    if (!name) {
+      name = basename(path);
+    }
   }
-  saved = { name: str(inputs.name), data };
+  saved = { name, data };
   return { saved: true, name: saved.name };
 }
 

@@ -101,6 +101,9 @@ and any language that can meet that shape can publish parts.
   media.audioExtract and media.trim are lossless stream copies, and
   media.toWav converts as a start/step job with progress. File inputs and
   outputs ride the grant sandbox; see its README for the license notes.
+- `rar/` builds `der-labs.rar`: RAR and RAR5 extraction over libarchive's
+  independent BSD readers on wasip1. Extraction only, and see its README
+  for why the format can never be created.
   readable blocks (heading, paragraph, item, quote, code, image, link) in
   document order, with navigation chrome, scripts, and forms stripped,
   entities decoded, and relative urls resolved against the page url. A

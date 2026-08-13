@@ -170,6 +170,21 @@
       "bundleBytes": 19024
     },
     {
+      "id": "der-labs.rar",
+      "name": "RAR",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "rar",
+      "description": "Opens RAR archives from picked files: list the entries and extract them. Extraction only; the format cannot be created.",
+      "operations": [
+        "rar.list",
+        "rar.extract"
+      ],
+      "bundleUrl": "der-labs.rar.derpart",
+      "bundleSha256": "08d099453fdb15de618908c4929ca911e989c38578d2006d113cc6906cafe5f3",
+      "bundleBytes": 267808
+    },
+    {
       "id": "der-labs.starter-apps",
       "name": "Starter Apps",
       "version": "1.1.0",

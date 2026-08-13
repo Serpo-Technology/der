@@ -41,3 +41,6 @@ runtime-wasm/target/
 platform/host/tests/fixtures/*/target/
 fragments/ffmpeg/vendor/
 fragments/ffmpeg/media.wasm
+fragments/rar/vendor/
+fragments/rar/build/
+fragments/rar/rar.wasm

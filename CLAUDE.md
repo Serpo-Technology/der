@@ -335,6 +335,8 @@ the open ABI) and youtube (youtube.parse: any link form to embed/watch/thumbnail
 plus t= timestamps) and media (FFmpeg compiled to wasip1 behind media.probe/thumbnail/audioExtract/trim,
 plus media.toWav as the first start/step job part; wasi:files+wasi:clocks+io:large,
 LGPL-only build pinned in fragments/ffmpeg/build.sh)
+and rar (rar.list/rar.extract over libarchive's BSD readers; extraction only, since
+the RAR compressor is closed and the unrar license forbids re-creating it)
 and webpage (page.blocks over io:large: a page's HTML to typed
 readable blocks with boilerplate stripped and relative urls resolved; with http.get's
 body output and a conditional-row list template this composes a native webpage reader

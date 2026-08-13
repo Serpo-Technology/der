@@ -1,0 +1,226 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "rar-extract",
+      "wallMs": 15548,
+      "completionTokens": 970,
+      "verdict": "pass",
+      "adjustments": 0,
+      "contract": {
+        "name": "rar-browser",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "pick-btn",
+            "type": "button",
+            "properties": {
+              "text": "Pick RAR"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-pick"
+              },
+              {
+                "event": "click",
+                "operationId": "op-list"
+              }
+            ]
+          },
+          {
+            "id": "entries",
+            "type": "list",
+            "properties": {
+              "emptyText": "No entries"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "rarEntries"
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "row",
+                "type": "container",
+                "properties": {
+                  "direction": "row",
+                  "gap": "8",
+                  "align": "center"
+                },
+                "dataBindings": [],
+                "eventBindings": [],
+                "children": [
+                  {
+                    "id": "row-name",
+                    "type": "text",
+                    "properties": {},
+                    "dataBindings": [
+                      {
+                        "property": "content",
+                        "source": "item",
+                        "sourceId": "name"
+                      }
+                    ],
+                    "eventBindings": []
+                  },
+                  {
+                    "id": "row-size",
+                    "type": "text",
+                    "properties": {},
+                    "dataBindings": [
+                      {
+                        "property": "content",
+                        "source": "item",
+                        "sourceId": "size",
+                        "transforms": [
+                          {
+                            "type": "formatNumber",
+                            "parameters": {
+                              "decimals": 0
+                            }
+                          }
+                        ]
+                      }
+                    ],
+                    "eventBindings": []
+                  },
+                  {
+                    "id": "extract-btn",
+                    "type": "button",
+                    "properties": {
+                      "text": "Extract",
+                      "variant": "primary"
+                    },
+                    "dataBindings": [],
+                    "eventBindings": [
+                      {
+                        "event": "click",
+                        "operationId": "op-extract"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "save-btn",
+            "type": "button",
+            "properties": {
+              "text": "Save Extracted",
+              "variant": "primary"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-save"
+              }
+            ],
+            "visibleWhen": {
+              "source": "state",
+              "sourceId": "extractedFile",
+              "operator": "notEmpty"
+            }
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-pick",
+            "operationName": "file.pick",
+            "inputs": [
+              {
+                "name": "kind",
+                "source": "constant",
+                "sourceId": "rar"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "file",
+                "target": "state",
+                "targetId": "pickedFile"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-list",
+            "operationName": "rar.list",
+            "inputs": [
+              {
+                "name": "file",
+                "source": "state",
+                "sourceId": "pickedFile"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "entries",
+                "target": "state",
+                "targetId": "rarEntries"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-extract",
+            "operationName": "rar.extract",
+            "inputs": [
+              {
+                "name": "file",
+                "source": "state",
+                "sourceId": "pickedFile"
+              },
+              {
+                "name": "name",
+                "source": "item",
+                "sourceId": "name"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "file",
+                "target": "state",
+                "targetId": "extractedFile"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-save",
+            "operationName": "file.save",
+            "inputs": [
+              {
+                "name": "file",
+                "source": "state",
+                "sourceId": "extractedFile"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentsUsed": [
+        "rar.list",
+        "rar.extract"
+      ],
+      "behavior": "fail",
+      "behaviorError": "Error: Step 4 {\"do\":\"clickInRow\",\"row\":\"test2.bin\",\"in\":[\"extract\",\"save\",\"get\"]}: No button matches []; buttons here: Extract|extract-btn"
+    }
+  ]
+}

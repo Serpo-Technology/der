@@ -1,0 +1,135 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.rar",
+  "name": "RAR",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Opens RAR archives from picked files: list the entries and extract them. Extraction only; the format cannot be created.",
+  "namespace": "rar",
+  "capabilities": [
+    "wasi:files",
+    "io:large"
+  ],
+  "wasmSha256": "6aa3cab03f3bc11762888ce8022d1ec6528431dfdbbbb475d521579f9245bd38",
+  "createdAt": "2026-08-13T20:00:00Z",
+  "operations": [
+    {
+      "name": "rar.list",
+      "description": "Reads a RAR archive's entries: names, sizes, and whether each is a file or folder.",
+      "inputs": [
+        {
+          "name": "file",
+          "type": "file",
+          "required": true,
+          "description": "A picked .rar (file.pick's file output)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "entries",
+          "type": "array",
+          "itemFields": [
+            "name",
+            "size",
+            "kind"
+          ],
+          "description": "One row per entry"
+        },
+        {
+          "name": "count",
+          "type": "number"
+        },
+        {
+          "name": "totalSize",
+          "type": "number"
+        }
+      ],
+      "howto": "Archive browser pattern: file.pick feeds \"file\", run on the pick's click (chain list right after pick), route entries to state, and show them in a list with row bindings on item.name and item.size. Give each row an Extract button.",
+      "example": {
+        "id": "op-list",
+        "operationName": "rar.list",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "file",
+            "source": "state",
+            "sourceId": "pickedFile"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "entries",
+            "target": "state",
+            "targetId": "rarEntries"
+          }
+        ],
+        "triggers": []
+      }
+    },
+    {
+      "name": "rar.extract",
+      "description": "Extracts one entry by name and answers it as a file; password-protected archives are refused.",
+      "inputs": [
+        {
+          "name": "file",
+          "type": "file",
+          "required": true,
+          "description": "The picked .rar"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "The entry to extract, from rar.list's rows"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "file",
+          "type": "file",
+          "description": "The extracted entry; chains into file.save"
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "description": "Renderer url; images and pdfs from the archive show in viewer elements"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "size",
+          "type": "number"
+        }
+      ],
+      "howto": "Wire it to each row's Extract button with \"name\" bound from item.name and \"file\" from the picked archive's state key, then chain file.save with the \"file\" output, or bind a viewer's src from \"url\" for media entries.",
+      "example": {
+        "id": "op-extract",
+        "operationName": "rar.extract",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "file",
+            "source": "state",
+            "sourceId": "pickedFile"
+          },
+          {
+            "name": "name",
+            "source": "item",
+            "sourceId": "name"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "file",
+            "target": "state",
+            "targetId": "extractedFile"
+          }
+        ],
+        "triggers": []
+      }
+    }
+  ]
+}
