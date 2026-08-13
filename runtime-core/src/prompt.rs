@@ -173,6 +173,15 @@ fn operation_lines(name: &str, def: &Value, compact: bool) -> Vec<String> {
         name, inputs, outputs, description
     )];
     if !compact {
+        match def.get("job").and_then(Value::as_str) {
+            Some("start") => lines.push(
+                "  job: starting this returns a \"job\" token; route it to state and poll the part's step operation from a timer element (sub-second interval) until its \"done\" output is true".to_string(),
+            ),
+            Some("step") => lines.push(
+                "  job: one step of a running job; bind \"job\" from the start operation's routed token and trigger this from a timer element, gating the timer's visibleWhen on the job being present and not done".to_string(),
+            ),
+            _ => {}
+        }
         if let Some(howto) = def.get("howto").and_then(Value::as_str) {
             lines.push(format!("  howto: {}", howto));
         }

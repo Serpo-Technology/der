@@ -294,6 +294,12 @@ file.pick's handle shape; net:<host>:<port> bridges one declared endpoint to the
 guest's stdio, TLS for remote hosts and plain on loopback. File or stream work gets a
 longer epoch deadline, wasip1 reactors get _initialize called, and the fixture-driven
 fragments_wasi_capabilities suite proves grant-in/grant-out and the socket round trip.
+Long work runs as jobs: a manifest operation with job:"start" answers a host-generated
+token and its instance stays live in the state's registry, job:"step" operations run
+against that instance (guest state persists; budgets re-arm per step) until a step
+answers done (file outputs harvest as grants, job ends) or fails; apps poll the step
+from a timer element, abandoned jobs reap after idling, concurrent jobs are capped,
+and fragments_jobs proves the lifecycle against the fixture's counting job.
 Fuel + epoch deadline + memory limiter, fresh instance per call,
 `der_alloc`/`der_run` JSON ABI). The compiled-module session cache revalidates against the
 bundle bytes on disk, so an updated file swaps the guest without eviction choreography.

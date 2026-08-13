@@ -47,8 +47,48 @@ fn handle(ptr: i32, len: i32) -> Vec<u8> {
     match envelope.get("operation").and_then(Value::as_str) {
         Some("fx.upper") => upper(&inputs),
         Some("fx.greet") => greet(),
+        Some("fx.count") => count_start(&inputs),
+        Some("fx.countStep") => count_step(),
         _ => err("unknown operation"),
     }
+}
+
+/// Job state living in the instance across steps: the whole point of a
+/// job-scoped instance is that this survives between der_run calls.
+static TOTAL: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static DONE_STEPS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+fn count_start(inputs: &Value) -> Vec<u8> {
+    let total = inputs.get("totalSteps").and_then(Value::as_u64).unwrap_or(0) as u32;
+    if total == 0 {
+        return err("totalSteps must be a positive number");
+    }
+    TOTAL.store(total, std::sync::atomic::Ordering::SeqCst);
+    DONE_STEPS.store(0, std::sync::atomic::Ordering::SeqCst);
+    ok(json!({}))
+}
+
+fn count_step() -> Vec<u8> {
+    let total = TOTAL.load(std::sync::atomic::Ordering::SeqCst);
+    if total == 0 {
+        return err("no job was started in this instance");
+    }
+    let done = DONE_STEPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    let finished = done >= total;
+    if finished {
+        if let Err(error) = std::fs::write("/out/count.txt", format!("counted {}", done)) {
+            return err(&format!("could not write /out/count.txt: {}", error));
+        }
+        return ok(json!({
+            "progress": 1.0,
+            "done": true,
+            "file": "/out/count.txt",
+        }));
+    }
+    ok(json!({
+        "progress": done as f64 / total as f64,
+        "done": false,
+    }))
 }
 
 fn upper(inputs: &Value) -> Vec<u8> {

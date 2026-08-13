@@ -65,6 +65,8 @@ interface FragmentOpSpec {
   example?: unknown;
   structuredPrefixes?: string[];
   remote?: { endpoint: string; method?: string };
+  /** Job-scoped execution: "start" answers a job token, "step" advances it. */
+  job?: string;
 }
 
 export interface PartCredentialRequirement {
@@ -200,6 +202,7 @@ export class FragmentsService {
       howto: op.howto,
       example: op.example as BuiltinOperationDef['example'],
       structuredPrefixes: op.structuredPrefixes,
+      job: op.job,
     };
   }
 

@@ -40,6 +40,8 @@ export interface BuiltinOperationDef {
   outputs: BuiltinIoSpec[];
   /** Input-name prefixes assembled into objects, e.g. item.title -> inputs.item.title */
   structuredPrefixes?: string[];
+  /** Job-scoped execution: "start" answers a job token, "step" advances it. */
+  job?: string;
   /** Short usage guide written for the model. */
   howto?: string;
   /** Validated usage snippet for the prompt. */

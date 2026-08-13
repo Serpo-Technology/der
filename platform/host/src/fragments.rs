@@ -185,6 +185,12 @@ pub struct OpSpec {
     /// confined to the manifest's service base URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remote: Option<RemoteSpec>,
+    /// Job-scoped execution: "start" builds a live instance and answers a
+    /// job token; "step" runs against that instance until a step reports
+    /// done. Long work makes progress across many short steps instead of
+    /// one long call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -500,6 +506,33 @@ pub fn verify_bundle(raw: &[u8]) -> FragmentResult<VerifiedBundle> {
                     capability
                 ),
             ));
+        }
+    }
+    for op in &manifest.operations {
+        match op.job.as_deref() {
+            None => {}
+            Some("start") => {
+                if manifest.wasm_sha256.is_empty() {
+                    return Err(fail(
+                        FragmentErrorKind::VerifyFailed,
+                        format!("Operation \"{}\" declares a job but the part has no compute module", op.name),
+                    ));
+                }
+            }
+            Some("step") => {
+                if !op.inputs.iter().any(|input| input.io_type == "job") {
+                    return Err(fail(
+                        FragmentErrorKind::VerifyFailed,
+                        format!("Step operation \"{}\" needs an input of type \"job\"", op.name),
+                    ));
+                }
+            }
+            Some(other) => {
+                return Err(fail(
+                    FragmentErrorKind::VerifyFailed,
+                    format!("Operation \"{}\" declares job \"{}\"; only \"start\" and \"step\" exist", op.name, other),
+                ));
+            }
         }
     }
     if let Some(service) = &manifest.service {
@@ -1069,6 +1102,9 @@ pub struct FragmentsState {
     loaded: Mutex<HashMap<String, Arc<LoadedFragment>>>,
     staged: Mutex<HashMap<String, StagedBundle>>,
     exec_permits: Arc<tokio::sync::Semaphore>,
+    /// Live job instances by token, each behind its own lock so parallel
+    /// jobs step independently.
+    jobs: Mutex<HashMap<String, Arc<Mutex<JobInstance>>>>,
 }
 
 impl FragmentsState {
@@ -1100,6 +1136,7 @@ impl FragmentsState {
             loaded: Mutex::new(HashMap::new()),
             staged: Mutex::new(HashMap::new()),
             exec_permits: Arc::new(tokio::sync::Semaphore::new(EXEC_PERMITS)),
+            jobs: Mutex::new(HashMap::new()),
         }
     }
 
@@ -1181,75 +1218,68 @@ fn map_wasm_error(err: wasmtime::Error, data: &StoreData) -> FragmentError {
 }
 
 /// Runs one operation in a fresh, hardened instance.
-pub fn execute_in_module(
-    engine: &Engine,
-    loaded: &LoadedFragment,
-    operation: &str,
-    inputs: &Value,
-) -> FragmentResult<Value> {
-    execute_in_module_with(engine, loaded, operation, inputs, &ExecEnv::none())
+const MAX_JOBS: usize = 8;
+const JOB_IDLE_SECS: u64 = 120;
+
+/// A live guest: store, instance handles, and the call's sandbox. Plain
+/// calls build one, use it, and drop it; job starts park it in the state's
+/// registry so steps run against the same memory.
+struct RunningInstance {
+    store: Store<StoreData>,
+    memory: wasmtime::Memory,
+    der_alloc: wasmtime::TypedFunc<i32, i32>,
+    der_run: wasmtime::TypedFunc<(i32, i32), i64>,
+    sandbox: Option<FileSandbox>,
+    fuel: u64,
+    deadline_ticks: u64,
+    input_cap: usize,
+    input_cap_text: &'static str,
 }
 
-pub fn execute_in_module_with(
-    engine: &Engine,
-    loaded: &LoadedFragment,
-    operation: &str,
+struct JobInstance {
+    run: RunningInstance,
+    fragment_id: String,
+    last_step: std::time::Instant,
+}
+
+/// Stages file-typed inputs into the sandbox and rewrites tokens to guest
+/// paths; everything else passes through untouched.
+fn stage_file_inputs(
+    spec: Option<&OpSpec>,
+    sandbox: Option<&FileSandbox>,
     inputs: &Value,
     exec_env: &ExecEnv<'_>,
 ) -> FragmentResult<Value> {
-    if !loaded.manifest.operations.iter().any(|op| op.name == operation) {
-        return Err(fail(
-            FragmentErrorKind::OperationNotFound,
-            format!("Part {} has no operation \"{}\"", loaded.manifest.id, operation),
-        ));
-    }
-
-    let capabilities = &loaded.manifest.capabilities;
-    let wants_files = capabilities.iter().any(|c| c == "wasi:files");
-    let net_endpoint = capabilities.iter().find_map(|c| parse_compute_net(c));
-    let op_spec = loaded
-        .manifest
-        .operations
-        .iter()
-        .find(|op| op.name == operation);
-
-    let sandbox = if wants_files {
-        Some(FileSandbox::create()?)
-    } else {
-        None
-    };
-    let mut staged_inputs = inputs.clone();
-    if let (Some(sandbox), Some(spec)) = (&sandbox, op_spec) {
+    let mut staged = inputs.clone();
+    if let (Some(sandbox), Some(spec)) = (sandbox, spec) {
         for input in &spec.inputs {
             if input.io_type != "file" {
                 continue;
             }
-            let Some(object) = staged_inputs.as_object_mut() else { break };
+            let Some(object) = staged.as_object_mut() else { break };
             let Some(Value::String(token)) = object.get(&input.name) else { continue };
             let Some(real) = (exec_env.resolve_grant)(token) else {
                 return Err(fail(
                     FragmentErrorKind::BadOutput,
-                    format!(
-                        "\"{}\" needs a picked file; run file.pick first",
-                        input.name
-                    ),
+                    format!("\"{}\" needs a picked file; run file.pick first", input.name),
                 ));
             };
             let guest_path = sandbox.stage_input(&real)?;
             object.insert(input.name.clone(), Value::String(guest_path));
         }
     }
+    Ok(staged)
+}
 
-    let envelope = serde_json::json!({ "operation": operation, "inputs": staged_inputs });
-    let request = serde_json::to_vec(&envelope)
-        .map_err(|e| fail(FragmentErrorKind::Io, e.to_string()))?;
-    // Parts that declared io:large at install (and were consented to in the
-    // review) get media-sized budgets; everything else keeps the tight ones.
-    let large_io = loaded
-        .manifest
-        .capabilities
-        .iter()
-        .any(|capability| capability == "io:large");
+/// Builds the guest for one call or one job: budgets from the declared
+/// capabilities, the wasi context from the sandbox and net grants, and
+/// reactor initialization for wasip1 std builds.
+fn build_instance(engine: &Engine, loaded: &LoadedFragment) -> FragmentResult<RunningInstance> {
+    let capabilities = &loaded.manifest.capabilities;
+    let wants_files = capabilities.iter().any(|c| c == "wasi:files");
+    let net_endpoint = capabilities.iter().find_map(|c| parse_compute_net(c));
+    let large_io = capabilities.iter().any(|c| c == "io:large");
+
     let (input_cap, input_cap_text, mem_limit, fuel) = if large_io {
         (MAX_INPUT_BYTES_LARGE, "32 MiB", MEM_LIMIT_BYTES_LARGE, FUEL_BUDGET * 10)
     } else {
@@ -1262,18 +1292,9 @@ pub fn execute_in_module_with(
     } else {
         EPOCH_DEADLINE_TICKS
     };
-    if request.len() > input_cap {
-        return Err(fail(
-            FragmentErrorKind::InputTooLarge,
-            format!("Operation inputs exceed {}", input_cap_text),
-        ));
-    }
 
-    // The WASI context carries no preopens, no environment, no args, and
-    // sink stdio: what a granted import can reach is the capability's set
-    // and nothing ambient. The verifier already bounded the import section
-    // at install and load, so linking the full p1 surface grants nothing
-    // the module cannot name.
+    let sandbox = if wants_files { Some(FileSandbox::create()?) } else { None };
+
     let mut builder = WasiCtxBuilder::new();
     if let Some(sandbox) = &sandbox {
         use wasmtime_wasi::{DirPerms, FilePerms};
@@ -1322,24 +1343,60 @@ pub fn execute_in_module_with(
     let der_run = instance
         .get_typed_func::<(i32, i32), i64>(&mut store, "der_run")
         .map_err(|_| fail(FragmentErrorKind::AbiMismatch, "der_run has the wrong signature"))?;
+    Ok(RunningInstance {
+        store,
+        memory,
+        der_alloc,
+        der_run,
+        sandbox,
+        fuel,
+        deadline_ticks,
+        input_cap,
+        input_cap_text,
+    })
+}
+
+/// One envelope through the guest: budgets re-armed, request written,
+/// der_run called, the {ok}/{err} reply decoded.
+fn call_operation(
+    run: &mut RunningInstance,
+    operation: &str,
+    staged_inputs: &Value,
+) -> FragmentResult<Value> {
+    let envelope = serde_json::json!({ "operation": operation, "inputs": staged_inputs });
+    let request = serde_json::to_vec(&envelope)
+        .map_err(|e| fail(FragmentErrorKind::Io, e.to_string()))?;
+    if request.len() > run.input_cap {
+        return Err(fail(
+            FragmentErrorKind::InputTooLarge,
+            format!("Operation inputs exceed {}", run.input_cap_text),
+        ));
+    }
+    let store = &mut run.store;
+    store
+        .set_fuel(run.fuel)
+        .map_err(|e| fail(FragmentErrorKind::Io, e.to_string()))?;
+    store.set_epoch_deadline(run.deadline_ticks);
 
     let len = request.len() as i32;
-    let ptr = der_alloc
-        .call(&mut store, len)
+    let ptr = run
+        .der_alloc
+        .call(&mut *store, len)
         .map_err(|e| map_wasm_error(e, store.data()))?;
     if ptr == 0 {
         return Err(fail(FragmentErrorKind::Oom, "Part could not allocate the request"));
     }
     let ptr_u = ptr as u32 as u64;
-    if ptr_u + request.len() as u64 > memory.data_size(&store) as u64 {
+    if ptr_u + request.len() as u64 > run.memory.data_size(&*store) as u64 {
         return Err(fail(FragmentErrorKind::BadOutput, "Part returned an out-of-bounds buffer"));
     }
-    memory
-        .write(&mut store, ptr_u as usize, &request)
+    run.memory
+        .write(&mut *store, ptr_u as usize, &request)
         .map_err(|_| fail(FragmentErrorKind::BadOutput, "Writing the request failed"))?;
 
-    let packed = der_run
-        .call(&mut store, (ptr, len))
+    let packed = run
+        .der_run
+        .call(&mut *store, (ptr, len))
         .map_err(|e| map_wasm_error(e, store.data()))?;
 
     // Decode as unsigned bit pattern; signed shifts would smear the pointer.
@@ -1352,12 +1409,12 @@ pub fn execute_in_module_with(
     if out_len > MAX_OUTPUT_BYTES {
         return Err(fail(FragmentErrorKind::BadOutput, "Part result exceeds 4 MiB"));
     }
-    if out_ptr as u64 + out_len as u64 > memory.data_size(&store) as u64 {
+    if out_ptr as u64 + out_len as u64 > run.memory.data_size(&*store) as u64 {
         return Err(fail(FragmentErrorKind::BadOutput, "Part returned an out-of-bounds result"));
     }
     let mut out = vec![0u8; out_len as usize];
-    memory
-        .read(&store, out_ptr as usize, &mut out)
+    run.memory
+        .read(&*store, out_ptr as usize, &mut out)
         .map_err(|_| fail(FragmentErrorKind::BadOutput, "Reading the result failed"))?;
 
     let text = std::str::from_utf8(&out)
@@ -1370,49 +1427,218 @@ pub fn execute_in_module_with(
         message.truncate(MAX_GUEST_ERR_BYTES);
         return Err(fail(FragmentErrorKind::GuestError, message));
     }
-    let mut result = match parsed.get("ok") {
-        Some(ok) if ok.is_object() => ok.clone(),
-        _ => {
+    match parsed.get("ok") {
+        Some(ok) if ok.is_object() => Ok(ok.clone()),
+        _ => Err(fail(
+            FragmentErrorKind::BadOutput,
+            "Part result must be {\"ok\": {...}} or {\"err\": \"...\"}",
+        )),
+    }
+}
+
+/// Produced files come home: a file-typed output holding a /out guest path
+/// becomes a fresh grant with the same handle shape file.pick produces,
+/// and declared url/name/size sibling outputs fill from it.
+fn harvest_file_outputs(
+    sandbox: Option<&FileSandbox>,
+    spec: Option<&OpSpec>,
+    result: &mut Value,
+    exec_env: &ExecEnv<'_>,
+) -> FragmentResult<()> {
+    let (Some(sandbox), Some(spec)) = (sandbox, spec) else { return Ok(()) };
+    for output in &spec.outputs {
+        if output.io_type != "file" {
+            continue;
+        }
+        let Some(object) = result.as_object_mut() else { break };
+        let Some(Value::String(guest_path)) = object.get(&output.name) else { continue };
+        let Some(real) = sandbox.produced(guest_path) else {
             return Err(fail(
                 FragmentErrorKind::BadOutput,
-                "Part result must be {\"ok\": {...}} or {\"err\": \"...\"}",
-            ))
-        }
-    };
-
-    // Produced files come home: a file-typed output holding a /out guest
-    // path becomes a fresh grant with the same handle shape file.pick
-    // produces, and declared url/name/size sibling outputs fill from it.
-    if let (Some(sandbox), Some(spec)) = (&sandbox, op_spec) {
-        for output in &spec.outputs {
-            if output.io_type != "file" {
-                continue;
-            }
-            let Some(object) = result.as_object_mut() else { break };
-            let Some(Value::String(guest_path)) = object.get(&output.name) else { continue };
-            let Some(real) = sandbox.produced(guest_path) else {
-                return Err(fail(
-                    FragmentErrorKind::BadOutput,
-                    format!(
-                        "Output \"{}\" names {}, which the part did not write under /out",
-                        output.name, guest_path
-                    ),
-                ));
-            };
-            let registered = (exec_env.register_output)(&real)
-                .map_err(|message| fail(FragmentErrorKind::Io, message))?;
-            let declared: Vec<&str> = spec.outputs.iter().map(|o| o.name.as_str()).collect();
-            let token = registered.get("file").cloned().unwrap_or(Value::Null);
-            object.insert(output.name.clone(), token);
-            for sibling in ["url", "name", "size"] {
-                if declared.contains(&sibling) && !object.contains_key(sibling) {
-                    if let Some(value) = registered.get(sibling) {
-                        object.insert(sibling.to_string(), value.clone());
-                    }
+                format!(
+                    "Output \"{}\" names {}, which the part did not write under /out",
+                    output.name, guest_path
+                ),
+            ));
+        };
+        let registered = (exec_env.register_output)(&real)
+            .map_err(|message| fail(FragmentErrorKind::Io, message))?;
+        let declared: Vec<&str> = spec.outputs.iter().map(|o| o.name.as_str()).collect();
+        let token = registered.get("file").cloned().unwrap_or(Value::Null);
+        object.insert(output.name.clone(), token);
+        for sibling in ["url", "name", "size"] {
+            if declared.contains(&sibling) && !object.contains_key(sibling) {
+                if let Some(value) = registered.get(sibling) {
+                    object.insert(sibling.to_string(), value.clone());
                 }
             }
         }
     }
+    Ok(())
+}
+
+impl FragmentsState {
+    /// Drops jobs nothing has stepped lately: a closed window stops its
+    /// timer, the timer stops the steps, and the reaper collects the rest.
+    pub fn reap_jobs_older_than(&self, idle: std::time::Duration) {
+        self.jobs
+            .lock()
+            .unwrap()
+            .retain(|_token, cell| cell.lock().unwrap().last_step.elapsed() <= idle);
+    }
+
+    /// Starts a job: the instance stays live in the registry and the start
+    /// operation's outputs carry the host-generated job token.
+    pub fn start_job(
+        &self,
+        loaded: &LoadedFragment,
+        operation: &str,
+        inputs: &Value,
+        exec_env: &ExecEnv<'_>,
+    ) -> FragmentResult<Value> {
+        self.reap_jobs_older_than(std::time::Duration::from_secs(JOB_IDLE_SECS));
+        if self.jobs.lock().unwrap().len() >= MAX_JOBS {
+            return Err(fail(
+                FragmentErrorKind::Busy,
+                "Too many jobs are running; finish or cancel one first",
+            ));
+        }
+        let op_spec = loaded
+            .manifest
+            .operations
+            .iter()
+            .find(|op| op.name == operation)
+            .ok_or_else(|| {
+                fail(FragmentErrorKind::OperationNotFound, format!("Part has no operation {}", operation))
+            })?;
+        let mut run = build_instance(&self.engine, loaded)?;
+        let staged = stage_file_inputs(Some(op_spec), run.sandbox.as_ref(), inputs, exec_env)?;
+        let mut result = call_operation(&mut run, operation, &staged)?;
+        let token = format!("derjob-{}", uuid::Uuid::new_v4());
+        if let Some(object) = result.as_object_mut() {
+            object.insert("job".to_string(), Value::String(token.clone()));
+        }
+        self.jobs.lock().unwrap().insert(
+            token,
+            Arc::new(Mutex::new(JobInstance {
+                run,
+                fragment_id: loaded.manifest.id.clone(),
+                last_step: std::time::Instant::now(),
+            })),
+        );
+        Ok(result)
+    }
+
+    /// One step against a live job. A done step harvests file outputs and
+    /// tears the job down; a failing step tears it down too, so the error
+    /// on the strip is also the job's end.
+    pub fn step_job(
+        &self,
+        loaded: &LoadedFragment,
+        operation: &str,
+        inputs: &Value,
+        exec_env: &ExecEnv<'_>,
+    ) -> FragmentResult<Value> {
+        let op_spec = loaded
+            .manifest
+            .operations
+            .iter()
+            .find(|op| op.name == operation)
+            .ok_or_else(|| {
+                fail(FragmentErrorKind::OperationNotFound, format!("Part has no operation {}", operation))
+            })?;
+        let token = op_spec
+            .inputs
+            .iter()
+            .find(|input| input.io_type == "job")
+            .and_then(|input| inputs.get(&input.name))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let cell = self.jobs.lock().unwrap().get(&token).cloned().ok_or_else(|| {
+            fail(
+                FragmentErrorKind::OperationNotFound,
+                "No running job for this step; start it first (a finished or failed job is gone)",
+            )
+        })?;
+        let mut job = cell.lock().unwrap();
+        if job.fragment_id != loaded.manifest.id {
+            return Err(fail(
+                FragmentErrorKind::OperationNotFound,
+                "This job belongs to a different part",
+            ));
+        }
+        job.last_step = std::time::Instant::now();
+        let outcome = call_operation(&mut job.run, operation, inputs);
+        let mut result = match outcome {
+            Ok(result) => result,
+            Err(error) => {
+                drop(job);
+                self.jobs.lock().unwrap().remove(&token);
+                return Err(error);
+            }
+        };
+        let done = result.get("done").and_then(Value::as_bool).unwrap_or(false);
+        if done {
+            let harvest =
+                harvest_file_outputs(job.run.sandbox.as_ref(), Some(op_spec), &mut result, exec_env);
+            drop(job);
+            self.jobs.lock().unwrap().remove(&token);
+            harvest?;
+        }
+        Ok(result)
+    }
+
+    /// Routes an operation by its declared execution model: plain calls get
+    /// a fresh instance, job starts park one, steps run against it.
+    pub fn execute_operation_with(
+        &self,
+        loaded: &LoadedFragment,
+        operation: &str,
+        inputs: &Value,
+        exec_env: &ExecEnv<'_>,
+    ) -> FragmentResult<Value> {
+        let mode = loaded
+            .manifest
+            .operations
+            .iter()
+            .find(|op| op.name == operation)
+            .and_then(|op| op.job.as_deref());
+        match mode {
+            Some("start") => self.start_job(loaded, operation, inputs, exec_env),
+            Some("step") => self.step_job(loaded, operation, inputs, exec_env),
+            _ => execute_in_module_with(&self.engine, loaded, operation, inputs, exec_env),
+        }
+    }
+}
+
+pub fn execute_in_module(
+    engine: &Engine,
+    loaded: &LoadedFragment,
+    operation: &str,
+    inputs: &Value,
+) -> FragmentResult<Value> {
+    execute_in_module_with(engine, loaded, operation, inputs, &ExecEnv::none())
+}
+
+pub fn execute_in_module_with(
+    engine: &Engine,
+    loaded: &LoadedFragment,
+    operation: &str,
+    inputs: &Value,
+    exec_env: &ExecEnv<'_>,
+) -> FragmentResult<Value> {
+    let op_spec = loaded.manifest.operations.iter().find(|op| op.name == operation);
+    if op_spec.is_none() {
+        return Err(fail(
+            FragmentErrorKind::OperationNotFound,
+            format!("Part has no operation {}", operation),
+        ));
+    }
+    let mut run = build_instance(engine, loaded)?;
+    let staged = stage_file_inputs(op_spec, run.sandbox.as_ref(), inputs, exec_env)?;
+    let mut result = call_operation(&mut run, operation, &staged)?;
+    harvest_file_outputs(run.sandbox.as_ref(), op_spec, &mut result, exec_env)?;
     Ok(result)
 }
 
@@ -1757,18 +1983,18 @@ pub async fn list_fragments(app: tauri::AppHandle) -> Result<Vec<Value>, Fragmen
 /// grants.
 pub fn execute_with_app_files(
     app: &tauri::AppHandle,
-    engine: &Engine,
+    _engine: &Engine,
     loaded: &LoadedFragment,
     operation: &str,
     inputs: &Value,
 ) -> FragmentResult<Value> {
+    let state = app.state::<FragmentsState>();
     let grants = app.state::<crate::files::FileGrants>();
     let resolve = |token: &str| grants.path_of(token);
     let app_for_register = app.clone();
     let register =
         move |path: &Path| crate::files::register_exec_output(&app_for_register, path);
-    execute_in_module_with(
-        engine,
+    state.execute_operation_with(
         loaded,
         operation,
         inputs,

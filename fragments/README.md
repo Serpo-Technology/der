@@ -27,6 +27,21 @@ carries no ambient authority beyond the declared grants:
 Parts doing file or stream work also get a longer wall-clock deadline,
 and wasip1 reactors (std builds) have their `_initialize` called before
 the ABI entry points.
+
+## Jobs: long work as start and step
+
+Work that outlives one call (a transcode, a large archive) declares a
+job pair in its manifest: the start operation carries `"job": "start"`
+and answers a host-generated `job` token in its outputs, and the step
+operation carries `"job": "step"` with a `"job"`-typed input. The host
+keeps the started instance alive, so guest state persists between
+steps; each step re-arms the fuel and wall-clock budgets, answers
+`{progress, done}`, and the done step's file-typed outputs come home as
+grants exactly like a plain call's. Apps poll the step operation from a
+timer element. A failing step ends the job, stopping the timer stops
+the work, and the host reaps jobs nothing has stepped lately; a step
+must fit the per-call budget, so guests do a bounded slice of work per
+step (frames encoded, entries compressed) and report how far they got.
 Operation names live under the manifest's namespace (`date.diffDays` for namespace
 `date`); segments start lowercase and may continue in camelCase, matching
 the builtin vocabulary.
