@@ -40,14 +40,12 @@ export async function runGuest(
   return parsed.ok;
 }
 
-/** Same ABI, synchronous: the kernel's host_call cannot await, so compute
- * parts run from a precompiled module with the sync constructors. */
-export function runGuestSync(
-  module: WebAssembly.Module,
+/** The der envelope against a live instance's exports. */
+function callEnvelope(
+  instance: WebAssembly.Instance,
   operation: string,
   inputs: unknown
 ): Record<string, unknown> {
-  const instance = new WebAssembly.Instance(module, {});
   const memory = instance.exports.memory as WebAssembly.Memory;
   const derAlloc = instance.exports.der_alloc as (len: number) => number;
   const derRun = instance.exports.der_run as (ptr: number, len: number) => bigint;
@@ -74,4 +72,40 @@ export function runGuestSync(
     throw new Error('Part result must be {"ok": {...}} or {"err": "..."}');
   }
   return parsed.ok;
+}
+
+/** Same ABI, synchronous: the kernel's host_call cannot await, so compute
+ * parts run from a precompiled module with the sync constructors. */
+export function runGuestSync(
+  module: WebAssembly.Module,
+  operation: string,
+  inputs: unknown
+): Record<string, unknown> {
+  return callEnvelope(new WebAssembly.Instance(module, {}), operation, inputs);
+}
+
+/**
+ * A WASI-importing guest (media and future grant-flow parts), mirroring the
+ * desktop host: preopened /in and /out, no env, no args, reactor
+ * initialization before the ABI entry points. The instance stays usable
+ * across calls so job-scoped operations keep their state, exactly like the
+ * host's job registry.
+ */
+export class WasiGuest {
+  private instance: WebAssembly.Instance;
+
+  constructor(module: WebAssembly.Module, preopens: Record<string, string>) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { WASI } = require('node:wasi') as typeof import('node:wasi');
+    const wasi = new WASI({ version: 'preview1', preopens, args: [], env: {} });
+    this.instance = new WebAssembly.Instance(
+      module,
+      wasi.getImportObject() as WebAssembly.Imports
+    );
+    wasi.initialize(this.instance as Parameters<typeof wasi.initialize>[0]);
+  }
+
+  call(operation: string, inputs: unknown): Record<string, unknown> {
+    return callEnvelope(this.instance, operation, inputs);
+  }
 }

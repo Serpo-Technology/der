@@ -27,6 +27,8 @@ interface Fixture {
   mime: string;
   text?: string;
   base64?: string;
+  /** Repo-relative path to a committed binary fixture (media files). */
+  path?: string;
 }
 
 let saved: SavedFile | null = null;
@@ -34,6 +36,61 @@ let sent: SentEmail | null = null;
 let fixture: Fixture = { name: 'sample.txt', mime: 'text/plain', text: 'sample' };
 let collections = new Map<string, Record<string, unknown>[]>();
 let nextRecordId = 1;
+
+// The scenario's grant table, mirroring the host: pick grants a token for
+// the fixture, parts produce files that register as fresh tokens, and
+// file.save resolves either back to real bytes.
+import { mkdtempSync, writeFileSync, readFileSync, copyFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve as resolvePath, basename } from 'node:path';
+
+let grantDir: string | null = null;
+let grants = new Map<string, string>();
+let grantSeq = 1;
+
+function grantsDir(): string {
+  if (!grantDir) {
+    grantDir = mkdtempSync(join(tmpdir(), 'der-eval-grants-'));
+  }
+  return grantDir;
+}
+
+/** Grants a real file path and answers the token, like the picker. */
+export function grantPath(path: string): string {
+  const token = `derfile-eval-${grantSeq++}`;
+  grants.set(token, path);
+  return token;
+}
+
+export function grantedPath(token: string): string | undefined {
+  return grants.get(token);
+}
+
+/** The fixture as a real on-disk file, staged once per scenario. */
+function fixtureFilePath(): string {
+  const target = join(grantsDir(), fixture.name);
+  if (!existsSync(target)) {
+    if (fixture.path) {
+      copyFileSync(resolvePath(fixture.path), target);
+    } else if (fixture.base64) {
+      writeFileSync(target, Buffer.from(fixture.base64, 'base64'));
+    } else {
+      writeFileSync(target, fixture.text ?? '');
+    }
+  }
+  return target;
+}
+
+/** Takes a part-produced file into the grant table, like the host's
+ * register_exec_output: the answer carries file.pick's handle shape. */
+export function registerProducedFile(sourcePath: string): Record<string, unknown> {
+  const name = basename(sourcePath);
+  const kept = join(grantsDir(), `produced-${grantSeq}-${name}`);
+  copyFileSync(sourcePath, kept);
+  const token = grantPath(kept);
+  const size = readFileSync(kept).length;
+  return { file: token, url: `stub://produced/${name}`, name, size };
+}
 
 export function lastSavedFile(): SavedFile | null {
   return saved;
@@ -67,11 +124,12 @@ const str = (value: unknown): string =>
   value === null || value === undefined ? '' : String(value);
 
 function pickCore(): Record<string, unknown> {
+  const path = fixtureFilePath();
   return {
-    file: 'stub-file-token',
+    file: grantPath(path),
     url: `stub://picked/${fixture.name}`,
     name: fixture.name,
-    size: fixture.text ? fixture.text.length : 128,
+    size: readFileSync(path).length,
     mime: fixture.mime,
   };
 }
@@ -90,11 +148,18 @@ function readCore(): Record<string, unknown> {
 }
 
 function saveCore(inputs: Record<string, unknown>): Record<string, unknown> {
-  // A produced-file handle saves by reference; base64 data saves inline.
-  // The recorded data field carries whichever arrived, so expects can
-  // match on either.
+  // A granted handle resolves to its real bytes so fileSaved expects can
+  // check magic prefixes; base64 data records as it arrived.
   const handle = str(inputs.file) || (str(inputs.data).startsWith('derfile-') ? str(inputs.data) : '');
-  saved = { name: str(inputs.name), data: handle || str(inputs.data) };
+  let data = str(inputs.data);
+  if (handle) {
+    const path = grantedPath(handle);
+    if (!path) {
+      throw new Error('file.save was handed a file handle that is not granted');
+    }
+    data = readFileSync(path).toString('base64');
+  }
+  saved = { name: str(inputs.name), data };
   return { saved: true, name: saved.name };
 }
 
@@ -212,6 +277,9 @@ export function setupFileStubs(file?: Fixture): void {
   fixture = file ?? { name: 'sample.txt', mime: 'text/plain', text: 'sample' };
   collections = new Map();
   nextRecordId = 1;
+  grantDir = null;
+  grants = new Map();
+  grantSeq = 1;
 }
 
 export function clearFileStubs(): void {

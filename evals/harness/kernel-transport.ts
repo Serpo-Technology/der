@@ -35,6 +35,139 @@ interface DispatchPayload {
   implementation?: Record<string, unknown> | null;
 }
 
+// ---------------------------------------------------------------------------
+// WASI part execution, mirroring platform/host/src/fragments.rs: a per-call
+// (or per-job) sandbox whose /in holds exactly the granted files and whose
+// /out is harvested into fresh grants; job starts park the live guest so
+// steps run against its state.
+// ---------------------------------------------------------------------------
+
+import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename } from 'node:path';
+import { WasiGuest } from './wasm-host';
+import { grantedPath, registerProducedFile } from './file-stubs';
+
+interface WasiSandbox {
+  root: string;
+}
+
+function createSandbox(): WasiSandbox {
+  const root = mkdtempSync(join(tmpdir(), 'der-eval-wasi-'));
+  mkdirSyncSafe(join(root, 'in'));
+  mkdirSyncSafe(join(root, 'out'));
+  return { root };
+}
+
+function mkdirSyncSafe(dir: string): void {
+  mkdirSync(dir, { recursive: true });
+}
+
+type WasiRoute = NonNullable<ReturnType<typeof PART_ROUTES.get>>;
+
+function stageFileInputs(
+  route: WasiRoute,
+  sandbox: WasiSandbox,
+  inputs: Record<string, unknown>
+): Record<string, unknown> {
+  const staged: Record<string, unknown> = { ...inputs };
+  for (const spec of route.inputs) {
+    if (spec.type !== 'file') continue;
+    const token = staged[spec.name];
+    if (typeof token !== 'string' || !token) continue;
+    const real = grantedPath(token);
+    if (!real) {
+      throw new Error(`"${spec.name}" needs a picked file; run file.pick first`);
+    }
+    const name = basename(real);
+    copyFileSync(real, join(sandbox.root, 'in', name));
+    staged[spec.name] = `/in/${name}`;
+  }
+  return staged;
+}
+
+function harvestFileOutputs(
+  route: WasiRoute,
+  sandbox: WasiSandbox,
+  result: Record<string, unknown>
+): Record<string, unknown> {
+  const declared = route.outputs.map((o) => o.name);
+  for (const spec of route.outputs) {
+    if (spec.type !== 'file') continue;
+    const guestPath = result[spec.name];
+    if (typeof guestPath !== 'string' || !guestPath.startsWith('/out/')) continue;
+    const real = join(sandbox.root, 'out', guestPath.slice('/out/'.length));
+    if (!existsSync(real)) {
+      throw new Error(
+        `Output "${spec.name}" names ${guestPath}, which the part did not write under /out`
+      );
+    }
+    const registered = registerProducedFile(real);
+    result[spec.name] = registered.file;
+    for (const sibling of ['url', 'name', 'size']) {
+      if (declared.includes(sibling) && !(sibling in result)) {
+        result[sibling] = registered[sibling];
+      }
+    }
+  }
+  return result;
+}
+
+interface WasiJob {
+  guest: WasiGuest;
+  sandbox: WasiSandbox;
+}
+
+const wasiJobs = new Map<string, WasiJob>();
+let jobSeq = 1;
+
+function runWasiOperation(
+  name: string,
+  route: WasiRoute,
+  inputs: Record<string, unknown>
+): Record<string, unknown> {
+  if (!route.module) {
+    throw new Error(`Part operation ${name} has no compute module`);
+  }
+  if (route.job === 'step') {
+    const tokenInput = route.inputs.find((spec) => spec.type === 'job');
+    const token = String((tokenInput && inputs[tokenInput.name]) ?? '');
+    const job = wasiJobs.get(token);
+    if (!job) {
+      throw new Error(
+        'No running job for this step; start it first (a finished or failed job is gone)'
+      );
+    }
+    let result: Record<string, unknown>;
+    try {
+      result = job.guest.call(name, inputs);
+    } catch (error) {
+      wasiJobs.delete(token);
+      throw error;
+    }
+    if (result.done === true) {
+      wasiJobs.delete(token);
+      return harvestFileOutputs(route, job.sandbox, result);
+    }
+    return result;
+  }
+
+  const sandbox = createSandbox();
+  const staged = stageFileInputs(route, sandbox, inputs);
+  const guest = new WasiGuest(route.module, {
+    '/in': join(sandbox.root, 'in'),
+    '/out': join(sandbox.root, 'out'),
+  });
+  const result = guest.call(name, staged);
+  if (route.job === 'start') {
+    const token = `derjob-eval-${jobSeq++}`;
+    wasiJobs.set(token, { guest, sandbox });
+    result.job = token;
+    return result;
+  }
+  return harvestFileOutputs(route, sandbox, result);
+}
+
 function hostCall(request: KernelRequest): { ok?: unknown; err?: string } {
   try {
     switch (request.operation) {
@@ -70,6 +203,9 @@ function hostCall(request: KernelRequest): { ok?: unknown; err?: string } {
         }
         if (route?.module) {
           const assembled = assembleStructured(payload.inputs, route.structuredPrefixes);
+          if (route.wasi) {
+            return { ok: runWasiOperation(name, route, assembled) };
+          }
           return { ok: runGuestSync(route.module, name, assembled) };
         }
         const def = getOperationDef(name);
@@ -86,6 +222,9 @@ function hostCall(request: KernelRequest): { ok?: unknown; err?: string } {
 
 /** A fresh kernel per scenario keeps sessions and memory isolated. */
 export async function createKernelTransport(): Promise<SessionTransport> {
+  // Job instances and their sandboxes are scenario state.
+  wasiJobs.clear();
+  jobSeq = 1;
   if (!kernelBytes) {
     kernelBytes = readFileSync(KERNEL_PATH);
   }

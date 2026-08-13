@@ -255,7 +255,9 @@ async function runOne(step: BehaviorStep, root: HTMLElement): Promise<void> {
       await waitFor(() => {
         const saved = lastSavedFile();
         if (!saved) {
-          throw new Error('Expected file.save to have run; nothing was saved');
+          throw new Error(
+            `Expected file.save to have run; nothing was saved. Page: ${text().slice(0, 300)}`
+          );
         }
         if (step.match && !matches(saved.name)) {
           throw new Error(

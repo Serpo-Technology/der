@@ -82,7 +82,7 @@
           "description": "Page count"
         }
       ],
-      "howto": "For markdown sources use docs.markdownPdf instead. Route \"base64\" into state and chain file.save with a name ending in .pdf."
+      "howto": "For markdown sources use docs.markdownPdf instead. Route \"base64\" into state and chain file.save with a name ending in .pdf. Suggest a name ending in .pdf to file.save (a constant like \"document.pdf\"), never the source file's own name."
     },
     {
       "name": "docs.markdownPdf",
@@ -113,7 +113,7 @@
           "description": "Page count"
         }
       ],
-      "howto": "The converter chain on one click: file.pick (markdown) routes \"file\" to state, file.read routes \"text\" to state, docs.markdownPdf binds \"markdown\" from that key and routes \"base64\" to state, file.save takes it with a name like \"notes.pdf\". Show \"pages\" in a caption."
+      "howto": "The converter chain on one click: file.pick (markdown) routes \"file\" to state, file.read routes \"text\" to state, docs.markdownPdf binds \"markdown\" from that key and routes \"base64\" to state, file.save takes it with a name like \"notes.pdf\". Show \"pages\" in a caption. Suggest a name ending in .pdf to file.save (a constant like \"document.pdf\"), never the source file's own name."
     },
     {
       "name": "docs.docxText",

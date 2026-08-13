@@ -616,8 +616,14 @@ runtime kernel's wasm build (a fresh kernel per scenario over the session-client
 seam) and renders its resolved trees through the real React presentation under jsdom,
 running the prompt's `behavior` script: steps address controls by fuzzy hints (generated
 ids and labels vary), compute parts execute their actual wasm synchronously inside the
-kernel's host_call, and remote parts return the scenario's `stubs`; the platform stubs
-(dialogs, mail, store) are synchronous cores in `evals/harness/file-stubs.ts`. Behavioral
+kernel's host_call (WASI-importing parts like media run under node:wasi with a per-call
+sandbox and job registry mirroring the desktop host: granted fixtures stage into /in,
+produced /out files come back as harness grants, and file.save resolves them to real
+bytes so magic-prefix expects check genuine output), and remote parts return the
+scenario's `stubs`; the platform stubs
+(dialogs, mail, store) are synchronous cores in `evals/harness/file-stubs.ts`.
+Scenario `file` fixtures may name a committed binary via `path` (the media clips)
+instead of inline text or base64. Behavioral
 runs therefore prove the exact semantics the desktop core ships. The static judge is the
 kernel too: the runner builds its prompt from `capture.promptBase`/`capture.promptSections`
 and scores each response with `capture.judgeComposed` (parse, schema, recipe or manifest

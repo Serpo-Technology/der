@@ -577,6 +577,14 @@
             "optional": true
           },
           {
+            "do": "click",
+            "on": [
+              "read",
+              "load"
+            ],
+            "optional": true
+          },
+          {
             "do": "type",
             "into": [
               "width",
@@ -1824,6 +1832,108 @@
         ]
       },
       "expectRecipe": "apps.webpage_reader"
+    },
+    {
+      "id": "frame-grab",
+      "prompt": "An app to grab a still frame from a video: I pick a video file, type a time in seconds, press a button, see the frame, and can save it as an image",
+      "behavior": {
+        "file": {
+          "name": "clip.mp4",
+          "mime": "video/mp4",
+          "path": "platform/host/tests/fixtures/media/clip.mp4"
+        },
+        "steps": [
+          {
+            "do": "click",
+            "on": [
+              "pick",
+              "choose",
+              "video",
+              "open"
+            ]
+          },
+          {
+            "do": "type",
+            "into": [
+              "time",
+              "second"
+            ],
+            "value": "1",
+            "optional": true
+          },
+          {
+            "do": "click",
+            "on": [
+              "grab",
+              "frame",
+              "capture",
+              "thumbnail"
+            ]
+          },
+          {
+            "expect": "viewer",
+            "match": "/stub:\\/\\/produced/"
+          },
+          {
+            "do": "click",
+            "on": [
+              "save",
+              "keep",
+              "download"
+            ]
+          },
+          {
+            "expect": "fileSaved",
+            "dataPrefix": "/9j/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "wav-converter",
+      "prompt": "convert audio files to WAV with a progress bar",
+      "behavior": {
+        "file": {
+          "name": "tone.mp3",
+          "mime": "audio/mpeg",
+          "path": "platform/host/tests/fixtures/media/tone.mp3"
+        },
+        "steps": [
+          {
+            "do": "click",
+            "on": [
+              "pick",
+              "choose",
+              "audio",
+              "open"
+            ]
+          },
+          {
+            "do": "click",
+            "on": [
+              "convert",
+              "wav",
+              "start"
+            ]
+          },
+          {
+            "expect": "text",
+            "match": "/done|complete|finished|100/i"
+          },
+          {
+            "do": "click",
+            "on": [
+              "save",
+              "keep",
+              "download"
+            ]
+          },
+          {
+            "expect": "fileSaved",
+            "dataPrefix": "UklGR"
+          }
+        ]
+      }
     }
   ]
 }

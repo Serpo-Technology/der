@@ -25,9 +25,25 @@ export function remoteStub(name: string): Record<string, unknown> | undefined {
 
 /** Sync execution surface for the kernel host: precompiled modules for
  * compute operations, a remote flag for stub routing. */
+export interface PartIoSpec {
+  name: string;
+  type?: string;
+}
+
 export const PART_ROUTES = new Map<
   string,
-  { remote: boolean; module?: WebAssembly.Module; structuredPrefixes?: string[] }
+  {
+    remote: boolean;
+    module?: WebAssembly.Module;
+    structuredPrefixes?: string[];
+    /** wasi capability declarations from the manifest; wasi parts run
+     * under node:wasi with a sandbox mirroring the host's. */
+    wasi: boolean;
+    /** "start" | "step" for job-scoped operations. */
+    job?: string;
+    inputs: PartIoSpec[];
+    outputs: PartIoSpec[];
+  }
 >();
 
 /** Raw uiFragments defs by name, the shape the kernel's resolver expands. */
@@ -66,6 +82,10 @@ export function registerRunnableParts(dir: string): void {
         remote: Boolean(op.remote),
         module: op.remote ? undefined : compiled,
         structuredPrefixes: op.structuredPrefixes,
+        wasi: (manifest.capabilities ?? []).some((c: string) => c.startsWith('wasi:')),
+        job: op.job,
+        inputs: op.inputs ?? [],
+        outputs: op.outputs ?? [],
       });
       FRAGMENT_OPERATIONS[op.name] = {
         name: op.name,
