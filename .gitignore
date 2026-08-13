@@ -38,3 +38,4 @@ runtime-core/target/
 runtime-wasm/target/
 !runtime-wasm/dist/
 .claude/
+platform/host/tests/fixtures/*/target/

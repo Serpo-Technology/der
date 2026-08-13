@@ -7,11 +7,26 @@ contract composition) and binds the module by its sha256. The app verifies
 an Ed25519 signature over the verbatim manifest bytes before installing
 anything, and the module's imports are gated by the capabilities its
 manifest declares: by default a part imports nothing and can only compute
-values from its inputs. Declared capabilities widen that in exact steps
-(`wasi:clocks` for the clock, `wasi:random` for system randomness, with
-filesystem and socket grants planned behind the same gate), every grant is
-shown at install review for consent, and the WASI context carries no
-ambient authority: no preopened paths, no environment, no arguments.
+values from its inputs. Declared capabilities widen that in exact steps,
+every grant is shown at install review for consent, and the WASI context
+carries no ambient authority beyond the declared grants:
+
+- `wasi:clocks` reads the clock; `wasi:random` reads system randomness.
+- `wasi:files` gives the call a private sandbox: /in holds exactly the
+  files the user granted through the picker (file-typed inputs carry
+  grant tokens the host stages and rewrites to guest paths), /out starts
+  empty, and a file-typed output naming a /out path comes back as a fresh
+  grant with the same handle shape file.pick produces, so produced files
+  chain into file.save and viewer bindings. Paths never appear in
+  contracts.
+- `net:<host>:<port>` connects that one endpoint for the call and bridges
+  it to the guest's stdio (TLS for remote hosts, plain TCP on loopback),
+  so protocol parts read the stream on stdin and write it on stdout.
+- `io:large` raises the input, memory, and fuel budgets for media work.
+
+Parts doing file or stream work also get a longer wall-clock deadline,
+and wasip1 reactors (std builds) have their `_initialize` called before
+the ABI entry points.
 Operation names live under the manifest's namespace (`date.diffDays` for namespace
 `date`); segments start lowercase and may continue in camelCase, matching
 the builtin vocabulary.

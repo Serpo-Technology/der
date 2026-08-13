@@ -88,6 +88,40 @@ fn asset_url(app: &AppHandle, path: &Path) -> String {
     format!("asset://localhost/{}", encoded)
 }
 
+/// Registers a file a part produced in its /out sandbox: the bytes move
+/// into app-owned storage, the grant table takes them like a picked file,
+/// and the answer carries the same handle shape file.pick produces, so
+/// produced files chain into file.save, file.read, and viewer src
+/// bindings with no new vocabulary.
+pub fn register_exec_output(app: &AppHandle, produced: &Path) -> Result<Value, String> {
+    let name = produced
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "output".to_string());
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("exec_outputs")
+        .join(uuid::Uuid::new_v4().to_string());
+    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    let kept = dir.join(&name);
+    // Same-volume rename first; the sandbox is temp space, so fall back to
+    // a copy when the volumes differ.
+    if std::fs::rename(produced, &kept).is_err() {
+        std::fs::copy(produced, &kept).map_err(|error| error.to_string())?;
+    }
+    let size = std::fs::metadata(&kept).map(|meta| meta.len()).unwrap_or(0);
+    let url = asset_url(app, &kept);
+    let token = app.state::<FileGrants>().grant(kept);
+    Ok(json!({
+        "file": token,
+        "url": url,
+        "name": name,
+        "size": size,
+    }))
+}
+
 pub fn pick_core(app: &AppHandle, kind: &str) -> Result<Value, String> {
     // In native mode the panel is the active app and presents the dialog;
     // a dialog from this background process would open behind the windows

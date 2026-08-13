@@ -77,7 +77,8 @@ impl HostDispatcher {
         let loaded = state
             .load(&dir, &route.fragment_id)
             .map_err(|error| error.message)?;
-        let result = execute_in_module(
+        let result = crate::fragments::execute_with_app_files(
+            &self.app,
             state.engine(),
             &loaded,
             request.operation_name,

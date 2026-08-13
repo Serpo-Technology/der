@@ -40,6 +40,8 @@ const MEM_LIMIT_BYTES_LARGE: usize = 512 << 20;
 const FUEL_BUDGET: u64 = 500_000_000;
 const EPOCH_TICK_MS: u64 = 100;
 const EPOCH_DEADLINE_TICKS: u64 = 20; // roughly two seconds of wall clock
+/// Parts doing real file or stream work get half a minute instead.
+const EPOCH_DEADLINE_TICKS_HEAVY: u64 = 300;
 const MAX_GUEST_ERR_BYTES: usize = 1024;
 const EXEC_PERMITS: usize = 2;
 const EXEC_ACQUIRE_TIMEOUT_MS: u64 = 5000;
@@ -494,7 +496,7 @@ pub fn verify_bundle(raw: &[u8]) -> FragmentResult<VerifiedBundle> {
             return Err(fail(
                 FragmentErrorKind::VerifyFailed,
                 format!(
-                    "Capability \"{}\" is not allowed; integration parts may declare exactly net:<service base URL>, and compute parts io:large, wasi:clocks, or wasi:random",
+                    "Capability \"{}\" is not allowed; integration parts may declare exactly net:<service base URL>, and compute parts io:large, wasi:clocks, wasi:random, wasi:files, or net:<host>:<port>",
                     capability
                 ),
             ));
@@ -726,20 +728,68 @@ const WASI_BASE_IMPORTS: &[&str] = &[
     "fd_prestat_dir_name",
 ];
 
+/// Filesystem imports live behind wasi:files. The real boundary is the
+/// per-call sandbox (a /in staging dir holding exactly the granted files
+/// and a fresh /out); within it the grant is generous, matching what
+/// wasi-libc emits for ordinary file work.
+const WASI_FILES_IMPORTS: &[&str] = &[
+    "path_open",
+    "fd_read",
+    "fd_pread",
+    "fd_pwrite",
+    "fd_tell",
+    "fd_sync",
+    "fd_datasync",
+    "fd_advise",
+    "fd_allocate",
+    "fd_readdir",
+    "fd_filestat_get",
+    "fd_filestat_set_size",
+    "fd_filestat_set_times",
+    "fd_fdstat_set_flags",
+    "path_filestat_get",
+    "path_filestat_set_times",
+    "path_create_directory",
+    "path_unlink_file",
+    "path_rename",
+];
+
+/// A compute-part net capability: `net:<host>:<port>`, one declared
+/// endpoint the host connects for the call and bridges to the guest's
+/// stdio. Distinguished from the integration form by having no scheme.
+fn parse_compute_net(capability: &str) -> Option<(String, u16)> {
+    let rest = capability.strip_prefix("net:")?;
+    if rest.contains("://") {
+        return None;
+    }
+    let (host, port) = rest.rsplit_once(':')?;
+    if host.is_empty() {
+        return None;
+    }
+    port.parse::<u16>().ok().map(|port| (host.to_string(), port))
+}
+
 fn capability_imports(capability: &str) -> Option<&'static [&'static str]> {
     match capability {
         "wasi:clocks" => Some(&["clock_time_get", "clock_res_get"]),
         "wasi:random" => Some(&["random_get"]),
-        _ => None,
+        "wasi:files" => Some(WASI_FILES_IMPORTS),
+        _ => {
+            // The stream bridge needs reads; writes are already in base.
+            parse_compute_net(capability).map(|_| &["fd_read"] as &'static [&'static str])
+        }
     }
 }
 
 /// The capability that would grant an import, for refusal messages.
 fn granting_capability(name: &str) -> Option<&'static str> {
-    for capability in ["wasi:clocks", "wasi:random"] {
+    for capability in ["wasi:clocks", "wasi:random", "wasi:files"] {
         if capability_imports(capability).is_some_and(|list| list.contains(&name)) {
             return Some(capability);
         }
+    }
+    if name == "fd_read" {
+        return Some("wasi:files");
     }
     None
 }
@@ -815,6 +865,155 @@ fn check_abi(module: &Module, capabilities: &[String]) -> FragmentResult<()> {
 // Host state and execution
 // ---------------------------------------------------------------------------
 
+/// How the executor reaches the file grant system: the caller resolves
+/// grant tokens to real paths and takes produced files into app-owned
+/// storage. Tests hand in fakes; hosts without a file layer use `none`.
+pub struct ExecEnv<'a> {
+    pub resolve_grant: &'a dyn Fn(&str) -> Option<PathBuf>,
+    pub register_output: &'a dyn Fn(&Path) -> Result<Value, String>,
+}
+
+impl ExecEnv<'_> {
+    pub fn none() -> ExecEnv<'static> {
+        ExecEnv {
+            resolve_grant: &|_token| None,
+            register_output: &|_path| Err("This host has no file layer".to_string()),
+        }
+    }
+}
+
+/// The per-call filesystem sandbox behind wasi:files: /in holds exactly the
+/// granted input files (hardlinked when possible), /out starts empty and is
+/// harvested after the call. Dropped with the call, so nothing lingers.
+struct FileSandbox {
+    root: PathBuf,
+}
+
+impl FileSandbox {
+    fn create() -> FragmentResult<Self> {
+        let root = std::env::temp_dir().join(format!("der-exec-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(root.join("in"))
+            .and_then(|_| std::fs::create_dir_all(root.join("out")))
+            .map_err(|e| fail(FragmentErrorKind::Io, format!("Sandbox setup failed: {}", e)))?;
+        Ok(Self { root })
+    }
+
+    /// Stages one granted file and answers its guest path.
+    fn stage_input(&self, source: &Path) -> FragmentResult<String> {
+        let name = source
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| "input".to_string());
+        let target = self.root.join("in").join(&name);
+        if std::fs::hard_link(source, &target).is_err() {
+            std::fs::copy(source, &target).map_err(|e| {
+                fail(FragmentErrorKind::Io, format!("Could not stage the file: {}", e))
+            })?;
+        }
+        Ok(format!("/in/{}", name))
+    }
+
+    /// A produced guest path back on the host side, confined to /out.
+    fn produced(&self, guest_path: &str) -> Option<PathBuf> {
+        let rel = guest_path.strip_prefix("/out/")?;
+        if rel.is_empty() || rel.contains("..") {
+            return None;
+        }
+        let real = self.root.join("out").join(rel);
+        real.is_file().then_some(real)
+    }
+}
+
+impl Drop for FileSandbox {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+/// One half of a host-connected stream bridged into the guest's stdio
+/// under a net:<host>:<port> capability. The trait wants repeatable
+/// streams; a socket has one, so the first taker gets it and later takers
+/// see an ended stream.
+struct BridgedIn(Mutex<Option<Box<dyn tokio::io::AsyncRead + Send + Sync + Unpin>>>);
+struct BridgedOut(Mutex<Option<Box<dyn tokio::io::AsyncWrite + Send + Sync + Unpin>>>);
+
+impl wasmtime_wasi::cli::IsTerminal for BridgedIn {
+    fn is_terminal(&self) -> bool {
+        false
+    }
+}
+impl wasmtime_wasi::cli::IsTerminal for BridgedOut {
+    fn is_terminal(&self) -> bool {
+        false
+    }
+}
+
+impl wasmtime_wasi::cli::StdinStream for BridgedIn {
+    fn async_stream(&self) -> Box<dyn tokio::io::AsyncRead + Send + Sync> {
+        match self.0.lock().unwrap().take() {
+            Some(stream) => stream,
+            None => Box::new(tokio::io::empty()),
+        }
+    }
+}
+
+impl wasmtime_wasi::cli::StdoutStream for BridgedOut {
+    fn async_stream(&self) -> Box<dyn tokio::io::AsyncWrite + Send + Sync> {
+        match self.0.lock().unwrap().take() {
+            Some(stream) => stream,
+            None => Box::new(tokio::io::sink()),
+        }
+    }
+}
+
+/// Connects the declared endpoint for a net-capable call: TLS for remote
+/// hosts, plain TCP on loopback (local services rarely speak TLS and local
+/// trust is different). The stream's halves become the guest's stdio.
+fn connect_bridge(host: &str, port: u16) -> FragmentResult<(BridgedIn, BridgedOut)> {
+    use tokio::io::split;
+    use tokio::net::TcpStream;
+
+    let is_loopback = matches!(host, "localhost" | "127.0.0.1" | "::1");
+    let target = format!("{}:{}", host, port);
+    let connect = async {
+        let tcp = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            TcpStream::connect(&target),
+        )
+        .await
+        .map_err(|_| format!("Connecting to {} timed out", target))?
+        .map_err(|e| format!("Could not connect to {}: {}", target, e))?;
+        if is_loopback {
+            let (read, write) = split(tcp);
+            let read: Box<dyn tokio::io::AsyncRead + Send + Sync + Unpin> = Box::new(read);
+            let write: Box<dyn tokio::io::AsyncWrite + Send + Sync + Unpin> = Box::new(write);
+            return Ok::<_, String>((read, write));
+        }
+        let roots = tokio_rustls::rustls::RootCertStore {
+            roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+        };
+        let config = tokio_rustls::rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        let server_name = tokio_rustls::rustls::pki_types::ServerName::try_from(host.to_string())
+            .map_err(|_| format!("{} is not a valid TLS host name", host))?;
+        let tls = tokio_rustls::TlsConnector::from(Arc::new(config))
+            .connect(server_name, tcp)
+            .await
+            .map_err(|e| format!("TLS to {} failed: {}", target, e))?;
+        let (read, write) = split(tls);
+        let read: Box<dyn tokio::io::AsyncRead + Send + Sync + Unpin> = Box::new(read);
+        let write: Box<dyn tokio::io::AsyncWrite + Send + Sync + Unpin> = Box::new(write);
+        Ok((read, write))
+    };
+    let (read, write) = wasmtime_wasi::runtime::in_tokio(connect)
+        .map_err(|message| fail(FragmentErrorKind::Io, message))?;
+    Ok((
+        BridgedIn(Mutex::new(Some(read))),
+        BridgedOut(Mutex::new(Some(write))),
+    ))
+}
+
 struct StoreData {
     grow_denied: bool,
     mem_limit: usize,
@@ -849,6 +1048,14 @@ pub struct LoadedFragment {
     pub manifest: Manifest,
     module: Module,
     bundle_sha256: String,
+}
+
+impl LoadedFragment {
+    /// Test constructor: a manifest and compiled module with no bundle
+    /// behind them.
+    pub fn for_tests(manifest: Manifest, module: Module) -> Self {
+        Self { manifest, module, bundle_sha256: "test".to_string() }
+    }
 }
 
 struct StagedBundle {
@@ -980,6 +1187,16 @@ pub fn execute_in_module(
     operation: &str,
     inputs: &Value,
 ) -> FragmentResult<Value> {
+    execute_in_module_with(engine, loaded, operation, inputs, &ExecEnv::none())
+}
+
+pub fn execute_in_module_with(
+    engine: &Engine,
+    loaded: &LoadedFragment,
+    operation: &str,
+    inputs: &Value,
+    exec_env: &ExecEnv<'_>,
+) -> FragmentResult<Value> {
     if !loaded.manifest.operations.iter().any(|op| op.name == operation) {
         return Err(fail(
             FragmentErrorKind::OperationNotFound,
@@ -987,7 +1204,43 @@ pub fn execute_in_module(
         ));
     }
 
-    let envelope = serde_json::json!({ "operation": operation, "inputs": inputs });
+    let capabilities = &loaded.manifest.capabilities;
+    let wants_files = capabilities.iter().any(|c| c == "wasi:files");
+    let net_endpoint = capabilities.iter().find_map(|c| parse_compute_net(c));
+    let op_spec = loaded
+        .manifest
+        .operations
+        .iter()
+        .find(|op| op.name == operation);
+
+    let sandbox = if wants_files {
+        Some(FileSandbox::create()?)
+    } else {
+        None
+    };
+    let mut staged_inputs = inputs.clone();
+    if let (Some(sandbox), Some(spec)) = (&sandbox, op_spec) {
+        for input in &spec.inputs {
+            if input.io_type != "file" {
+                continue;
+            }
+            let Some(object) = staged_inputs.as_object_mut() else { break };
+            let Some(Value::String(token)) = object.get(&input.name) else { continue };
+            let Some(real) = (exec_env.resolve_grant)(token) else {
+                return Err(fail(
+                    FragmentErrorKind::BadOutput,
+                    format!(
+                        "\"{}\" needs a picked file; run file.pick first",
+                        input.name
+                    ),
+                ));
+            };
+            let guest_path = sandbox.stage_input(&real)?;
+            object.insert(input.name.clone(), Value::String(guest_path));
+        }
+    }
+
+    let envelope = serde_json::json!({ "operation": operation, "inputs": staged_inputs });
     let request = serde_json::to_vec(&envelope)
         .map_err(|e| fail(FragmentErrorKind::Io, e.to_string()))?;
     // Parts that declared io:large at install (and were consented to in the
@@ -1002,6 +1255,13 @@ pub fn execute_in_module(
     } else {
         (MAX_INPUT_BYTES, "1 MiB", MEM_LIMIT_BYTES, FUEL_BUDGET)
     };
+    // Streaming a real file or speaking a protocol round trip needs wall
+    // clock the compute-only deadline never allowed for.
+    let deadline_ticks = if large_io || wants_files || net_endpoint.is_some() {
+        EPOCH_DEADLINE_TICKS_HEAVY
+    } else {
+        EPOCH_DEADLINE_TICKS
+    };
     if request.len() > input_cap {
         return Err(fail(
             FragmentErrorKind::InputTooLarge,
@@ -1014,13 +1274,33 @@ pub fn execute_in_module(
     // and nothing ambient. The verifier already bounded the import section
     // at install and load, so linking the full p1 surface grants nothing
     // the module cannot name.
-    let wasi = WasiCtxBuilder::new().build_p1();
+    let mut builder = WasiCtxBuilder::new();
+    if let Some(sandbox) = &sandbox {
+        use wasmtime_wasi::{DirPerms, FilePerms};
+        builder
+            .preopened_dir(sandbox.root.join("in"), "/in", DirPerms::READ, FilePerms::READ)
+            .and_then(|b| {
+                b.preopened_dir(
+                    sandbox.root.join("out"),
+                    "/out",
+                    DirPerms::all(),
+                    FilePerms::all(),
+                )
+            })
+            .map_err(|e| fail(FragmentErrorKind::Io, format!("Sandbox preopen failed: {}", e)))?;
+    }
+    if let Some((host, port)) = &net_endpoint {
+        let (bridged_in, bridged_out) = connect_bridge(host, *port)?;
+        builder.stdin(bridged_in);
+        builder.stdout(bridged_out);
+    }
+    let wasi = builder.build_p1();
     let mut store = Store::new(engine, StoreData { grow_denied: false, mem_limit, wasi });
     store.limiter(|data| data);
     store
         .set_fuel(fuel)
         .map_err(|e| fail(FragmentErrorKind::Io, e.to_string()))?;
-    store.set_epoch_deadline(EPOCH_DEADLINE_TICKS);
+    store.set_epoch_deadline(deadline_ticks);
 
     let mut linker: Linker<StoreData> = Linker::new(engine);
     wasi_p1::add_to_linker_sync(&mut linker, |data| &mut data.wasi)
@@ -1028,6 +1308,11 @@ pub fn execute_in_module(
     let instance = linker
         .instantiate(&mut store, &loaded.module)
         .map_err(|e| map_wasm_error(e, store.data()))?;
+    if let Ok(initialize) = instance.get_typed_func::<(), ()>(&mut store, "_initialize") {
+        initialize
+            .call(&mut store, ())
+            .map_err(|e| map_wasm_error(e, store.data()))?;
+    }
     let memory = instance
         .get_memory(&mut store, "memory")
         .ok_or_else(|| fail(FragmentErrorKind::AbiMismatch, "Part exports no memory"))?;
@@ -1085,10 +1370,50 @@ pub fn execute_in_module(
         message.truncate(MAX_GUEST_ERR_BYTES);
         return Err(fail(FragmentErrorKind::GuestError, message));
     }
-    match parsed.get("ok") {
-        Some(ok) if ok.is_object() => Ok(ok.clone()),
-        _ => Err(fail(FragmentErrorKind::BadOutput, "Part result must be {\"ok\": {...}} or {\"err\": \"...\"}")),
+    let mut result = match parsed.get("ok") {
+        Some(ok) if ok.is_object() => ok.clone(),
+        _ => {
+            return Err(fail(
+                FragmentErrorKind::BadOutput,
+                "Part result must be {\"ok\": {...}} or {\"err\": \"...\"}",
+            ))
+        }
+    };
+
+    // Produced files come home: a file-typed output holding a /out guest
+    // path becomes a fresh grant with the same handle shape file.pick
+    // produces, and declared url/name/size sibling outputs fill from it.
+    if let (Some(sandbox), Some(spec)) = (&sandbox, op_spec) {
+        for output in &spec.outputs {
+            if output.io_type != "file" {
+                continue;
+            }
+            let Some(object) = result.as_object_mut() else { break };
+            let Some(Value::String(guest_path)) = object.get(&output.name) else { continue };
+            let Some(real) = sandbox.produced(guest_path) else {
+                return Err(fail(
+                    FragmentErrorKind::BadOutput,
+                    format!(
+                        "Output \"{}\" names {}, which the part did not write under /out",
+                        output.name, guest_path
+                    ),
+                ));
+            };
+            let registered = (exec_env.register_output)(&real)
+                .map_err(|message| fail(FragmentErrorKind::Io, message))?;
+            let declared: Vec<&str> = spec.outputs.iter().map(|o| o.name.as_str()).collect();
+            let token = registered.get("file").cloned().unwrap_or(Value::Null);
+            object.insert(output.name.clone(), token);
+            for sibling in ["url", "name", "size"] {
+                if declared.contains(&sibling) && !object.contains_key(sibling) {
+                    if let Some(value) = registered.get(sibling) {
+                        object.insert(sibling.to_string(), value.clone());
+                    }
+                }
+            }
+        }
     }
+    Ok(result)
 }
 
 // ---------------------------------------------------------------------------
@@ -1427,6 +1752,30 @@ pub async fn list_fragments(app: tauri::AppHandle) -> Result<Vec<Value>, Fragmen
     Ok(list_core(&fragments_dir(&app)?))
 }
 
+/// Runs a loaded part with the app's file layer attached: grant tokens
+/// resolve through the picker's table and produced files register as new
+/// grants.
+pub fn execute_with_app_files(
+    app: &tauri::AppHandle,
+    engine: &Engine,
+    loaded: &LoadedFragment,
+    operation: &str,
+    inputs: &Value,
+) -> FragmentResult<Value> {
+    let grants = app.state::<crate::files::FileGrants>();
+    let resolve = |token: &str| grants.path_of(token);
+    let app_for_register = app.clone();
+    let register =
+        move |path: &Path| crate::files::register_exec_output(&app_for_register, path);
+    execute_in_module_with(
+        engine,
+        loaded,
+        operation,
+        inputs,
+        &ExecEnv { resolve_grant: &resolve, register_output: &register },
+    )
+}
+
 #[tauri::command]
 pub async fn execute_fragment(
     app: tauri::AppHandle,
@@ -1457,10 +1806,11 @@ pub async fn execute_fragment(
 
     let engine = state.engine.clone();
     let loaded = state.load(&dir, &fragment_id);
+    let exec_app = app.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let _permit = permit;
         let loaded = loaded?;
-        execute_in_module(&engine, &loaded, &operation, &inputs)
+        execute_with_app_files(&exec_app, &engine, &loaded, &operation, &inputs)
     })
     .await
     .map_err(|e| fail(FragmentErrorKind::Io, format!("Execution task failed: {}", e)))?;

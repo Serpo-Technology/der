@@ -286,9 +286,15 @@ part's recipes with an Open button (unavailable ones disabled with the validatio
 and the install review lists them under Apps. A `.derpart` bundle (verbatim-signed manifest + base64 wasm;
 Ed25519 over `DERPART-SIG-V1\0 || manifest bytes`; wasm bound by `wasmSha256` in the manifest)
 is verified and executed by the hardened wasmtime host in `platform/host/src/fragments.rs` (imports
-gated by declared, install-consented capabilities, zero by default; wasi:clocks and
-wasi:random exist today and execution links WASI with no ambient authority; fuel +
-epoch deadline + memory limiter, fresh instance per call,
+gated by declared, install-consented capabilities, zero by default. wasi:clocks and
+wasi:random read the host; wasi:files gives each call a private /in staging dir holding
+exactly the granted files (file-typed inputs carry pick tokens the host rewrites to
+guest paths) plus an empty /out whose file-typed outputs come back as fresh grants in
+file.pick's handle shape; net:<host>:<port> bridges one declared endpoint to the
+guest's stdio, TLS for remote hosts and plain on loopback. File or stream work gets a
+longer epoch deadline, wasip1 reactors get _initialize called, and the fixture-driven
+fragments_wasi_capabilities suite proves grant-in/grant-out and the socket round trip.
+Fuel + epoch deadline + memory limiter, fresh instance per call,
 `der_alloc`/`der_run` JSON ABI). The compiled-module session cache revalidates against the
 bundle bytes on disk, so an updated file swaps the guest without eviction choreography.
 Operation names are namespaced with camelCase segments allowed (`date.diffDays` matches the
