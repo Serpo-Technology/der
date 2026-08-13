@@ -162,6 +162,35 @@ struct PackOp {
     path: String,
 }
 
+/// Chains from an expanded fragment subtree: every node's bindings group
+/// by event in order, under the node's instance-scoped id.
+fn collect_expanded_chains(node: &Value, checker: &mut Checker<'_>) {
+    if let Some(map) = node.as_object() {
+        let node_id = map.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+        if let Some(Value::Array(bindings)) = map.get("eventBindings") {
+            let mut by_event: Vec<(String, Vec<String>)> = Vec::new();
+            for binding in bindings {
+                let event = as_str(binding, "event").to_string();
+                let operation_id = as_str(binding, "operationId").to_string();
+                match by_event.iter_mut().find(|(name, _)| *name == event) {
+                    Some((_, ids)) => ids.push(operation_id),
+                    None => by_event.push((event, vec![operation_id])),
+                }
+            }
+            for (_event, ids) in by_event {
+                if !ids.is_empty() {
+                    checker.event_chains.push((node_id.clone(), ids));
+                }
+            }
+        }
+        if let Some(Value::Array(children)) = map.get("children") {
+            for child in children {
+                collect_expanded_chains(child, checker);
+            }
+        }
+    }
+}
+
 struct Checker<'a> {
     fragment_defs: &'a Map<String, Value>,
     part_operations: &'a Map<String, Value>,
@@ -1456,17 +1485,35 @@ fn walk_elements(
         }
 
         {
-            let mut by_event: Vec<(String, Vec<String>)> = Vec::new();
-            for binding in &event_bindings {
-                let event = as_str(binding, "event").to_string();
-                let operation_id = as_str(binding, "operationId").to_string();
-                match by_event.iter_mut().find(|(name, _)| *name == event) {
-                    Some((_, ids)) => ids.push(operation_id),
-                    None => by_event.push((event, vec![operation_id])),
+            // Fragment instances wire through their template: the expansion
+            // (outer bindings merged after the template's own operations)
+            // is where the real chains live, so rules over chains see what
+            // the runtime runs, never the compact instance's surface.
+            let expanded_chains = checker
+                .fragment_defs
+                .get(&element_type)
+                .and_then(Value::as_object)
+                .cloned()
+                .and_then(|def| {
+                    element
+                        .as_object()
+                        .and_then(|map| crate::templates::expand_ui_fragment(map, &def).ok())
+                });
+            if let Some(expanded) = expanded_chains {
+                collect_expanded_chains(&expanded, checker);
+            } else {
+                let mut by_event: Vec<(String, Vec<String>)> = Vec::new();
+                for binding in &event_bindings {
+                    let event = as_str(binding, "event").to_string();
+                    let operation_id = as_str(binding, "operationId").to_string();
+                    match by_event.iter_mut().find(|(name, _)| *name == event) {
+                        Some((_, ids)) => ids.push(operation_id),
+                        None => by_event.push((event, vec![operation_id])),
+                    }
                 }
-            }
-            for (_event, ids) in by_event {
-                checker.event_chains.push((id.clone(), ids));
+                for (_event, ids) in by_event {
+                    checker.event_chains.push((id.clone(), ids));
+                }
             }
         }
         for (binding_index, binding) in event_bindings.iter().enumerate() {

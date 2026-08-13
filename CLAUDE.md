@@ -275,7 +275,12 @@ views resolve (the kernel's `templates` module; `src/services/fragments/ui-fragm
 keeps the TS expansion the models layer uses for id collection): instantiated operations
 join the lookup, and the checker validates them through every existing rule on fresh copies
 (pack paths name the instance), while the stored contract keeps only the compact instance
-element. Pack operations compose the installed vocabulary by
+element. Event bindings on the instance element join the expansion: for each event they
+append AFTER the template's own operations on every template node triggering that event
+(events no template node carries land on the expanded root), so "when this fragment acts,
+also run X" composes with no knowledge of the template's internals, both faces agree by
+construction, and chain rules (the store staleness family) see the merged chain; the
+checker collects fragment chains from the expansion, never the compact surface. Pack operations compose the installed vocabulary by
 name only; the verifier rejects an `implementation` on them, and the expansion strips one
 defensively. The catalog marks such fragments self-wired and derives their state keys so
 outer bindings can read them. Recipes publish into `FRAGMENT_RECIPES`;

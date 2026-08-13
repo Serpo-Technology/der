@@ -1041,6 +1041,17 @@ interface TemplateCase {
 
 const TEMPLATE_CASES: TemplateCase[] = [
   {
+    name: 'instance event bindings append after the template trigger',
+    kind: 'fragment',
+    def: ENTRY_ROW_DEF,
+    instance: {
+      id: 'note-entry',
+      type: 'basics.entry_row',
+      properties: { label: 'Note', operationId: 'op-put' },
+      eventBindings: [{ event: 'click', operationId: 'op-query' }],
+    },
+  },
+  {
     name: 'entry row expands with defaults, params, and id scoping',
     kind: 'fragment',
     def: ENTRY_ROW_DEF,
@@ -1517,6 +1528,7 @@ const STORE_PUT = {
   outputs: [],
 };
 
+
 const STORE_QUERY = {
   id: 'op-query',
   operationName: 'store.query',
@@ -1524,7 +1536,58 @@ const STORE_QUERY = {
   outputs: [{ name: 'items', target: 'state', targetId: 'notes' }],
 };
 
+const FRAGMENT_STORE_PUT = {
+  id: 'op-put',
+  operationName: 'store.put',
+  inputs: [
+    { name: 'collection', source: 'constant', sourceId: 'notes' },
+    { name: 'record.text', source: 'ui-element', sourceId: 'note-entry-input' },
+  ],
+  outputs: [],
+};
+
+const STALE_FRAGMENT_ELEMENTS = [
+  {
+    id: 'note-entry',
+    type: 'basics.entry_row',
+    properties: { label: 'Note', operationId: 'op-put' },
+  },
+  {
+    id: 'search-btn',
+    type: 'button',
+    properties: { text: 'Search' },
+    eventBindings: [{ event: 'click', operationId: 'op-query' }],
+  },
+  NOTES_LIST,
+];
+
 const VALIDATION_CASES: ValidationCase[] = [
+  {
+    name: 'a fragment-wired put with no chained query is stale',
+    contract: {
+      name: 'fragment-stale',
+      elements: STALE_FRAGMENT_ELEMENTS,
+      operations: [FRAGMENT_STORE_PUT, STORE_QUERY],
+    },
+    fragmentDefs: { 'basics.entry_row': ENTRY_ROW_DEF },
+  },
+  {
+    name: 'a fragment instance binding chains the query after its template operation',
+    contract: {
+      name: 'fragment-fresh',
+      elements: [
+        {
+          id: 'note-entry',
+          type: 'basics.entry_row',
+          properties: { label: 'Note', operationId: 'op-put' },
+          eventBindings: [{ event: 'click', operationId: 'op-query' }],
+        },
+        NOTES_LIST,
+      ],
+      operations: [FRAGMENT_STORE_PUT, STORE_QUERY],
+    },
+    fragmentDefs: { 'basics.entry_row': ENTRY_ROW_DEF },
+  },
   {
     name: 'a put chaining the displaying query passes',
     contract: {

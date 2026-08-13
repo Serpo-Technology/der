@@ -3,7 +3,7 @@
   "abiVersion": 1,
   "id": "der-labs.ui-basics",
   "name": "UI Basics",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "publisher": "der-labs",
   "description": "Composed UI patterns: an entry row, a stat tile, and a self-wired stopwatch.",
   "namespace": "basics",
@@ -15,7 +15,7 @@
     {
       "name": "basics.entry_row",
       "description": "A labeled input beside a primary button, bottom-aligned.",
-      "howto": "The input renders with id \"<instance id>-input\"; operations read it with {\"source\": \"ui-element\", \"sourceId\": \"<instance id>-input\"} and can reset it by targeting the same id. Pass the click operation via the operationId parameter.",
+      "howto": "The input renders with id \"<instance id>-input\"; operations read it with {\"source\": \"ui-element\", \"sourceId\": \"<instance id>-input\"} and can reset it by targeting the same id. Pass the click operation via the operationId parameter. Click bindings on the instance element run AFTER the configured operation on the same press, so chain a follow-up (a store.query refreshing the list) by binding it there.",
       "params": [
         {
           "name": "label",

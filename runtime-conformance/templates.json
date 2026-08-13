@@ -2,6 +2,125 @@
   "formatVersion": 1,
   "templates": [
     {
+      "name": "instance event bindings append after the template trigger",
+      "kind": "fragment",
+      "def": {
+        "name": "basics.entry_row",
+        "description": "entry row",
+        "params": [
+          {
+            "name": "label",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "placeholder",
+            "type": "string",
+            "default": ""
+          },
+          {
+            "name": "buttonText",
+            "type": "string",
+            "default": "Add"
+          },
+          {
+            "name": "operationId",
+            "type": "operationId",
+            "required": true
+          }
+        ],
+        "template": {
+          "id": "{{id}}-row",
+          "type": "container",
+          "properties": {
+            "direction": "row",
+            "gap": "8",
+            "align": "end"
+          },
+          "children": [
+            {
+              "id": "{{id}}-input",
+              "type": "input",
+              "properties": {
+                "label": "{{label}}",
+                "placeholder": "{{placeholder}}"
+              }
+            },
+            {
+              "id": "{{id}}-btn",
+              "type": "button",
+              "properties": {
+                "text": "{{buttonText}}",
+                "variant": "primary"
+              },
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "{{operationId}}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "instance": {
+        "id": "note-entry",
+        "type": "basics.entry_row",
+        "properties": {
+          "label": "Note",
+          "operationId": "op-put"
+        },
+        "eventBindings": [
+          {
+            "event": "click",
+            "operationId": "op-query"
+          }
+        ]
+      },
+      "expected": {
+        "id": "note-entry-row",
+        "type": "container",
+        "properties": {
+          "direction": "row",
+          "gap": "8",
+          "align": "end"
+        },
+        "children": [
+          {
+            "id": "note-entry-input",
+            "type": "input",
+            "properties": {
+              "label": "Note",
+              "placeholder": ""
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "note-entry-btn",
+            "type": "button",
+            "properties": {
+              "text": "Add",
+              "variant": "primary"
+            },
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-put"
+              },
+              {
+                "event": "click",
+                "operationId": "op-query"
+              }
+            ],
+            "dataBindings": []
+          }
+        ],
+        "dataBindings": [],
+        "eventBindings": []
+      }
+    },
+    {
       "name": "entry row expands with defaults, params, and id scoping",
       "kind": "fragment",
       "def": {

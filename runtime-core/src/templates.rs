@@ -136,7 +136,62 @@ pub fn expand_ui_fragment(
             map.insert("visibleWhen".to_string(), gate.clone());
         }
     }
+    if let Some(Value::Array(outer)) = element.get("eventBindings") {
+        if !outer.is_empty() {
+            merge_outer_bindings(&mut expanded, outer);
+        }
+    }
     Ok(expanded)
+}
+
+/// The instance's own event bindings join the expansion: for each event,
+/// they append AFTER the template's operations on every template node that
+/// triggers that event, so "when this fragment's action runs, also run X"
+/// composes with no outer wiring knowledge of the template. An event no
+/// template node triggers lands on the expanded root instead.
+fn merge_outer_bindings(expanded: &mut Value, outer: &[Value]) {
+    let mut leftovers: Vec<Value> = Vec::new();
+    for binding in outer {
+        let event = binding.get("event").and_then(Value::as_str).unwrap_or("");
+        if event.is_empty() || !append_to_carriers(expanded, event, binding) {
+            leftovers.push(binding.clone());
+        }
+    }
+    if leftovers.is_empty() {
+        return;
+    }
+    if let Some(map) = expanded.as_object_mut() {
+        let bindings = map
+            .entry("eventBindings".to_string())
+            .or_insert_with(|| Value::Array(Vec::new()));
+        if let Value::Array(list) = bindings {
+            list.extend(leftovers);
+        }
+    }
+}
+
+/// Appends the binding to every node whose own bindings already carry the
+/// event; answers whether any carrier existed.
+fn append_to_carriers(node: &mut Value, event: &str, binding: &Value) -> bool {
+    let Some(map) = node.as_object_mut() else { return false };
+    let mut found = false;
+    if let Some(Value::Array(bindings)) = map.get_mut("eventBindings") {
+        let carries = bindings
+            .iter()
+            .any(|existing| existing.get("event").and_then(Value::as_str) == Some(event));
+        if carries {
+            bindings.push(binding.clone());
+            found = true;
+        }
+    }
+    if let Some(Value::Array(children)) = map.get_mut("children") {
+        for child in children {
+            if append_to_carriers(child, event, binding) {
+                found = true;
+            }
+        }
+    }
+    found
 }
 
 /// A pack's operation templates become concrete bindings for one instance;

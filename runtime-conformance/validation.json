@@ -2,6 +2,558 @@
   "formatVersion": 1,
   "validation": [
     {
+      "name": "a fragment-wired put with no chained query is stale",
+      "contract": {
+        "name": "fragment-stale",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "note-entry",
+            "type": "basics.entry_row",
+            "properties": {
+              "label": "Note",
+              "operationId": "op-put"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "search-btn",
+            "type": "button",
+            "properties": {
+              "text": "Search"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-query"
+              }
+            ]
+          },
+          {
+            "id": "notes-list",
+            "type": "list",
+            "properties": {
+              "emptyText": "No notes yet"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "notes"
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "note-row",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "text"
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-put",
+            "operationName": "store.put",
+            "inputs": [
+              {
+                "name": "collection",
+                "source": "constant",
+                "sourceId": "notes"
+              },
+              {
+                "name": "record.text",
+                "source": "ui-element",
+                "sourceId": "note-entry-input"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-query",
+            "operationName": "store.query",
+            "inputs": [
+              {
+                "name": "collection",
+                "source": "constant",
+                "sourceId": "notes"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "items",
+                "target": "state",
+                "targetId": "notes"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {
+        "basics.entry_row": {
+          "name": "basics.entry_row",
+          "description": "entry row",
+          "params": [
+            {
+              "name": "label",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "placeholder",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "name": "buttonText",
+              "type": "string",
+              "default": "Add"
+            },
+            {
+              "name": "operationId",
+              "type": "operationId",
+              "required": true
+            }
+          ],
+          "template": {
+            "id": "{{id}}-row",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8",
+              "align": "end"
+            },
+            "children": [
+              {
+                "id": "{{id}}-input",
+                "type": "input",
+                "properties": {
+                  "label": "{{label}}",
+                  "placeholder": "{{placeholder}}"
+                }
+              },
+              {
+                "id": "{{id}}-btn",
+                "type": "button",
+                "properties": {
+                  "text": "{{buttonText}}",
+                  "variant": "primary"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "{{operationId}}"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "partOperations": {},
+      "credentials": [],
+      "expected": {
+        "errors": [
+          {
+            "path": "operations.0",
+            "message": "store.put fills \"notes\" but the \"note-entry-btn\" trigger never re-runs the store.query that displays it; chain that query after the put on the same event",
+            "code": "STORE_STALE_DISPLAY"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "fragment-stale",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "note-entry",
+              "type": "basics.entry_row",
+              "properties": {
+                "label": "Note",
+                "operationId": "op-put"
+              },
+              "dataBindings": [],
+              "eventBindings": []
+            },
+            {
+              "id": "search-btn",
+              "type": "button",
+              "properties": {
+                "text": "Search"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-query"
+                }
+              ]
+            },
+            {
+              "id": "notes-list",
+              "type": "list",
+              "properties": {
+                "emptyText": "No notes yet"
+              },
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "notes"
+                }
+              ],
+              "eventBindings": [],
+              "children": [
+                {
+                  "id": "note-row",
+                  "type": "text",
+                  "properties": {},
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "text"
+                    }
+                  ],
+                  "eventBindings": []
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-put",
+              "operationName": "store.put",
+              "inputs": [
+                {
+                  "name": "collection",
+                  "source": "constant",
+                  "sourceId": "notes"
+                },
+                {
+                  "name": "record.text",
+                  "source": "ui-element",
+                  "sourceId": "note-entry-input"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            },
+            {
+              "id": "op-query",
+              "operationName": "store.query",
+              "inputs": [
+                {
+                  "name": "collection",
+                  "source": "constant",
+                  "sourceId": "notes"
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "items",
+                  "target": "state",
+                  "targetId": "notes"
+                }
+              ],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "a fragment instance binding chains the query after its template operation",
+      "contract": {
+        "name": "fragment-fresh",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "note-entry",
+            "type": "basics.entry_row",
+            "properties": {
+              "label": "Note",
+              "operationId": "op-put"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-query"
+              }
+            ]
+          },
+          {
+            "id": "notes-list",
+            "type": "list",
+            "properties": {
+              "emptyText": "No notes yet"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "notes"
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "note-row",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "text"
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-put",
+            "operationName": "store.put",
+            "inputs": [
+              {
+                "name": "collection",
+                "source": "constant",
+                "sourceId": "notes"
+              },
+              {
+                "name": "record.text",
+                "source": "ui-element",
+                "sourceId": "note-entry-input"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-query",
+            "operationName": "store.query",
+            "inputs": [
+              {
+                "name": "collection",
+                "source": "constant",
+                "sourceId": "notes"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "items",
+                "target": "state",
+                "targetId": "notes"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {
+        "basics.entry_row": {
+          "name": "basics.entry_row",
+          "description": "entry row",
+          "params": [
+            {
+              "name": "label",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "placeholder",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "name": "buttonText",
+              "type": "string",
+              "default": "Add"
+            },
+            {
+              "name": "operationId",
+              "type": "operationId",
+              "required": true
+            }
+          ],
+          "template": {
+            "id": "{{id}}-row",
+            "type": "container",
+            "properties": {
+              "direction": "row",
+              "gap": "8",
+              "align": "end"
+            },
+            "children": [
+              {
+                "id": "{{id}}-input",
+                "type": "input",
+                "properties": {
+                  "label": "{{label}}",
+                  "placeholder": "{{placeholder}}"
+                }
+              },
+              {
+                "id": "{{id}}-btn",
+                "type": "button",
+                "properties": {
+                  "text": "{{buttonText}}",
+                  "variant": "primary"
+                },
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "{{operationId}}"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "partOperations": {},
+      "credentials": [],
+      "expected": {
+        "errors": [],
+        "warnings": [],
+        "mutated": {
+          "name": "fragment-fresh",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "note-entry",
+              "type": "basics.entry_row",
+              "properties": {
+                "label": "Note",
+                "operationId": "op-put"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-query"
+                }
+              ]
+            },
+            {
+              "id": "notes-list",
+              "type": "list",
+              "properties": {
+                "emptyText": "No notes yet"
+              },
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "notes"
+                }
+              ],
+              "eventBindings": [],
+              "children": [
+                {
+                  "id": "note-row",
+                  "type": "text",
+                  "properties": {},
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "text"
+                    }
+                  ],
+                  "eventBindings": []
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-put",
+              "operationName": "store.put",
+              "inputs": [
+                {
+                  "name": "collection",
+                  "source": "constant",
+                  "sourceId": "notes"
+                },
+                {
+                  "name": "record.text",
+                  "source": "ui-element",
+                  "sourceId": "note-entry-input"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            },
+            {
+              "id": "op-query",
+              "operationName": "store.query",
+              "inputs": [
+                {
+                  "name": "collection",
+                  "source": "constant",
+                  "sourceId": "notes"
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "items",
+                  "target": "state",
+                  "targetId": "notes"
+                }
+              ],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
       "name": "a put chaining the displaying query passes",
       "contract": {
         "name": "notes-fresh",
