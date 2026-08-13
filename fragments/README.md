@@ -5,16 +5,20 @@ together as a single `.derpart` file. The manifest describes the operations
 the module provides (names, inputs, outputs, howto lines, and examples for
 contract composition) and binds the module by its sha256. The app verifies
 an Ed25519 signature over the verbatim manifest bytes before installing
-anything, and the module itself may import nothing from the host: a v1 part
-can compute values from its inputs and can do nothing else. It has no
-access to the network, the file system, or any host function. Operation
-names live under the manifest's namespace (`date.diffDays` for namespace
+anything, and the module's imports are gated by the capabilities its
+manifest declares: by default a part imports nothing and can only compute
+values from its inputs. Declared capabilities widen that in exact steps
+(`wasi:clocks` for the clock, `wasi:random` for system randomness, with
+filesystem and socket grants planned behind the same gate), every grant is
+shown at install review for consent, and the WASI context carries no
+ambient authority: no preopened paths, no environment, no arguments.
+Operation names live under the manifest's namespace (`date.diffDays` for namespace
 `date`); segments start lowercase and may continue in camelCase, matching
 the builtin vocabulary.
 
 ## The ABI is language-agnostic
 
-A part is any wasm module with an empty import section exporting `memory`,
+A part is any wasm module exporting `memory`,
 `der_alloc(i32)->i32`, and `der_run(i32,i32)->i64`, answering the JSON
 envelope (`{"operation", "inputs"}` in, `{"ok": ...}` or `{"err": ...}`
 packed as `(ptr << 32) | len` out). The toolchain does not matter: `qr/` is

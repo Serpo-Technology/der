@@ -224,7 +224,8 @@ every row from that row's own fields, so row templates read it like any field an
 deriveField then sum; validation parses every expression and checks its identifiers against
 the fields the list's append actually writes, with fields derived mid-pipeline visible to
 later steps.
-Builtins also include `random.int`/`random.pick` (randomness cannot live in zero-import wasm).
+Builtins also include `random.int`/`random.pick` (born when parts had no import grants;
+kept because scripted-entropy vectors and part-free contracts both want them).
 Warnings are cosmetic normalizations only (knob defaults, deduped inputs, seeded state keys);
 the edit bar shows them grouped apart from spec assumptions and open questions. The `local`
 execution type is sunset: sessions refuse `implementation.code` with a clear message, so
@@ -281,8 +282,10 @@ opens the result exactly like a generated app with no model call. The Parts view
 part's recipes with an Open button (unavailable ones disabled with the validation problems)
 and the install review lists them under Apps. A `.derpart` bundle (verbatim-signed manifest + base64 wasm;
 Ed25519 over `DERPART-SIG-V1\0 || manifest bytes`; wasm bound by `wasmSha256` in the manifest)
-is verified and executed by the hardened wasmtime host in `src-tauri/src/fragments.rs` (zero
-imports allowed, fuel + epoch deadline + memory limiter, fresh instance per call,
+is verified and executed by the hardened wasmtime host in `src-tauri/src/fragments.rs` (imports
+gated by declared, install-consented capabilities, zero by default; wasi:clocks and
+wasi:random exist today and execution links WASI with no ambient authority; fuel +
+epoch deadline + memory limiter, fresh instance per call,
 `der_alloc`/`der_run` JSON ABI). The compiled-module session cache revalidates against the
 bundle bytes on disk, so an updated file swaps the guest without eviction choreography.
 Operation names are namespaced with camelCase segments allowed (`date.diffDays` matches the
@@ -372,9 +375,10 @@ request next to pickFile/saveFile) and then continues, the webview face offers
 beside the HTTP credentials (add/edit/remove). Only bearer/header/query
 credentials are valid `implementation.auth` references and taught in the catalog;
 smtp and part-scoped kinds are invisible there (frozen in a validation vector)
-and refused at injection. SMTP and IMAP are raw TCP, so no part kind can carry
-them: wasm parts import nothing and integration parts only get the confined HTTPS
-core, which is why mail sits in the host platform layer next to the file dialogs.
+and refused at injection. Mail sits in the host platform layer next to the file
+dialogs because the account credential, its redaction, and the in-flow setup sheet
+are host concerns either way; socket-capable parts (a future wasi grant behind the
+capability gate) would still not hold the account secret.
 The mailer part (Resend API) stays the service-specific alternative and its howto
 defers ordinary sending to the builtin; mailto links remain the zero-setup path.
 The contact-email and mail-inbox evals prove the composition classes with stubbed

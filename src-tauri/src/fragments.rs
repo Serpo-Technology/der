@@ -21,7 +21,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tauri::Manager;
-use wasmtime::{Config, Engine, Instance, Module, Store};
+use wasmtime::{Config, Engine, Linker, Module, Store};
+use wasmtime_wasi::p1::{self as wasi_p1, WasiP1Ctx};
+use wasmtime_wasi::WasiCtxBuilder;
 
 const SIG_DOMAIN: &[u8] = b"DERPART-SIG-V1\x00";
 const FORMAT_VERSION: u32 = 1;
@@ -485,12 +487,14 @@ pub fn verify_bundle(raw: &[u8]) -> FragmentResult<VerifiedBundle> {
         .as_ref()
         .map(|service| format!("net:{}", service.base_url));
     for capability in &manifest.capabilities {
-        let io_large = capability == "io:large" && !manifest.wasm_sha256.is_empty();
-        if !io_large && Some(capability) != allowed_capability.as_ref() {
+        let compute = !manifest.wasm_sha256.is_empty();
+        let known_compute = compute
+            && (capability == "io:large" || capability_imports(capability).is_some());
+        if !known_compute && Some(capability) != allowed_capability.as_ref() {
             return Err(fail(
                 FragmentErrorKind::VerifyFailed,
                 format!(
-                    "Capability \"{}\" is not allowed; integration parts may declare exactly net:<service base URL>, and compute parts io:large",
+                    "Capability \"{}\" is not allowed; integration parts may declare exactly net:<service base URL>, and compute parts io:large, wasi:clocks, or wasi:random",
                     capability
                 ),
             ));
@@ -700,17 +704,81 @@ pub fn verify_bundle(raw: &[u8]) -> FragmentResult<VerifiedBundle> {
     })
 }
 
-/// Checks the module implements ABI v1 and imports nothing.
-fn check_abi(module: &Module) -> FragmentResult<()> {
-    if module.imports().len() > 0 {
-        let names: Vec<String> = module
-            .imports()
-            .map(|i| format!("{}::{}", i.module(), i.name()))
-            .take(5)
-            .collect();
+/// The WASI imports each capability grants, over `wasi_snapshot_preview1`.
+/// The verifier is the gate: a module may import exactly what its declared
+/// (and install-consented) capabilities cover, and nothing else. Declaring
+/// any `wasi:*` capability also grants the base set below, because every
+/// wasi-libc build links runtime plumbing regardless of what it uses.
+const WASI_MODULE: &str = "wasi_snapshot_preview1";
+
+const WASI_BASE_IMPORTS: &[&str] = &[
+    "proc_exit",
+    "environ_get",
+    "environ_sizes_get",
+    "args_get",
+    "args_sizes_get",
+    "sched_yield",
+    "fd_write",
+    "fd_close",
+    "fd_fdstat_get",
+    "fd_seek",
+    "fd_prestat_get",
+    "fd_prestat_dir_name",
+];
+
+fn capability_imports(capability: &str) -> Option<&'static [&'static str]> {
+    match capability {
+        "wasi:clocks" => Some(&["clock_time_get", "clock_res_get"]),
+        "wasi:random" => Some(&["random_get"]),
+        _ => None,
+    }
+}
+
+/// The capability that would grant an import, for refusal messages.
+fn granting_capability(name: &str) -> Option<&'static str> {
+    for capability in ["wasi:clocks", "wasi:random"] {
+        if capability_imports(capability).is_some_and(|list| list.contains(&name)) {
+            return Some(capability);
+        }
+    }
+    None
+}
+
+/// Checks the module implements the part ABI and that every import is
+/// covered by the manifest's declared capabilities. No declarations means
+/// no imports: the pure-compute default every part had under v1.
+fn check_abi(module: &Module, capabilities: &[String]) -> FragmentResult<()> {
+    let wasi_declared = capabilities.iter().any(|c| c.starts_with("wasi:"));
+    let mut allowed: Vec<&str> = Vec::new();
+    if wasi_declared {
+        allowed.extend_from_slice(WASI_BASE_IMPORTS);
+        for capability in capabilities {
+            if let Some(imports) = capability_imports(capability) {
+                allowed.extend_from_slice(imports);
+            }
+        }
+    }
+    for import in module.imports() {
+        let covered = import.module() == WASI_MODULE && allowed.contains(&import.name());
+        if covered {
+            continue;
+        }
+        let hint = if import.module() == WASI_MODULE {
+            match granting_capability(import.name()) {
+                Some(capability) => format!("; declaring the {} capability grants it", capability),
+                None => "; no capability grants it".to_string(),
+            }
+        } else {
+            "; parts import WASI only".to_string()
+        };
         return Err(fail(
             FragmentErrorKind::AbiMismatch,
-            format!("Part imports host functions, which v1 forbids: {}", names.join(", ")),
+            format!(
+                "Part imports {}::{}, which its declared capabilities do not cover{}",
+                import.module(),
+                import.name(),
+                hint
+            ),
         ));
     }
     let mut has_memory = false;
@@ -750,6 +818,7 @@ fn check_abi(module: &Module) -> FragmentResult<()> {
 struct StoreData {
     grow_denied: bool,
     mem_limit: usize,
+    wasi: WasiP1Ctx,
 }
 
 impl wasmtime::ResourceLimiter for StoreData {
@@ -831,10 +900,10 @@ impl FragmentsState {
         &self.engine
     }
 
-    pub fn compile(&self, wasm: &[u8]) -> FragmentResult<Module> {
+    pub fn compile(&self, wasm: &[u8], capabilities: &[String]) -> FragmentResult<Module> {
         let module = Module::new(&self.engine, wasm)
             .map_err(|e| fail(FragmentErrorKind::CompileFailed, format!("Module rejected: {}", e)))?;
-        check_abi(&module)?;
+        check_abi(&module, capabilities)?;
         Ok(module)
     }
 
@@ -864,7 +933,7 @@ impl FragmentsState {
                 "Part has no compute module; its operations run elsewhere",
             ));
         }
-        let module = self.compile(&verified.wasm)?;
+        let module = self.compile(&verified.wasm, &verified.manifest.capabilities)?;
         let loaded = Arc::new(LoadedFragment {
             manifest: verified.manifest,
             module,
@@ -940,14 +1009,24 @@ pub fn execute_in_module(
         ));
     }
 
-    let mut store = Store::new(engine, StoreData { grow_denied: false, mem_limit });
+    // The WASI context carries no preopens, no environment, no args, and
+    // sink stdio: what a granted import can reach is the capability's set
+    // and nothing ambient. The verifier already bounded the import section
+    // at install and load, so linking the full p1 surface grants nothing
+    // the module cannot name.
+    let wasi = WasiCtxBuilder::new().build_p1();
+    let mut store = Store::new(engine, StoreData { grow_denied: false, mem_limit, wasi });
     store.limiter(|data| data);
     store
         .set_fuel(fuel)
         .map_err(|e| fail(FragmentErrorKind::Io, e.to_string()))?;
     store.set_epoch_deadline(EPOCH_DEADLINE_TICKS);
 
-    let instance = Instance::new(&mut store, &loaded.module, &[])
+    let mut linker: Linker<StoreData> = Linker::new(engine);
+    wasi_p1::add_to_linker_sync(&mut linker, |data| &mut data.wasi)
+        .map_err(|e| fail(FragmentErrorKind::Io, e.to_string()))?;
+    let instance = linker
+        .instantiate(&mut store, &loaded.module)
         .map_err(|e| map_wasm_error(e, store.data()))?;
     let memory = instance
         .get_memory(&mut store, "memory")
@@ -1088,7 +1167,7 @@ pub fn stage_core(
     // staged module is dropped; the session cache fills on first execution.
     // UI-only and integration bundles carry no module to compile.
     if !verified.wasm.is_empty() {
-        state.compile(&verified.wasm)?;
+        state.compile(&verified.wasm, &verified.manifest.capabilities)?;
     }
 
     let token = format!(
@@ -1506,6 +1585,106 @@ pub async fn download_registry_bundle(url: String) -> Result<String, String> {
         return Err("Bundle exceeds the download size limit".to_string());
     }
     Ok(BASE64.encode(&body))
+}
+
+#[cfg(test)]
+mod capability_tests {
+    use super::*;
+
+    fn manifest(capabilities: &[&str]) -> Manifest {
+        serde_json::from_value(serde_json::json!({
+            "formatVersion": 1,
+            "abiVersion": 1,
+            "id": "test.caps",
+            "name": "Caps",
+            "version": "1.0.0",
+            "publisher": "test",
+            "description": "capability test part",
+            "namespace": "caps",
+            "capabilities": capabilities,
+            "wasmSha256": "unchecked-in-unit-tests",
+            "createdAt": "2026-07-27T00:00:00Z",
+            "operations": [{
+                "name": "caps.tick",
+                "description": "returns after touching the clock",
+                "inputs": [],
+                "outputs": [{ "name": "ticked", "type": "boolean" }]
+            }]
+        }))
+        .expect("manifest parses")
+    }
+
+    /// A minimal ABI-complete part that imports and calls the WASI clock.
+    const CLOCK_WAT: &str = r#"(module
+        (import "wasi_snapshot_preview1" "clock_time_get"
+            (func $clock (param i32 i64 i32) (result i32)))
+        (memory (export "memory") 1)
+        (data (i32.const 2048) "{\"ok\":{\"ticked\":true}}")
+        (func (export "der_alloc") (param i32) (result i32) (i32.const 4096))
+        (func (export "der_run") (param i32 i32) (result i64)
+            (drop (call $clock (i32.const 0) (i64.const 1) (i32.const 1024)))
+            (i64.or (i64.shl (i64.const 2048) (i64.const 32)) (i64.const 22))))"#;
+
+    #[test]
+    fn undeclared_wasi_import_is_refused_naming_the_capability() {
+        let state = FragmentsState::new();
+        let wasm = wat::parse_str(CLOCK_WAT).expect("wat compiles");
+        let error = state.compile(&wasm, &[]).expect_err("must refuse");
+        assert!(error.message.contains("wasi_snapshot_preview1::clock_time_get"));
+        assert!(error.message.contains("declaring the wasi:clocks capability grants it"));
+    }
+
+    #[test]
+    fn non_wasi_imports_are_refused_regardless_of_declarations() {
+        let state = FragmentsState::new();
+        let wasm = wat::parse_str(
+            r#"(module
+                (import "env" "host_call" (func (param i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (func (export "der_alloc") (param i32) (result i32) (i32.const 0))
+                (func (export "der_run") (param i32 i32) (result i64) (i64.const 0)))"#,
+        )
+        .expect("wat compiles");
+        let error = state
+            .compile(&wasm, &["wasi:clocks".to_string()])
+            .expect_err("must refuse");
+        assert!(error.message.contains("env::host_call"));
+        assert!(error.message.contains("parts import WASI only"));
+    }
+
+    #[test]
+    fn granted_clock_part_links_and_runs() {
+        let state = FragmentsState::new();
+        let wasm = wat::parse_str(CLOCK_WAT).expect("wat compiles");
+        let capabilities = vec!["wasi:clocks".to_string()];
+        let module = state.compile(&wasm, &capabilities).expect("verifies");
+        let loaded = LoadedFragment {
+            manifest: manifest(&["wasi:clocks"]),
+            module,
+            bundle_sha256: "test".to_string(),
+        };
+        let result = execute_in_module(
+            state.engine(),
+            &loaded,
+            "caps.tick",
+            &serde_json::json!({}),
+        )
+        .expect("runs under the grant");
+        assert_eq!(result, serde_json::json!({ "ticked": true }));
+    }
+
+    #[test]
+    fn zero_import_modules_still_pass_with_no_declarations() {
+        let state = FragmentsState::new();
+        let wasm = wat::parse_str(
+            r#"(module
+                (memory (export "memory") 1)
+                (func (export "der_alloc") (param i32) (result i32) (i32.const 0))
+                (func (export "der_run") (param i32 i32) (result i64) (i64.const 0)))"#,
+        )
+        .expect("wat compiles");
+        state.compile(&wasm, &[]).expect("verifies clean");
+    }
 }
 
 #[cfg(test)]

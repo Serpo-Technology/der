@@ -149,19 +149,31 @@ fn key_mismatch_blocks_and_namespace_is_claimed() {
 }
 
 #[test]
-fn modules_with_imports_or_missing_exports_are_rejected() {
+fn modules_with_uncovered_imports_or_missing_exports_are_rejected() {
     let state = FragmentsState::new();
 
-    // (module (import "env" "f" (func)))
+    // Undeclared imports refuse whether or not the module is otherwise valid.
     let with_import = wat_to_wasm("(module (import \"env\" \"f\" (func)))");
-    let err = state.compile(&with_import).unwrap_err();
+    let err = state.compile(&with_import, &[]).unwrap_err();
     assert_eq!(err.kind, FragmentErrorKind::AbiMismatch);
+    assert!(err.message.contains("env::f"));
+
+    // A WASI import passes only under the capability that covers it.
+    let with_clock = wat_to_wasm(
+        "(module (import \"wasi_snapshot_preview1\" \"clock_time_get\" (func (param i32 i64 i32) (result i32))) (memory (export \"memory\") 1) (func (export \"der_alloc\") (param i32) (result i32) i32.const 0) (func (export \"der_run\") (param i32 i32) (result i64) i64.const 0))",
+    );
+    let err = state.compile(&with_clock, &[]).unwrap_err();
+    assert_eq!(err.kind, FragmentErrorKind::AbiMismatch);
+    assert!(err.message.contains("wasi:clocks"));
+    state
+        .compile(&with_clock, &["wasi:clocks".to_string()])
+        .expect("declared capability covers the import");
 
     // Valid module missing der_run.
     let missing_run = wat_to_wasm(
         "(module (memory (export \"memory\") 1) (func (export \"der_alloc\") (param i32) (result i32) i32.const 0))",
     );
-    let err = state.compile(&missing_run).unwrap_err();
+    let err = state.compile(&missing_run, &[]).unwrap_err();
     assert_eq!(err.kind, FragmentErrorKind::AbiMismatch);
 }
 
