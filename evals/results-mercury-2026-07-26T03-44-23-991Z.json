@@ -1,0 +1,213 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "docx-to-pdf",
+      "wallMs": 6230,
+      "completionTokens": 975,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "docs.textPdf",
+        "docs.docxText"
+      ],
+      "contract": {
+        "name": "docx-to-pdf",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "root",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": 12,
+              "align": "center",
+              "justify": "center",
+              "padding": 12,
+              "surface": "plain"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "open-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Open .docx",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-pick"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-read"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-extract"
+                  }
+                ]
+              },
+              {
+                "id": "doc-text",
+                "type": "text",
+                "properties": {
+                  "role": "body"
+                },
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "state",
+                    "sourceId": "docText"
+                  }
+                ],
+                "eventBindings": []
+              },
+              {
+                "id": "save-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Save as PDF",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-pdf"
+                  },
+                  {
+                    "event": "click",
+                    "operationId": "op-save"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-pick",
+            "operationName": "file.pick",
+            "inputs": [
+              {
+                "name": "kind",
+                "source": "constant",
+                "sourceId": "docx",
+                "value": "docx"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "file",
+                "target": "state",
+                "targetId": "docFile"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-read",
+            "operationName": "file.read",
+            "inputs": [
+              {
+                "name": "file",
+                "source": "state",
+                "sourceId": "docFile"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "base64",
+                "target": "state",
+                "targetId": "docBase64"
+              },
+              {
+                "name": "text",
+                "target": "state",
+                "targetId": "docText"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-extract",
+            "operationName": "docs.docxText",
+            "inputs": [
+              {
+                "name": "base64",
+                "source": "state",
+                "sourceId": "docBase64"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "text",
+                "target": "state",
+                "targetId": "docText"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-pdf",
+            "operationName": "docs.textPdf",
+            "inputs": [
+              {
+                "name": "text",
+                "source": "state",
+                "sourceId": "docText"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "base64",
+                "target": "state",
+                "targetId": "pdfData"
+              }
+            ],
+            "triggers": []
+          },
+          {
+            "id": "op-save",
+            "operationName": "file.save",
+            "inputs": [
+              {
+                "name": "data",
+                "source": "state",
+                "sourceId": "pdfData"
+              },
+              {
+                "name": "name",
+                "source": "constant",
+                "sourceId": "output.pdf",
+                "value": "output.pdf"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "saved",
+                "target": "state",
+                "targetId": "saved"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    }
+  ]
+}

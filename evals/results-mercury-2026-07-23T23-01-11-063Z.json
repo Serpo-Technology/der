@@ -1,0 +1,18 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "inventory",
+      "wallMs": 7035,
+      "completionTokens": 2182,
+      "verdict": "manifest",
+      "errors": "operations.3.inputs.0: pluck reads field \"stockValue\" from \"inventory\", but its rows carry: id, name, quantity, unitPrice; add an item.stockValue input to the append or fix the field name",
+      "fragmentsUsed": [
+        "expr.evaluate",
+        "stats.summary",
+        "basics.stat_tile"
+      ]
+    }
+  ]
+}

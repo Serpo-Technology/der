@@ -1,0 +1,14 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "expense-notes",
+      "wallMs": 1052,
+      "completionTokens": 97,
+      "verdict": "recipe-mismatch",
+      "recipe": "apps.expense_tracker",
+      "errors": "reused apps.expense_tracker where composing was expected"
+    }
+  ]
+}

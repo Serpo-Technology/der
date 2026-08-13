@@ -1,0 +1,166 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "contact-email",
+      "wallMs": 3368,
+      "completionTokens": 747,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [],
+      "contract": {
+        "name": "feedback-form",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "form",
+            "type": "container",
+            "properties": {
+              "direction": "column",
+              "gap": "8"
+            },
+            "dataBindings": [],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "name-in",
+                "type": "input",
+                "properties": {
+                  "label": "Name"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "email-in",
+                "type": "input",
+                "properties": {
+                  "label": "Email"
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "msg-in",
+                "type": "textarea",
+                "properties": {
+                  "label": "Message",
+                  "rows": 5
+                },
+                "dataBindings": [],
+                "eventBindings": []
+              },
+              {
+                "id": "send-btn",
+                "type": "button",
+                "properties": {
+                  "text": "Send",
+                  "variant": "primary"
+                },
+                "dataBindings": [],
+                "eventBindings": [
+                  {
+                    "event": "click",
+                    "operationId": "op-send"
+                  }
+                ]
+              },
+              {
+                "id": "thanks",
+                "type": "text",
+                "properties": {
+                  "content": "Thank you for your feedback!",
+                  "role": "subtitle"
+                },
+                "dataBindings": [],
+                "eventBindings": [],
+                "visibleWhen": {
+                  "source": "state",
+                  "sourceId": "sent",
+                  "operator": "truthy"
+                }
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-send",
+            "operationName": "email.send",
+            "inputs": [
+              {
+                "name": "to",
+                "source": "constant",
+                "sourceId": "hello@example.net",
+                "value": "hello@example.net"
+              },
+              {
+                "name": "subject",
+                "source": "constant",
+                "sourceId": "Workshop Feedback",
+                "value": "Workshop Feedback"
+              },
+              {
+                "name": "text",
+                "source": "constant",
+                "sourceId": "empty",
+                "transforms": [
+                  {
+                    "type": "format",
+                    "parameters": {
+                      "template": "Name: {{name}}\nEmail: {{email}}\nMessage: {{message}}",
+                      "name": {
+                        "source": "element",
+                        "sourceId": "name-in"
+                      },
+                      "email": {
+                        "source": "element",
+                        "sourceId": "email-in"
+                      },
+                      "message": {
+                        "source": "element",
+                        "sourceId": "msg-in"
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "outputs": [
+              {
+                "name": "sent",
+                "target": "state",
+                "targetId": "sent"
+              },
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "name-in"
+              },
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "email-in"
+              },
+              {
+                "name": "reset",
+                "target": "ui-element",
+                "targetId": "msg-in"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "behavior": "pass"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "inventory",
+      "wallMs": 10589,
+      "completionTokens": 2158,
+      "verdict": "manifest",
+      "errors": "operations.4: expr.evaluate expression uses \"var\" but binds only: priceSum, itemCount; add an input named \"var.var\" or rename it in the expression",
+      "fragmentsUsed": [
+        "expr.evaluate",
+        "stats.summary",
+        "basics.stat_tile"
+      ]
+    }
+  ]
+}

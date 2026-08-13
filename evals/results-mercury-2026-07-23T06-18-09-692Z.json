@@ -1,0 +1,98 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "todo-basic",
+      "wallMs": 3103,
+      "completionTokens": 1062,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "basics.entry_row"
+      ]
+    },
+    {
+      "id": "todo-search",
+      "wallMs": 3436,
+      "completionTokens": 695,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "basics.entry_row"
+      ]
+    },
+    {
+      "id": "kanban",
+      "wallMs": 6494,
+      "completionTokens": 3454,
+      "verdict": "pass",
+      "adjustments": 1,
+      "fragmentsUsed": []
+    },
+    {
+      "id": "contacts",
+      "wallMs": 9393,
+      "completionTokens": 1769,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": []
+    },
+    {
+      "id": "inventory",
+      "wallMs": 8559,
+      "completionTokens": 2257,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "expr.evaluate",
+        "stats.summary"
+      ]
+    },
+    {
+      "id": "calculator",
+      "wallMs": 2721,
+      "completionTokens": 412,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "basics.entry_row",
+        "expr.evaluate"
+      ]
+    },
+    {
+      "id": "bmi",
+      "wallMs": 1815,
+      "completionTokens": 612,
+      "verdict": "pass",
+      "adjustments": 1,
+      "fragmentsUsed": [
+        "expr.evaluate"
+      ]
+    },
+    {
+      "id": "stopwatch",
+      "wallMs": 4257,
+      "completionTokens": 937,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": []
+    },
+    {
+      "id": "journal",
+      "wallMs": 3171,
+      "completionTokens": 884,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": []
+    },
+    {
+      "id": "expense-split",
+      "wallMs": 3834,
+      "completionTokens": 1477,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": []
+    }
+  ]
+}

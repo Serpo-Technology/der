@@ -1,0 +1,97 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "todo-basic",
+      "wallMs": 9198,
+      "completionTokens": 1097,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "basics.entry_row"
+      ]
+    },
+    {
+      "id": "todo-search",
+      "wallMs": 4985,
+      "completionTokens": 750,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": [
+        "basics.entry_row"
+      ]
+    },
+    {
+      "id": "kanban",
+      "wallMs": 9032,
+      "completionTokens": 3400,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": []
+    },
+    {
+      "id": "contacts",
+      "wallMs": 4646,
+      "completionTokens": 1668,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": []
+    },
+    {
+      "id": "inventory",
+      "wallMs": 11937,
+      "completionTokens": 2047,
+      "verdict": "pass",
+      "adjustments": 1,
+      "fragmentsUsed": [
+        "expr.evaluate",
+        "stats.summary"
+      ]
+    },
+    {
+      "id": "calculator",
+      "wallMs": 2967,
+      "completionTokens": 438,
+      "verdict": "manifest",
+      "errors": "operations.0: expr.evaluate needs at least one \"var.<field>\" input",
+      "fragmentsUsed": [
+        "expr.evaluate"
+      ]
+    },
+    {
+      "id": "bmi",
+      "wallMs": 1597,
+      "completionTokens": 590,
+      "verdict": "pass",
+      "adjustments": 1,
+      "fragmentsUsed": [
+        "expr.evaluate"
+      ]
+    },
+    {
+      "id": "stopwatch",
+      "wallMs": 4827,
+      "completionTokens": 1027,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": []
+    },
+    {
+      "id": "journal",
+      "wallMs": 2687,
+      "completionTokens": 798,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": []
+    },
+    {
+      "id": "expense-split",
+      "wallMs": 10308,
+      "completionTokens": 1719,
+      "verdict": "pass",
+      "adjustments": 0,
+      "fragmentsUsed": []
+    }
+  ]
+}

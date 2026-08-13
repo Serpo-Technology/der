@@ -1,0 +1,16 @@
+{
+  "label": "mercury",
+  "model": "mercury-2",
+  "results": [
+    {
+      "id": "wifi-qr",
+      "wallMs": 4837,
+      "completionTokens": 784,
+      "verdict": "manifest",
+      "errors": "operations.0.inputs.0: Transform parameter reference source must be \"state\" or \"element\", got \"ui-element\"\noperations.0.inputs.0: Transform parameter reference source must be \"state\" or \"element\", got \"ui-element\"\nelements.1.children.0: input \"ssid-in\" affects nothing: read it from an operation inpu",
+      "fragmentsUsed": [
+        "qr.encode"
+      ]
+    }
+  ]
+}
