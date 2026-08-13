@@ -123,6 +123,25 @@
       "bundleBytes": 3420
     },
     {
+      "id": "der-labs.media",
+      "name": "Media",
+      "version": "1.0.0",
+      "publisher": "der-labs",
+      "namespace": "media",
+      "description": "Video and audio tools over picked files: inspect, thumbnail, extract audio, trim, and convert to WAV.",
+      "operations": [
+        "media.probe",
+        "media.thumbnail",
+        "media.audioExtract",
+        "media.trim",
+        "media.toWav",
+        "media.toWavStep"
+      ],
+      "bundleUrl": "der-labs.media.derpart",
+      "bundleSha256": "bdbbd514cf513663a4d67bbbcd2f2908d83bf8f0103075e02c95a7ae928a04e3",
+      "bundleBytes": 7372088
+    },
+    {
       "id": "der-labs.openweather",
       "name": "OpenWeather",
       "version": "1.0.0",

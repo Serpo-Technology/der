@@ -39,3 +39,5 @@ runtime-wasm/target/
 !runtime-wasm/dist/
 .claude/
 platform/host/tests/fixtures/*/target/
+fragments/ffmpeg/vendor/
+fragments/ffmpeg/media.wasm

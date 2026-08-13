@@ -1,0 +1,425 @@
+{
+  "formatVersion": 1,
+  "abiVersion": 1,
+  "id": "der-labs.media",
+  "name": "Media",
+  "version": "1.0.0",
+  "publisher": "der-labs",
+  "description": "Video and audio tools over picked files: inspect, thumbnail, extract audio, trim, and convert to WAV.",
+  "namespace": "media",
+  "capabilities": [
+    "wasi:files",
+    "wasi:clocks",
+    "io:large"
+  ],
+  "wasmSha256": "7935873eaff513c84777bdb7e5364a915246f861bf159868da676fd6bcb28c2f",
+  "createdAt": "2026-07-27T21:00:00Z",
+  "operations": [
+    {
+      "name": "media.probe",
+      "description": "Reads a media file's format, duration, and stream details.",
+      "inputs": [
+        {
+          "name": "file",
+          "type": "file",
+          "required": true,
+          "description": "A picked media file (file.pick's file output)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "format",
+          "type": "string",
+          "description": "Container format name"
+        },
+        {
+          "name": "durationSeconds",
+          "type": "number"
+        },
+        {
+          "name": "streams",
+          "type": "array",
+          "itemFields": [
+            "kind",
+            "codec",
+            "width",
+            "height",
+            "sampleRate",
+            "channels"
+          ],
+          "description": "One row per video or audio stream"
+        },
+        {
+          "name": "streamCount",
+          "type": "number"
+        }
+      ],
+      "howto": "Media inspector pattern: file.pick (kind video) feeds \"file\"; route streams to state and show them in a list with row bindings on item.kind, item.codec, item.width, item.height. Route durationSeconds through a round transform for display.",
+      "example": {
+        "id": "op-probe",
+        "operationName": "media.probe",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "file",
+            "source": "state",
+            "sourceId": "pickedFile"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "streams",
+            "target": "state",
+            "targetId": "mediaStreams"
+          },
+          {
+            "name": "durationSeconds",
+            "target": "state",
+            "targetId": "mediaDuration"
+          }
+        ],
+        "triggers": []
+      }
+    },
+    {
+      "name": "media.thumbnail",
+      "description": "Decodes one video frame at a time position and returns it as a JPEG image file.",
+      "inputs": [
+        {
+          "name": "file",
+          "type": "file",
+          "required": true,
+          "description": "A picked video file"
+        },
+        {
+          "name": "atSeconds",
+          "type": "number",
+          "required": false,
+          "description": "Time position; 0 when omitted"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "file",
+          "type": "file",
+          "description": "The JPEG thumbnail; chains into file.save"
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "description": "Bind an image element's src to this"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "size",
+          "type": "number"
+        },
+        {
+          "name": "width",
+          "type": "number"
+        },
+        {
+          "name": "height",
+          "type": "number"
+        }
+      ],
+      "howto": "Frame-grab pattern: file.pick (kind video), a number input for atSeconds (parseNumber transform), run on a button click, bind an image element's src to the url output; add file.save with the file output for keeping it.",
+      "example": {
+        "id": "op-thumb",
+        "operationName": "media.thumbnail",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "file",
+            "source": "state",
+            "sourceId": "pickedFile"
+          },
+          {
+            "name": "atSeconds",
+            "source": "ui-element",
+            "sourceId": "time-in",
+            "transforms": [
+              {
+                "type": "parseNumber",
+                "parameters": {}
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "url",
+            "target": "state",
+            "targetId": "thumbUrl"
+          },
+          {
+            "name": "file",
+            "target": "state",
+            "targetId": "thumbFile"
+          }
+        ],
+        "triggers": []
+      }
+    },
+    {
+      "name": "media.audioExtract",
+      "description": "Copies the audio track out of a video without re-encoding; answers an m4a, mp3, or mka file by codec.",
+      "inputs": [
+        {
+          "name": "file",
+          "type": "file",
+          "required": true,
+          "description": "A picked video file"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "file",
+          "type": "file",
+          "description": "The extracted audio; chains into file.save"
+        },
+        {
+          "name": "url",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "size",
+          "type": "number"
+        },
+        {
+          "name": "codec",
+          "type": "string"
+        }
+      ],
+      "howto": "Extractor pattern: file.pick (kind video), run on a button click, then file.save with the file output. The copy is lossless and fast because nothing re-encodes.",
+      "example": {
+        "id": "op-extract",
+        "operationName": "media.audioExtract",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "file",
+            "source": "state",
+            "sourceId": "pickedFile"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "file",
+            "target": "state",
+            "targetId": "audioFile"
+          }
+        ],
+        "triggers": []
+      }
+    },
+    {
+      "name": "media.trim",
+      "description": "Cuts a time range out of a media file by stream copy; cuts snap to the nearest keyframe.",
+      "inputs": [
+        {
+          "name": "file",
+          "type": "file",
+          "required": true
+        },
+        {
+          "name": "fromSeconds",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "toSeconds",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "file",
+          "type": "file",
+          "description": "The trimmed media; same container family as the input"
+        },
+        {
+          "name": "url",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "size",
+          "type": "number"
+        }
+      ],
+      "howto": "Clip-cutter pattern: file.pick, two number inputs through parseNumber for the range, run on a button click, file.save the file output. Starts snap to keyframes, so the cut may begin slightly before fromSeconds.",
+      "example": {
+        "id": "op-trim",
+        "operationName": "media.trim",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "file",
+            "source": "state",
+            "sourceId": "pickedFile"
+          },
+          {
+            "name": "fromSeconds",
+            "source": "ui-element",
+            "sourceId": "from-in",
+            "transforms": [
+              {
+                "type": "parseNumber",
+                "parameters": {}
+              }
+            ]
+          },
+          {
+            "name": "toSeconds",
+            "source": "ui-element",
+            "sourceId": "to-in",
+            "transforms": [
+              {
+                "type": "parseNumber",
+                "parameters": {}
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "file",
+            "target": "state",
+            "targetId": "trimmedFile"
+          }
+        ],
+        "triggers": []
+      }
+    },
+    {
+      "name": "media.toWav",
+      "description": "Starts converting a media file's audio to WAV; answers a job token to poll with media.toWavStep.",
+      "job": "start",
+      "inputs": [
+        {
+          "name": "file",
+          "type": "file",
+          "required": true,
+          "description": "A picked audio or video file"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "job",
+          "type": "job",
+          "description": "Route to state; media.toWavStep polls it"
+        },
+        {
+          "name": "durationSeconds",
+          "type": "number"
+        }
+      ],
+      "howto": "Converter job pattern: file.pick feeds \"file\", a button click starts this and routes \"job\" to state, and a timer element (interval 500, visibleWhen the job key notEmpty) runs media.toWavStep with that token until done.",
+      "example": {
+        "id": "op-towav",
+        "operationName": "media.toWav",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "file",
+            "source": "state",
+            "sourceId": "pickedFile"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "job",
+            "target": "state",
+            "targetId": "wavJob"
+          }
+        ],
+        "triggers": []
+      }
+    },
+    {
+      "name": "media.toWavStep",
+      "description": "One slice of a running WAV conversion: progress while working, the finished file at done.",
+      "job": "step",
+      "inputs": [
+        {
+          "name": "job",
+          "type": "job",
+          "required": true,
+          "description": "The token media.toWav routed to state"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "progress",
+          "type": "number",
+          "description": "0 to 1; bind a progress element"
+        },
+        {
+          "name": "done",
+          "type": "boolean",
+          "description": "Gate the timer's visibleWhen on this staying false"
+        },
+        {
+          "name": "file",
+          "type": "file",
+          "description": "The finished WAV, present at done; chains into file.save"
+        },
+        {
+          "name": "url",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "size",
+          "type": "number"
+        }
+      ],
+      "howto": "Runs from the timer element started by media.toWav. Route progress to state for a progress element, done to state to hide the timer (visibleWhen falsy) and reveal the save button (visibleWhen truthy), and file to state for file.save.",
+      "example": {
+        "id": "op-towav-step",
+        "operationName": "media.toWavStep",
+        "executionType": "builtin",
+        "inputs": [
+          {
+            "name": "job",
+            "source": "state",
+            "sourceId": "wavJob"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "progress",
+            "target": "state",
+            "targetId": "wavProgress"
+          },
+          {
+            "name": "done",
+            "target": "state",
+            "targetId": "wavDone"
+          },
+          {
+            "name": "file",
+            "target": "state",
+            "targetId": "wavFile"
+          }
+        ],
+        "triggers": []
+      }
+    }
+  ]
+}

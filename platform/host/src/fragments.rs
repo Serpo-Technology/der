@@ -753,6 +753,7 @@ const WASI_BASE_IMPORTS: &[&str] = &[
     "args_get",
     "args_sizes_get",
     "sched_yield",
+    "poll_oneoff",
     "fd_write",
     "fd_close",
     "fd_fdstat_get",
@@ -783,6 +784,7 @@ const WASI_FILES_IMPORTS: &[&str] = &[
     "path_filestat_get",
     "path_filestat_set_times",
     "path_create_directory",
+    "path_remove_directory",
     "path_unlink_file",
     "path_rename",
 ];

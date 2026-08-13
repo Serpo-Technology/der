@@ -93,6 +93,12 @@ and any language that can meet that shape can publish parts.
   element plays, plus the watch and thumbnail urls and the link's `t=`
   start time in seconds.
 - `webpage/` provides `page.blocks`: a fetched page's HTML becomes typed
+- `ffmpeg/` builds `der-labs.media`: FFmpeg (LGPL components only)
+  compiled to wasm32-wasip1 behind capability-named operations. media.probe
+  inspects streams, media.thumbnail decodes a frame to JPEG,
+  media.audioExtract and media.trim are lossless stream copies, and
+  media.toWav converts as a start/step job with progress. File inputs and
+  outputs ride the grant sandbox; see its README for the license notes.
   readable blocks (heading, paragraph, item, quote, code, image, link) in
   document order, with navigation chrome, scripts, and forms stripped,
   entities decoded, and relative urls resolved against the page url. A
