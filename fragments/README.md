@@ -1,6 +1,8 @@
 # Wasm parts
 
-A part is a sandboxed WebAssembly module plus a signed manifest, shipped
+Converter parts take picked-file handles and answer produced files as
+grants, with base64 kept as the legacy form under the same operation
+names. A part is a sandboxed WebAssembly module plus a signed manifest, shipped
 together as a single `.derpart` file. The manifest describes the operations
 the module provides (names, inputs, outputs, howto lines, and examples for
 contract composition) and binds the module by its sha256. The app verifies

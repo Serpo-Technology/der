@@ -3,14 +3,16 @@
   "abiVersion": 1,
   "id": "der-labs.imaging",
   "name": "Imaging",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "der-labs",
-  "description": "Image bits: probe dimensions, resize, and convert between png, jpeg, gif, webp, and bmp.",
+  "description": "Image tools over picked files: inspect, resize, and convert between png, jpeg, gif, webp, and bmp.",
   "namespace": "image",
   "capabilities": [
-    "io:large"
+    "io:large",
+    "wasi:files",
+    "wasi:random"
   ],
-  "wasmSha256": "3bc45bef917934ca4cdba92a52bed3681f4f43b3543d44eb87d76be46d466b2a",
+  "wasmSha256": "c9d3b8c702d6df43baec3a439931e04e53103fcc097ea9f5465ef7086a4e5518",
   "createdAt": "2026-07-25T21:45:00Z",
   "operations": [
     {
@@ -18,10 +20,16 @@
       "description": "Probes an image. Input base64; returns {width, height, format}.",
       "inputs": [
         {
+          "name": "file",
+          "type": "file",
+          "required": false,
+          "description": "A picked image (file.pick's file output); preferred over base64"
+        },
+        {
           "name": "base64",
           "type": "string",
-          "required": true,
-          "description": "Image bytes, base64 (file.read's base64 output)"
+          "required": false,
+          "description": "Legacy alternative to \"file\": base64 from file.read"
         }
       ],
       "outputs": [
@@ -39,17 +47,23 @@
           "description": "png | jpeg | gif | webp | bmp"
         }
       ],
-      "howto": "Chain after file.read to show what was opened; route the outputs into state for caption bindings."
+      "howto": "Inspector pattern: file.pick (kind image) feeds \"file\"; show width, height, and format from state."
     },
     {
       "name": "image.resize",
       "description": "Resizes an image to fit within maxWidth/maxHeight (aspect kept). Returns {base64, width, height, format, size}.",
       "inputs": [
         {
+          "name": "file",
+          "type": "file",
+          "required": false,
+          "description": "A picked image (file.pick's file output); preferred over base64"
+        },
+        {
           "name": "base64",
           "type": "string",
-          "required": true,
-          "description": "Image bytes, base64"
+          "required": false,
+          "description": "Legacy alternative to \"file\": base64 from file.read"
         },
         {
           "name": "maxWidth",
@@ -71,6 +85,20 @@
         }
       ],
       "outputs": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "description": "Bind an image element's src to this"
+        },
+        {
+          "name": "file",
+          "type": "file",
+          "description": "The produced image; chains into file.save"
+        },
         {
           "name": "base64",
           "type": "string",
@@ -94,17 +122,23 @@
           "description": "Bytes"
         }
       ],
-      "howto": "The resize chain: file.pick (image) routes file to state, file.read routes base64 to state, image.resize takes it with maxWidth from a number input (parseNumber), file.save takes the output base64. Use parseNumber on numeric inputs."
+      "howto": "Shrink pattern: file.pick (kind image) feeds \"file\", number inputs through parseNumber feed maxWidth or maxHeight, and the outputs are a produced image: bind an image element's src to \"url\" and give file.save the \"file\" output. The base64 output exists only for legacy file.read chains."
     },
     {
       "name": "image.convert",
       "description": "Re-encodes an image as png, jpeg, gif, webp, or bmp. Returns {base64, width, height, format, size}.",
       "inputs": [
         {
+          "name": "file",
+          "type": "file",
+          "required": false,
+          "description": "A picked image (file.pick's file output); preferred over base64"
+        },
+        {
           "name": "base64",
           "type": "string",
-          "required": true,
-          "description": "Image bytes, base64"
+          "required": false,
+          "description": "Legacy alternative to \"file\": base64 from file.read"
         },
         {
           "name": "format",
@@ -114,6 +148,20 @@
         }
       ],
       "outputs": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "description": "Bind an image element's src to this"
+        },
+        {
+          "name": "file",
+          "type": "file",
+          "description": "The produced image; chains into file.save"
+        },
         {
           "name": "base64",
           "type": "string",
@@ -137,7 +185,7 @@
           "description": "Bytes"
         }
       ],
-      "howto": "Feed the format from a select with options png/jpeg/webp; chain file.save with a name built by a format transform, e.g. template \"converted.{{value}}\" over the chosen format."
+      "howto": "Converter pattern: file.pick feeds \"file\", a select feeds \"format\" (png, jpeg, gif, webp, bmp), file.save takes the \"file\" output. The base64 output exists only for legacy file.read chains."
     }
   ]
 }

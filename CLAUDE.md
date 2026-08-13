@@ -325,7 +325,7 @@ members); committed signed bundles keep `cargo test` hermetic; rebuilding needs
 `rustup target add wasm32-unknown-unknown`. Current library: expr-evaluate and dates and
 stats-summary and docs (markdownHtml/markdownText/textPdf/markdownPdf/docxText over a
 minimal PDF writer) and imaging (info/resize/convert over the image crate, declaring
-`io:large`) and archive (zip.list/extract/create) and qr (qr.encode, built in C against
+`io:large` and the wasi grants) and archive (zip.list/extract/create) and qr (qr.encode, built in C against
 the open ABI) and youtube (youtube.parse: any link form to embed/watch/thumbnail urls
 plus t= timestamps) and media (FFmpeg compiled to wasip1 behind media.probe/thumbnail/audioExtract/trim,
 plus media.toWav as the first start/step job part; wasi:files+wasi:clocks+io:large,
@@ -342,6 +342,11 @@ eval corpus; the reader recipe makes reader-shaped requests deterministic where 
 composition of the two-chain wiring was stochastic). Compute
 parts may declare the `io:large` capability (consented at install review) to raise the
 wasm budgets to 32 MiB inputs, 512 MiB memory, and tenfold fuel for media payloads.
+The converter parts (imaging, docs, archive) are wasip1 builds whose operations take a
+picked-file handle beside the legacy base64 input and answer produced files as grants
+(pdf and zip creation answer both forms, since their payloads are small and old chains
+route base64); one operation name serves both eras, so stored contracts run unchanged
+while fresh compositions learn only the grant flow.
 User-mediated file IO is a builtin layer in `platform/host/src/files.rs`, host-owned like
 http.get: `file.pick` opens the system picker and grants a session token plus a
 renderer URL (the asset protocol scope for the webview; the bridge rewrites granted

@@ -4,7 +4,7 @@
     {
       "id": "der-labs.archive",
       "name": "Archives",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "publisher": "der-labs",
       "namespace": "zip",
       "description": "Zip archives: list what is inside, extract entries, and build archives from named content.",
@@ -14,8 +14,8 @@
         "zip.create"
       ],
       "bundleUrl": "der-labs.archive.derpart",
-      "bundleSha256": "2babd286bb8face981112ac0a65f04fb4ab00cba120574b42bdb7d5af29d18bb",
-      "bundleBytes": 445232
+      "bundleSha256": "9fd83c3411d39f9a2c904d756039765ca2956965b86a70ce70bc2a8105a74523",
+      "bundleBytes": 499284
     },
     {
       "id": "der-labs.coingecko",
@@ -49,7 +49,7 @@
     {
       "id": "der-labs.docs",
       "name": "Documents",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "publisher": "der-labs",
       "namespace": "docs",
       "description": "Document conversion bits: markdown to HTML or plain text, and text or markdown to a real PDF.",
@@ -61,8 +61,8 @@
         "docs.docxText"
       ],
       "bundleUrl": "der-labs.docs.derpart",
-      "bundleSha256": "7baafe75794dc4b10e32bceeca23fc09e574472dd2a738897afd961bcc2d9937",
-      "bundleBytes": 542500
+      "bundleSha256": "1edf3f36aa4442695916559e1ba3a5dd6f1fd60655bf788b34c74e4d6441461c",
+      "bundleBytes": 591120
     },
     {
       "id": "der-labs.expr-evaluate",
@@ -95,18 +95,18 @@
     {
       "id": "der-labs.imaging",
       "name": "Imaging",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "publisher": "der-labs",
       "namespace": "image",
-      "description": "Image bits: probe dimensions, resize, and convert between png, jpeg, gif, webp, and bmp.",
+      "description": "Image tools over picked files: inspect, resize, and convert between png, jpeg, gif, webp, and bmp.",
       "operations": [
         "image.info",
         "image.resize",
         "image.convert"
       ],
       "bundleUrl": "der-labs.imaging.derpart",
-      "bundleSha256": "66f2dcec0710569afebb08b9d646a56531ff79d9806be9230ef2f640ba0b3f06",
-      "bundleBytes": 1109580
+      "bundleSha256": "5024f4aa924706e750b98000cb3ce473fe3bd1e21aa18d6a7cb6e83cdd5f71fb",
+      "bundleBytes": 1157500
     },
     {
       "id": "der-labs.mailer",

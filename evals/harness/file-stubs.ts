@@ -74,8 +74,12 @@ function fixtureFilePath(): string {
       copyFileSync(resolvePath(fixture.path), target);
     } else if (fixture.base64) {
       writeFileSync(target, Buffer.from(fixture.base64, 'base64'));
+    } else if (fixture.text !== undefined) {
+      writeFileSync(target, fixture.text);
     } else {
-      writeFileSync(target, fixture.text ?? '');
+      // A contentless binary fixture stages as the tiny png, like the
+      // read stub always answered.
+      writeFileSync(target, Buffer.from(TINY_PNG_BASE64, 'base64'));
     }
   }
   return target;

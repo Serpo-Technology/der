@@ -178,19 +178,47 @@ fn text_pdf(inputs: &Map<String, Value>, markdown_mode: bool) -> Vec<u8> {
         }
     };
     let bytes = build_pdf(&title, &lines);
-    ok_response(json!({ "base64": base64_encode(&bytes), "pages": pdf_page_count(&bytes) }))
+    // Text-built PDFs stay small, so both answers ship: the produced /out
+    // file (a grant, for file.save and the pdf viewer) whenever the
+    // sandbox is present, and base64 always, so legacy chains keep
+    // working regardless of mode.
+    let pages = pdf_page_count(&bytes);
+    let mut result = json!({ "base64": base64_encode(&bytes), "pages": pages });
+    if std::path::Path::new("/out").is_dir() {
+        let out_path = "/out/document.pdf";
+        if let Err(error) = std::fs::write(out_path, &bytes) {
+            return err_response(&format!("could not write {}: {}", out_path, error));
+        }
+        result["file"] = json!(out_path);
+    }
+    ok_response(result)
 }
 
 /// Word documents are zip archives; the text lives in word/document.xml.
 /// Paragraphs become lines, tabs and breaks become whitespace, and every
 /// other tag drops away.
 fn docx_text(inputs: &Map<String, Value>) -> Vec<u8> {
-    let data = match inputs.get("base64") {
-        Some(Value::String(text)) => text,
-        _ => return err_response("base64 must be a string; feed it file.read's base64 output"),
-    };
-    let Some(bytes) = decode_base64(data) else {
-        return err_response("base64 does not decode");
+    let bytes = if let Some(Value::String(path)) = inputs.get("file") {
+        if !path.starts_with("/in/") {
+            return err_response("file must be a picked file handle (file.pick's file output)");
+        }
+        match std::fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(error) => return err_response(&format!("could not read the picked file: {}", error)),
+        }
+    } else {
+        let data = match inputs.get("base64") {
+            Some(Value::String(text)) => text,
+            _ => {
+                return err_response(
+                    "the operation needs a picked file (bind \"file\" from file.pick) or base64 data",
+                )
+            }
+        };
+        match decode_base64(data) {
+            Some(bytes) => bytes,
+            None => return err_response("base64 does not decode"),
+        }
     };
     if bytes.len() > 24 * 1024 * 1024 {
         return err_response("the document is larger than 24 MB");

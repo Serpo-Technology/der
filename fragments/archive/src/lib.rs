@@ -60,15 +60,37 @@ fn handle(ptr: i32, len: i32) -> Vec<u8> {
 }
 
 fn archive_bytes(inputs: &Map<String, Value>) -> Result<Vec<u8>, String> {
+    if let Some(Value::String(path)) = inputs.get("file") {
+        if !path.starts_with("/in/") {
+            return Err("file must be a picked file handle (file.pick's file output)".to_string());
+        }
+        let bytes = std::fs::read(path)
+            .map_err(|error| format!("could not read the picked file: {}", error))?;
+        if bytes.len() > MAX_ARCHIVE_BYTES {
+            return Err("the archive is larger than 24 MB".to_string());
+        }
+        return Ok(bytes);
+    }
     let data = match inputs.get("base64") {
         Some(Value::String(text)) => text,
-        _ => return Err("base64 must be a string; feed it file.read's base64 output".to_string()),
+        _ => {
+            return Err(
+                "the operation needs a picked file (bind \"file\" from file.pick) or base64 data"
+                    .to_string(),
+            )
+        }
     };
     let bytes = base64_decode(data).ok_or("base64 does not decode")?;
     if bytes.len() > MAX_ARCHIVE_BYTES {
         return Err("the archive is larger than 24 MB".to_string());
     }
     Ok(bytes)
+}
+
+/// Extracted entries and created zips answer as produced /out files when
+/// the operation ran from a picked file; base64 stays for legacy chains.
+fn file_mode(inputs: &Map<String, Value>) -> bool {
+    matches!(inputs.get("file"), Some(Value::String(path)) if path.starts_with("/in/"))
 }
 
 fn list(inputs: &Map<String, Value>) -> Vec<u8> {
@@ -120,6 +142,19 @@ fn extract(inputs: &Map<String, Value>) -> Vec<u8> {
         return err_response("the entry does not decompress");
     }
     let text = String::from_utf8(out.clone()).ok();
+    if file_mode(inputs) {
+        let flat = name.rsplit('/').next().unwrap_or("entry").to_string();
+        let out_path = format!("/out/{}", if flat.is_empty() { "entry".to_string() } else { flat });
+        if let Err(error) = std::fs::write(&out_path, &out) {
+            return err_response(&format!("could not write {}: {}", out_path, error));
+        }
+        return ok_response(json!({
+            "file": out_path,
+            "text": text,
+            "name": name,
+            "size": out.len(),
+        }));
+    }
     ok_response(json!({
         "base64": base64_encode(&out),
         "text": text,
@@ -171,11 +206,22 @@ fn create(inputs: &Map<String, Value>) -> Vec<u8> {
         Err(_) => return err_response("the archive could not be finished"),
     };
     let bytes = cursor.into_inner();
-    ok_response(json!({
+    // Created zips answer as a produced file whenever the sandbox exists;
+    // base64 always ships too, because entries themselves arrive inline
+    // and stay small, and legacy chains route it.
+    let mut result = json!({
         "base64": base64_encode(&bytes),
         "size": bytes.len(),
         "count": entries.len(),
-    }))
+    });
+    if std::path::Path::new("/out").is_dir() {
+        let out_path = "/out/archive.zip";
+        if let Err(error) = std::fs::write(out_path, &bytes) {
+            return err_response(&format!("could not write {}: {}", out_path, error));
+        }
+        result["file"] = json!(out_path);
+    }
+    ok_response(result)
 }
 
 // ---------------------------------------------------------------------------

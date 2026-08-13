@@ -381,6 +381,14 @@
           {
             "do": "click",
             "on": [
+              "extract",
+              "text"
+            ],
+            "optional": true
+          },
+          {
+            "do": "click",
+            "on": [
               "convert",
               "save",
               "make"

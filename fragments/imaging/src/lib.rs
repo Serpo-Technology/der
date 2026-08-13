@@ -1,7 +1,9 @@
 //! Image conversion bits for the DER wasm host, guest ABI v1: probe,
-//! resize, and convert between png, jpeg, gif, webp, and bmp. Pure compute
-//! over base64 payloads; the io:large capability raises the host budgets
-//! because photos are megabytes.
+//! resize, and convert between png, jpeg, gif, webp, and bmp. Inputs are
+//! either a granted file (the host stages it under /in and this code
+//! answers a produced /out file) or legacy base64 payloads, which still
+//! answer base64; the io:large capability raises the host budgets because
+//! photos are megabytes.
 
 use std::alloc::{alloc, Layout};
 use std::io::Cursor;
@@ -59,12 +61,37 @@ fn handle(ptr: i32, len: i32) -> Vec<u8> {
     }
 }
 
+/// The staged /in path when the operation ran in file mode; None for the
+/// legacy base64 flow. Output routing follows the same mode.
+fn file_input(inputs: &Map<String, Value>) -> Option<String> {
+    match inputs.get("file") {
+        Some(Value::String(path)) if path.starts_with("/in/") => Some(path.clone()),
+        _ => None,
+    }
+}
+
+/// The input's file stem, for naming the produced /out file.
+fn input_stem(path: &str) -> String {
+    let name = path.rsplit('/').next().unwrap_or("image");
+    let stem = name.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(name);
+    if stem.is_empty() { "image".to_string() } else { stem.to_string() }
+}
+
 fn decode_image(inputs: &Map<String, Value>) -> Result<(DynamicImage, ImageFormat), String> {
-    let data = match inputs.get("base64") {
-        Some(Value::String(text)) => text,
-        _ => return Err("base64 must be a string; feed it file.read's base64 output".to_string()),
+    let bytes = if let Some(path) = file_input(inputs) {
+        std::fs::read(&path).map_err(|error| format!("could not read the picked file: {}", error))?
+    } else {
+        let data = match inputs.get("base64") {
+            Some(Value::String(text)) => text,
+            _ => {
+                return Err(
+                    "the operation needs a picked file (bind \"file\" from file.pick) or base64 data"
+                        .to_string(),
+                )
+            }
+        };
+        base64_decode(data).ok_or("base64 does not decode")?
     };
-    let bytes = base64_decode(data).ok_or("base64 does not decode")?;
     if bytes.len() > MAX_IMAGE_BYTES {
         return Err("the image is larger than 24 MB".to_string());
     }
@@ -145,15 +172,44 @@ fn resize(inputs: &Map<String, Value>) -> Vec<u8> {
         .and_then(parse_format)
         .unwrap_or(format);
     match encode(&resized, target) {
-        Ok(bytes) => ok_response(json!({
-            "base64": base64_encode(&bytes),
-            "width": resized.width(),
-            "height": resized.height(),
-            "format": format_name(target),
-            "size": bytes.len(),
-        })),
+        Ok(bytes) => emit(inputs, bytes, resized.width(), resized.height(), target),
         Err(message) => err_response(&message),
     }
+}
+
+/// Answers in the caller's mode: a produced /out file for staged inputs,
+/// base64 for the legacy flow.
+fn emit(
+    inputs: &Map<String, Value>,
+    bytes: Vec<u8>,
+    width: u32,
+    height: u32,
+    target: ImageFormat,
+) -> Vec<u8> {
+    if let Some(path) = file_input(inputs) {
+        let ext = match target {
+            ImageFormat::Jpeg => "jpg",
+            other => format_name(other),
+        };
+        let out_path = format!("/out/{}.{}", input_stem(&path), ext);
+        if let Err(error) = std::fs::write(&out_path, &bytes) {
+            return err_response(&format!("could not write {}: {}", out_path, error));
+        }
+        return ok_response(json!({
+            "file": out_path,
+            "width": width,
+            "height": height,
+            "format": format_name(target),
+            "size": bytes.len(),
+        }));
+    }
+    ok_response(json!({
+        "base64": base64_encode(&bytes),
+        "width": width,
+        "height": height,
+        "format": format_name(target),
+        "size": bytes.len(),
+    }))
 }
 
 fn convert(inputs: &Map<String, Value>) -> Vec<u8> {
@@ -165,13 +221,7 @@ fn convert(inputs: &Map<String, Value>) -> Vec<u8> {
         return err_response("format must be png, jpeg, gif, webp, or bmp");
     };
     match encode(&image, target) {
-        Ok(bytes) => ok_response(json!({
-            "base64": base64_encode(&bytes),
-            "width": image.width(),
-            "height": image.height(),
-            "format": format_name(target),
-            "size": bytes.len(),
-        })),
+        Ok(bytes) => emit(inputs, bytes, image.width(), image.height(), target),
         Err(message) => err_response(&message),
     }
 }
