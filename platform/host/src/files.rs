@@ -189,9 +189,53 @@ pub fn read_core(app: &AppHandle, token: &str) -> Result<Value, String> {
 }
 
 pub fn save_core(app: &AppHandle, base64_data: &str, suggested_name: &str) -> Result<Value, String> {
-    let bytes = BASE64
-        .decode(base64_data.trim())
-        .map_err(|_| "file.save needs base64 data; feed it a converter's output".to_string())?;
+    save_core_with(app, base64_data, "", suggested_name)
+}
+
+/// Saves either a granted file handle (a part's file output, copied without
+/// touching memory) or base64 content (small text-era converters). A grant
+/// token arriving on the data input still saves: contracts composed against
+/// the base64-only teaching wired tokens there, and they should keep
+/// working.
+pub fn save_core_with(
+    app: &AppHandle,
+    base64_data: &str,
+    file_token: &str,
+    suggested_name: &str,
+) -> Result<Value, String> {
+    let data = base64_data.trim();
+    let token = if !file_token.trim().is_empty() {
+        file_token.trim()
+    } else if data.starts_with("derfile-") {
+        data
+    } else {
+        ""
+    };
+    let source: Option<PathBuf> = if token.is_empty() {
+        None
+    } else {
+        Some(app.state::<FileGrants>().path_of(token).ok_or_else(|| {
+            "file.save was handed a file handle that is not granted; pick or produce the file first"
+                .to_string()
+        })?)
+    };
+    let suggested = if suggested_name.is_empty() {
+        source
+            .as_ref()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default()
+    } else {
+        suggested_name.to_string()
+    };
+    let suggested_name = suggested.as_str();
+    let bytes: Vec<u8> = match &source {
+        Some(_) => Vec::new(),
+        None => BASE64.decode(data).map_err(|_| {
+            "file.save needs a file handle or base64 data; feed it a converter's file output"
+                .to_string()
+        })?,
+    };
     let path: PathBuf = if crate::runtime::sidecar::panel_available(app) {
         match crate::runtime::sidecar::panel_save_file(app, suggested_name)? {
             Some(path) => PathBuf::from(path),
@@ -209,7 +253,16 @@ pub fn save_core(app: &AppHandle, base64_data: &str, suggested_name: &str) -> Re
             .into_path()
             .map_err(|error| format!("The chosen location has no usable path: {}", error))?
     };
-    std::fs::write(&path, &bytes).map_err(|error| format!("Could not save: {}", error))?;
+    match &source {
+        Some(from) => {
+            std::fs::copy(from, &path)
+                .map(|_| ())
+                .map_err(|error| format!("Saving failed: {}", error))?;
+        }
+        None => {
+            std::fs::write(&path, &bytes).map_err(|error| format!("Could not save: {}", error))?;
+        }
+    }
     Ok(json!({
         "saved": true,
         "name": path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default(),

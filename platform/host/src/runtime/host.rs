@@ -123,7 +123,7 @@ impl HostDispatcher {
         let result = match request.operation_name {
             "file.pick" => crate::files::pick_core(&self.app, &text("kind")),
             "file.read" => crate::files::read_core(&self.app, &text("file")),
-            "file.save" => crate::files::save_core(&self.app, &text("data"), &text("name")),
+            "file.save" => crate::files::save_core_with(&self.app, &text("data"), &text("file"), &text("name")),
             "email.list" => crate::mail::list_core(&self.app, &text("limit")),
             "email.fetch" => crate::mail::fetch_core(&self.app, &text("id")),
             "email.send" => crate::mail::send_core(

@@ -90,7 +90,11 @@ function readCore(): Record<string, unknown> {
 }
 
 function saveCore(inputs: Record<string, unknown>): Record<string, unknown> {
-  saved = { name: str(inputs.name), data: str(inputs.data) };
+  // A produced-file handle saves by reference; base64 data saves inline.
+  // The recorded data field carries whichever arrived, so expects can
+  // match on either.
+  const handle = str(inputs.file) || (str(inputs.data).startsWith('derfile-') ? str(inputs.data) : '');
+  saved = { name: str(inputs.name), data: handle || str(inputs.data) };
   return { saved: true, name: saved.name };
 }
 

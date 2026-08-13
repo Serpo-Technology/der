@@ -384,9 +384,15 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
   'file.save': {
     name: 'file.save',
     description:
-      'Saves base64 data through the system save panel. Inputs: data (base64), name (suggested filename). Returns {saved, name}.',
+      'Saves through the system save panel. Takes a produced file handle (a converter or media operation\'s "file" output) or base64 data. Returns {saved, name}.',
     inputs: [
-      { name: 'data', type: 'string', required: true, description: 'Base64 bytes to write' },
+      {
+        name: 'file',
+        type: 'file',
+        required: false,
+        description: 'A file handle from a part\'s file output; preferred for anything a part produced',
+      },
+      { name: 'data', type: 'string', required: false, description: 'Base64 bytes to write, for small text-built payloads' },
       { name: 'name', type: 'string', required: false, description: 'Suggested filename' },
     ],
     outputs: [
@@ -394,7 +400,7 @@ export const BUILTIN_OPERATIONS: Record<string, BuiltinOperationDef> = {
       { name: 'name', type: 'string' },
     ],
     howto:
-      'The last step of a converter chain: feed it the converter\'s base64 output from state and suggest a filename with the right extension. The user picks where it lands; cancelling stops the chain.',
+      'The last step of a converter chain. When the producing operation has a "file" output (media, converters), bind THAT to the file input; bind data only for base64 built from text. Suggest a filename with the right extension. The user picks where it lands; cancelling stops the chain.',
   },
   'email.send': {
     name: 'email.send',
