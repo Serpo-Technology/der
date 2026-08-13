@@ -1917,6 +1917,10 @@
             ]
           },
           {
+            "do": "wait",
+            "ms": 4000
+          },
+          {
             "expect": "text",
             "match": "/done|complete|finished|100/i"
           },

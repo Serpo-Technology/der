@@ -186,6 +186,8 @@ struct Checker<'a> {
     provided_fields: Vec<(String, (Vec<String>, String))>,
     /// Which list rows trigger each operation id.
     row_shape_by_op: Vec<(String, RowShape)>,
+    /// One entry per element event: (element id, ordered operation ids).
+    event_chains: Vec<(String, Vec<String>)>,
 }
 
 impl Checker<'_> {
@@ -544,6 +546,7 @@ pub fn check_against_manifests(
         append_elements: FieldsByKey::new(),
         provided_fields: Vec::new(),
         row_shape_by_op: Vec::new(),
+        event_chains: Vec::new(),
         object_array_keys: OrderedSet::new(),
     };
 
@@ -892,6 +895,77 @@ pub fn check_against_manifests(
                 ),
                 "LIST_NOT_DISPLAYED",
             );
+        }
+    }
+
+    // A store collection someone displays must refresh when it changes:
+    // a chain that puts without re-running the displaying query leaves the
+    // person looking at stale rows.
+    {
+        let mut puts: Vec<(String, String, String)> = Vec::new();
+        let mut query_ops: Vec<(String, String)> = Vec::new();
+        let mut displayed_collections = OrderedSet::new();
+        for (op, op_path) in &merged_after {
+            let name = as_str(op, "operationName");
+            if name != "store.put" && name != "store.query" {
+                continue;
+            }
+            let inputs = op.get("inputs").and_then(Value::as_array).cloned().unwrap_or_default();
+            let Some(collection_input) =
+                inputs.iter().find(|input| as_str(input, "name") == "collection")
+            else {
+                continue;
+            };
+            if as_str(collection_input, "source") != "constant" {
+                continue;
+            }
+            let collection = value_or_source_id(collection_input);
+            let id = as_str(op, "id").to_string();
+            if name == "store.put" {
+                puts.push((id, collection, op_path.clone()));
+                continue;
+            }
+            let displays = op
+                .get("outputs")
+                .and_then(Value::as_array)
+                .is_some_and(|outputs| {
+                    outputs.iter().any(|output| {
+                        as_str(output, "target") == "state"
+                            && checker.displayed_list_keys.has(as_str(output, "targetId"))
+                    })
+                });
+            if displays {
+                displayed_collections.add(&collection);
+            }
+            query_ops.push((id, collection));
+        }
+        let chains = checker.event_chains.clone();
+        for (put_id, collection, put_path) in &puts {
+            if !displayed_collections.has(collection) {
+                continue;
+            }
+            for (element_id, chain) in &chains {
+                let Some(position) = chain.iter().position(|id| id == put_id) else {
+                    continue;
+                };
+                let refreshed = chain[position + 1..].iter().any(|id| {
+                    query_ops
+                        .iter()
+                        .any(|(query_id, query_collection)| {
+                            query_id == id && query_collection == collection
+                        })
+                });
+                if !refreshed {
+                    checker.fail(
+                        put_path,
+                        format!(
+                            "store.put fills \"{}\" but the \"{}\" trigger never re-runs the store.query that displays it; chain that query after the put on the same event",
+                            collection, element_id
+                        ),
+                        "STORE_STALE_DISPLAY",
+                    );
+                }
+            }
         }
     }
 
@@ -1381,6 +1455,20 @@ fn walk_elements(
             }
         }
 
+        {
+            let mut by_event: Vec<(String, Vec<String>)> = Vec::new();
+            for binding in &event_bindings {
+                let event = as_str(binding, "event").to_string();
+                let operation_id = as_str(binding, "operationId").to_string();
+                match by_event.iter_mut().find(|(name, _)| *name == event) {
+                    Some((_, ids)) => ids.push(operation_id),
+                    None => by_event.push((event, vec![operation_id])),
+                }
+            }
+            for (_event, ids) in by_event {
+                checker.event_chains.push((id.clone(), ids));
+            }
+        }
         for (binding_index, binding) in event_bindings.iter().enumerate() {
             let operation_id = as_str(binding, "operationId").to_string();
             checker.referenced_operation_ids.add(&operation_id);

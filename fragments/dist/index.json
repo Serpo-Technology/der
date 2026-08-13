@@ -61,8 +61,8 @@
         "docs.docxText"
       ],
       "bundleUrl": "der-labs.docs.derpart",
-      "bundleSha256": "37feda01390414af4dc5df807a00a0aec146482bca91bdc20781289d7ca826da",
-      "bundleBytes": 542200
+      "bundleSha256": "7baafe75794dc4b10e32bceeca23fc09e574472dd2a738897afd961bcc2d9937",
+      "bundleBytes": 542500
     },
     {
       "id": "der-labs.expr-evaluate",

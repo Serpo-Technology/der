@@ -214,7 +214,9 @@ ships less than asked. A wiring-completeness rule family (grown from behavioral 
 hard-errors dead compositions: expression identifiers without matching `var.*` bindings,
 filters and sorts on fields a list's append never writes, filters driven by the same control
 that feeds the append, operations nothing triggers, appended lists no list element displays,
-list edits on keys nothing fills, and interactive controls nothing consumes. Row shapes are
+list edits on keys nothing fills, interactive controls nothing consumes, and store.put
+triggers that never re-run the store.query displaying the collection (stale-display
+compositions repair toward chaining the query after the put). Row shapes are
 first-class: an array output may declare `itemFields` in its manifest (the catalog renders it
 as `array of {...}`), and item reads inside a list template (row bindings, row visibleWhen,
 and item inputs of row-triggered operations) validate against the known shape, whether it

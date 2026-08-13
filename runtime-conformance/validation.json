@@ -2,6 +2,488 @@
   "formatVersion": 1,
   "validation": [
     {
+      "name": "a put chaining the displaying query passes",
+      "contract": {
+        "name": "notes-fresh",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "note-in",
+            "type": "input",
+            "properties": {
+              "label": "Note"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "save-btn",
+            "type": "button",
+            "properties": {
+              "text": "Save"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-put"
+              },
+              {
+                "event": "click",
+                "operationId": "op-query"
+              }
+            ]
+          },
+          {
+            "id": "notes-list",
+            "type": "list",
+            "properties": {
+              "emptyText": "No notes yet"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "notes"
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "note-row",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "text"
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-put",
+            "operationName": "store.put",
+            "inputs": [
+              {
+                "name": "collection",
+                "source": "constant",
+                "sourceId": "notes"
+              },
+              {
+                "name": "record.text",
+                "source": "ui-element",
+                "sourceId": "note-in"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-query",
+            "operationName": "store.query",
+            "inputs": [
+              {
+                "name": "collection",
+                "source": "constant",
+                "sourceId": "notes"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "items",
+                "target": "state",
+                "targetId": "notes"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
+      "expected": {
+        "errors": [],
+        "warnings": [],
+        "mutated": {
+          "name": "notes-fresh",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "note-in",
+              "type": "input",
+              "properties": {
+                "label": "Note"
+              },
+              "dataBindings": [],
+              "eventBindings": []
+            },
+            {
+              "id": "save-btn",
+              "type": "button",
+              "properties": {
+                "text": "Save"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-put"
+                },
+                {
+                  "event": "click",
+                  "operationId": "op-query"
+                }
+              ]
+            },
+            {
+              "id": "notes-list",
+              "type": "list",
+              "properties": {
+                "emptyText": "No notes yet"
+              },
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "notes"
+                }
+              ],
+              "eventBindings": [],
+              "children": [
+                {
+                  "id": "note-row",
+                  "type": "text",
+                  "properties": {},
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "text"
+                    }
+                  ],
+                  "eventBindings": []
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-put",
+              "operationName": "store.put",
+              "inputs": [
+                {
+                  "name": "collection",
+                  "source": "constant",
+                  "sourceId": "notes"
+                },
+                {
+                  "name": "record.text",
+                  "source": "ui-element",
+                  "sourceId": "note-in"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            },
+            {
+              "id": "op-query",
+              "operationName": "store.query",
+              "inputs": [
+                {
+                  "name": "collection",
+                  "source": "constant",
+                  "sourceId": "notes"
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "items",
+                  "target": "state",
+                  "targetId": "notes"
+                }
+              ],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
+      "name": "a put whose trigger skips the displaying query is stale",
+      "contract": {
+        "name": "notes-stale",
+        "version": "1.0.0",
+        "elements": [
+          {
+            "id": "note-in",
+            "type": "input",
+            "properties": {
+              "label": "Note"
+            },
+            "dataBindings": [],
+            "eventBindings": []
+          },
+          {
+            "id": "save-btn",
+            "type": "button",
+            "properties": {
+              "text": "Save"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-put"
+              }
+            ]
+          },
+          {
+            "id": "search-btn",
+            "type": "button",
+            "properties": {
+              "text": "Search"
+            },
+            "dataBindings": [],
+            "eventBindings": [
+              {
+                "event": "click",
+                "operationId": "op-query"
+              }
+            ]
+          },
+          {
+            "id": "notes-list",
+            "type": "list",
+            "properties": {
+              "emptyText": "No notes yet"
+            },
+            "dataBindings": [
+              {
+                "property": "items",
+                "source": "state",
+                "sourceId": "notes"
+              }
+            ],
+            "eventBindings": [],
+            "children": [
+              {
+                "id": "note-row",
+                "type": "text",
+                "properties": {},
+                "dataBindings": [
+                  {
+                    "property": "content",
+                    "source": "item",
+                    "sourceId": "text"
+                  }
+                ],
+                "eventBindings": []
+              }
+            ]
+          }
+        ],
+        "operations": [
+          {
+            "id": "op-put",
+            "operationName": "store.put",
+            "inputs": [
+              {
+                "name": "collection",
+                "source": "constant",
+                "sourceId": "notes"
+              },
+              {
+                "name": "record.text",
+                "source": "ui-element",
+                "sourceId": "note-in"
+              }
+            ],
+            "outputs": [],
+            "triggers": []
+          },
+          {
+            "id": "op-query",
+            "operationName": "store.query",
+            "inputs": [
+              {
+                "name": "collection",
+                "source": "constant",
+                "sourceId": "notes"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "items",
+                "target": "state",
+                "targetId": "notes"
+              }
+            ],
+            "triggers": []
+          }
+        ],
+        "layout": {
+          "type": "flex",
+          "properties": {}
+        },
+        "styling": {
+          "theme": "default"
+        }
+      },
+      "fragmentDefs": {},
+      "partOperations": {},
+      "credentials": [],
+      "expected": {
+        "errors": [
+          {
+            "path": "operations.0",
+            "message": "store.put fills \"notes\" but the \"save-btn\" trigger never re-runs the store.query that displays it; chain that query after the put on the same event",
+            "code": "STORE_STALE_DISPLAY"
+          }
+        ],
+        "warnings": [],
+        "mutated": {
+          "name": "notes-stale",
+          "version": "1.0.0",
+          "elements": [
+            {
+              "id": "note-in",
+              "type": "input",
+              "properties": {
+                "label": "Note"
+              },
+              "dataBindings": [],
+              "eventBindings": []
+            },
+            {
+              "id": "save-btn",
+              "type": "button",
+              "properties": {
+                "text": "Save"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-put"
+                }
+              ]
+            },
+            {
+              "id": "search-btn",
+              "type": "button",
+              "properties": {
+                "text": "Search"
+              },
+              "dataBindings": [],
+              "eventBindings": [
+                {
+                  "event": "click",
+                  "operationId": "op-query"
+                }
+              ]
+            },
+            {
+              "id": "notes-list",
+              "type": "list",
+              "properties": {
+                "emptyText": "No notes yet"
+              },
+              "dataBindings": [
+                {
+                  "property": "items",
+                  "source": "state",
+                  "sourceId": "notes"
+                }
+              ],
+              "eventBindings": [],
+              "children": [
+                {
+                  "id": "note-row",
+                  "type": "text",
+                  "properties": {},
+                  "dataBindings": [
+                    {
+                      "property": "content",
+                      "source": "item",
+                      "sourceId": "text"
+                    }
+                  ],
+                  "eventBindings": []
+                }
+              ]
+            }
+          ],
+          "operations": [
+            {
+              "id": "op-put",
+              "operationName": "store.put",
+              "inputs": [
+                {
+                  "name": "collection",
+                  "source": "constant",
+                  "sourceId": "notes"
+                },
+                {
+                  "name": "record.text",
+                  "source": "ui-element",
+                  "sourceId": "note-in"
+                }
+              ],
+              "outputs": [],
+              "triggers": []
+            },
+            {
+              "id": "op-query",
+              "operationName": "store.query",
+              "inputs": [
+                {
+                  "name": "collection",
+                  "source": "constant",
+                  "sourceId": "notes"
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "items",
+                  "target": "state",
+                  "targetId": "notes"
+                }
+              ],
+              "triggers": []
+            }
+          ],
+          "layout": {
+            "type": "flex",
+            "properties": {}
+          },
+          "styling": {
+            "theme": "default"
+          }
+        }
+      }
+    },
+    {
       "name": "a wired counter passes clean with an items seed",
       "contract": {
         "name": "clean",

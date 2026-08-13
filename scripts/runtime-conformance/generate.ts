@@ -1487,7 +1487,88 @@ const ADD_BTN = {
   eventBindings: [{ event: 'click', operationId: 'op-add' }],
 };
 
+const NOTES_LIST = {
+  id: 'notes-list',
+  type: 'list',
+  properties: { emptyText: 'No notes yet' },
+  dataBindings: [{ property: 'items', source: 'state', sourceId: 'notes' }],
+  children: [
+    {
+      id: 'note-row',
+      type: 'text',
+      dataBindings: [{ property: 'content', source: 'item', sourceId: 'text' }],
+    },
+  ],
+};
+
+const NOTE_INPUT = {
+  id: 'note-in',
+  type: 'input',
+  properties: { label: 'Note' },
+};
+
+const STORE_PUT = {
+  id: 'op-put',
+  operationName: 'store.put',
+  inputs: [
+    { name: 'collection', source: 'constant', sourceId: 'notes' },
+    { name: 'record.text', source: 'ui-element', sourceId: 'note-in' },
+  ],
+  outputs: [],
+};
+
+const STORE_QUERY = {
+  id: 'op-query',
+  operationName: 'store.query',
+  inputs: [{ name: 'collection', source: 'constant', sourceId: 'notes' }],
+  outputs: [{ name: 'items', target: 'state', targetId: 'notes' }],
+};
+
 const VALIDATION_CASES: ValidationCase[] = [
+  {
+    name: 'a put chaining the displaying query passes',
+    contract: {
+      name: 'notes-fresh',
+      elements: [
+        NOTE_INPUT,
+        {
+          id: 'save-btn',
+          type: 'button',
+          properties: { text: 'Save' },
+          eventBindings: [
+            { event: 'click', operationId: 'op-put' },
+            { event: 'click', operationId: 'op-query' },
+          ],
+        },
+        NOTES_LIST,
+      ],
+      operations: [STORE_PUT, STORE_QUERY],
+    },
+  },
+  {
+    name: 'a put whose trigger skips the displaying query is stale',
+    contract: {
+      name: 'notes-stale',
+      elements: [
+        NOTE_INPUT,
+        {
+          id: 'save-btn',
+          type: 'button',
+          properties: { text: 'Save' },
+          eventBindings: [{ event: 'click', operationId: 'op-put' }],
+        },
+        {
+          id: 'search-btn',
+          type: 'button',
+          properties: { text: 'Search' },
+          eventBindings: [{ event: 'click', operationId: 'op-query' }],
+        },
+        NOTES_LIST,
+      ],
+      operations: [STORE_PUT, STORE_QUERY],
+    },
+  },
+
   {
     name: 'a wired counter passes clean with an items seed',
     contract: {
