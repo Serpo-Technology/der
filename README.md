@@ -1,15 +1,15 @@
 # DER: Dynamic Experience Runtime
 
-DER is a post-app runtime. Instead of shipping finished applications,
-publishers ship signed, sandboxed parts, and DER assembles the app you need
-from them on demand: you describe what you want in a sentence, the app
-assembles in front of you out of real native controls, and the result
-behaves like installed software. It lives in the tray, keeps its data,
-reopens where you left off, and can keep refreshing in the background.
+DER is a post-app platform. Developers publish small signed parts instead
+of finished apps, and DER builds the app you need from them on demand. You
+describe what you want in a sentence. The app assembles in front of you out
+of real native controls. The result behaves like installed software. It
+lives in the tray, keeps its data, reopens where you left off, and can keep
+refreshing in the background.
 
-DER is built for every platform: each one gets a native face over the same
-runtime kernel, and a webview face runs the identical contract everywhere as
-a permanent fallback.
+DER is built for every platform. Each one gets its own native interface over
+the same Rust core. A web-based interface runs the same apps everywhere and
+stays as a permanent fallback.
 
 The part most systems get wrong is the part DER is built around: **the AI
 never writes code**. It composes prewritten, signed parts into a declarative
@@ -25,10 +25,10 @@ installed parts allow.
 - A validator checks every wire before anything runs: unknown operations,
   misspelled fields, dead controls, and unreachable data are hard errors
   that feed a repair round. Nothing silently ships less than you asked for.
-- The runtime renders the contract live through a native face, which means
-  literal native controls assembling while the model streams (SwiftUI on
-  macOS today); a webview renderer runs the identical contract as a permanent
-  parallel face and the fallback wherever a native face is not there yet.
+- The app is drawn live with real native controls while the model is still
+  answering. On macOS this is SwiftUI today. A web-based renderer runs the
+  same contract as a permanent second interface. It is also the fallback on
+  any platform that does not have a native interface yet.
 - Apps persist: bookmark one and it becomes launchable from the tray, its
   state saved per app. Editing is conversational and preserves your data.
 
@@ -59,11 +59,11 @@ the native and webview faces stay identical by construction.
 
 ## Status
 
-Early and personal-scale. The native face is the primary experience on
-every platform; macOS has the first one (SwiftUI), and further platforms join
-as native faces over the same kernel, held to the same conformance corpus.
-Until a platform has its native face, the webview face runs there, and it
-stays a permanent peer afterward. You bring your own model: a Claude subscription (built-in
+Early and personal-scale. The native interface is the main experience on
+every platform. macOS has the first one, built in SwiftUI. Other platforms
+will get their own native interfaces over the same core, checked against the
+same shared test cases. Until a platform has one, the web-based interface
+runs there. It stays available afterward too. You bring your own model: a Claude subscription (built-in
 sign-in), an API key (Anthropic, OpenAI, DeepSeek, Gemini, Mercury), or a
 local OpenAI-compatible server such as Ollama.
 
