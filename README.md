@@ -1,10 +1,15 @@
 # DER: Dynamic Experience Runtime
 
-DER is a macOS app that turns a sentence into a working desktop app. You
-describe what you want, the app assembles in front of you out of real native
-controls, and the result behaves like installed software: it lives in the
-menu bar tray, keeps its data, reopens where you left off, and can keep
-refreshing in the background.
+DER is a post-app runtime. Instead of shipping finished applications,
+publishers ship signed, sandboxed parts, and DER assembles the app you need
+from them on demand: you describe what you want in a sentence, the app
+assembles in front of you out of real native controls, and the result
+behaves like installed software. It lives in the tray, keeps its data,
+reopens where you left off, and can keep refreshing in the background.
+
+DER is built for every platform: each one gets a native face over the same
+runtime kernel, and a webview face runs the identical contract everywhere as
+a permanent fallback.
 
 The part most systems get wrong is the part DER is built around: **the AI
 never writes code**. It composes prewritten, signed parts into a declarative
@@ -20,9 +25,10 @@ installed parts allow.
 - A validator checks every wire before anything runs: unknown operations,
   misspelled fields, dead controls, and unreachable data are hard errors
   that feed a repair round. Nothing silently ships less than you asked for.
-- The runtime renders the contract live. On macOS that means literal native
-  controls (SwiftUI) assembling while the model streams; a webview renderer
-  runs the identical contract as a permanent parallel face.
+- The runtime renders the contract live through a native face, which means
+  literal native controls assembling while the model streams (SwiftUI on
+  macOS today); a webview renderer runs the identical contract as a permanent
+  parallel face and the fallback wherever a native face is not there yet.
 - Apps persist: bookmark one and it becomes launchable from the tray, its
   state saved per app. Editing is conversational and preserves your data.
 
@@ -53,9 +59,11 @@ the native and webview faces stay identical by construction.
 
 ## Status
 
-Early, macOS-first, and personal-scale. The native face is the primary
-experience; the webview face is a permanent peer and the path to other
-platforms. You bring your own model: a Claude subscription (built-in
+Early and personal-scale. The native face is the primary experience on
+every platform; macOS has the first one (SwiftUI), and further platforms join
+as native faces over the same kernel, held to the same conformance corpus.
+Until a platform has its native face, the webview face runs there, and it
+stays a permanent peer afterward. You bring your own model: a Claude subscription (built-in
 sign-in), an API key (Anthropic, OpenAI, DeepSeek, Gemini, Mercury), or a
 local OpenAI-compatible server such as Ollama.
 
