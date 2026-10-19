@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use DER in your work, please cite it as below."
+title: "DER: Dynamic Experience Runtime"
+type: software
+authors:
+  - family-names: Gokce
+    given-names: Seyit
+repository-code: "https://github.com/Serpo-Technology/der"
+license: AGPL-3.0-or-later
+abstract: >-
+  DER turns a natural-language description into a working desktop app.
+  A model composes prewritten, signed parts into a declarative contract
+  that is validated before it runs, and native and web renderers display
+  the result from one shared runtime kernel.

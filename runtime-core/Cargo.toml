@@ -3,7 +3,7 @@ name = "der-runtime"
 version = "0.1.0"
 edition = "2021"
 description = "The DER runtime kernel: transforms, expressions, operations, sessions, view resolution, validation, streaming recovery, and the compose orchestration, with no host dependencies so it builds native and for wasm32."
-license = "Apache-2.0"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
