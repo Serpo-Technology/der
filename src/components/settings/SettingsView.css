@@ -201,3 +201,20 @@
   color: var(--app-text-dim);
   margin-top: 4px;
 }
+
+.settings-about p {
+  font-size: 0.85rem;
+  opacity: 0.85;
+  margin: 6px 0;
+  line-height: 1.45;
+}
+
+.settings-about a {
+  color: var(--app-accent);
+}
+
+.settings-about-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}

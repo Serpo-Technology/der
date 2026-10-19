@@ -332,6 +332,44 @@ if launchDerIfStandalone() {
     exit(0)
 }
 
+let derRepositoryURL = "https://github.com/Serpo-Technology/der"
+let derCopyright = "Copyright (C) 2025-2026 Serpo Technology Inc."
+
+/// The About panel's credits. The attribution sentence and its link are the
+/// text NOTICE requires every copy and modified version to preserve.
+@MainActor
+func aboutCredits() -> NSAttributedString {
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.alignment = .center
+    let base: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+        .foregroundColor: NSColor.labelColor,
+        .paragraphStyle: paragraph,
+    ]
+    let credits = NSMutableAttributedString()
+    func text(_ string: String) {
+        credits.append(NSAttributedString(string: string, attributes: base))
+    }
+    func link(_ title: String, _ url: String) {
+        var attributes = base
+        attributes[.link] = url
+        credits.append(NSAttributedString(string: title, attributes: attributes))
+    }
+    text("DER (Dynamic Experience Runtime) was originally created by Seyit Gokce.\n")
+    link(derRepositoryURL, derRepositoryURL)
+    text(
+        "\n\nDER is free software: you can share and modify it under the GNU Affero "
+            + "General Public License, version 3 or later, with additional terms. "
+            + "DER comes with no warranty.\n\n"
+    )
+    link("License", "\(derRepositoryURL)/blob/main/LICENSE")
+    text("    ")
+    link("Additional terms", "\(derRepositoryURL)/blob/main/NOTICE")
+    text("    ")
+    link("Source code", derRepositoryURL)
+    return credits
+}
+
 /// Menu targets and the app delegate: menu picks become bridge events, the
 /// Dock reopen shows the home, and quitting tells the core so both
 /// processes leave together.
@@ -349,6 +387,15 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     @objc func openParts(_ sender: Any?) {
         Outbound.shared.send(["event": "openParts"])
+    }
+
+    @objc func showAbout(_ sender: Any?) {
+        NSApp.activate()
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: "DER",
+            .credits: aboutCredits(),
+            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): derCopyright,
+        ])
     }
 
     @objc func quitDer(_ sender: Any?) {
@@ -377,6 +424,14 @@ func installMainMenu() {
 
     let appItem = NSMenuItem()
     let appMenu = NSMenu()
+    let aboutItem = NSMenuItem(
+        title: "About DER",
+        action: #selector(AppController.showAbout(_:)),
+        keyEquivalent: ""
+    )
+    aboutItem.target = controller
+    appMenu.addItem(aboutItem)
+    appMenu.addItem(NSMenuItem.separator())
     let settingsItem = NSMenuItem(
         title: "Settings...",
         action: #selector(AppController.openSettings(_:)),

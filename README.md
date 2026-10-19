@@ -136,4 +136,15 @@ a drift bug. `CLAUDE.md` is the detailed architecture record.
 
 ## License
 
-Apache-2.0. See `LICENSE`.
+DER (Dynamic Experience Runtime) was originally created by
+Seyit Gokce. https://github.com/Serpo-Technology/der
+
+DER is licensed under the GNU Affero General Public License, version 3 or later
+(`LICENSE`), with additional terms in `NOTICE`:
+
+- Copies and modified versions keep the attribution above.
+- Parts written independently against the part interface may use any
+  license. DER itself and the parts in this repository stay under the AGPL.
+- Apps that DER generates are not covered by the AGPL.
+
+To cite DER, use the metadata in `CITATION.cff`.
