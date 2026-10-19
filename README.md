@@ -53,9 +53,11 @@ trust question structurally:
   key on first use, and show a review of exactly what a part adds before
   anything lands.
 
-Two renderers, one semantics: a committed conformance corpus of several
-hundred vectors is run by both the TypeScript and Rust implementations, so
-the native and webview faces stay identical by construction.
+Two renderers, one semantics: the native and webview faces both render over
+the same Rust runtime core. A committed conformance corpus of over two
+hundred vectors runs against that core's source and against its WebAssembly
+build, and the SwiftUI panel decodes the same view trees, so the faces stay
+identical by construction.
 
 ## Status
 
@@ -133,6 +135,173 @@ contract between renderers: change kernel behavior by regenerating vectors
 (`npx tsx scripts/runtime-conformance/generate.ts`), reviewing the diff,
 and making both suites pass. An implementation edit that fails a vector is
 a drift bug. `CLAUDE.md` is the detailed architecture record.
+
+## Roadmap
+
+DER's host layer is already a capability system that happens to run in user
+space. Every privileged thing an app can do leaves the runtime core through
+one seam (`OperationDispatcher::dispatch`), and every grant the host hands
+out is an unforgeable token scoped to one file, one endpoint, one
+credential, or one app's store. The long-term direction is to run DER on a
+capability microkernel such as seL4. There each grant becomes a kernel
+capability and each host module becomes an isolated user-space server, so
+the guarantees that careful Rust enforces inside one process today become
+guarantees the kernel enforces even when a host module has a bug.
+
+The runtime core carries over unchanged. Only `platform/host` is
+redistributed into servers, and the contract format, the validator, and the
+conformance vectors stay as they are.
+
+### Stages
+
+Each stage ships something usable on its own, and the conformance corpus is
+the gate every time: a stage is done when the same vectors pass on the new
+layout.
+
+1. **Split the host.** Each host module becomes its own process on today's
+   operating systems, and the processes talk over the same newline-delimited
+   JSON protocol the native panel already speaks. This makes DER sturdier on
+   macOS, brings Windows and Linux in, and is exactly the server layout the
+   microkernel needs later. Gate: the corpus passes with the host split.
+2. **Linux kiosk.** A minimal Linux boots straight into the DER shell and
+   sandboxes every server with seccomp. Gate: a kiosk or classroom pilot.
+3. **seL4 prototype.** A `no_std` runtime core runs under QEMU with the
+   session, file, and store servers and the part runner. Gate: the corpus
+   passes on seL4 in QEMU.
+4. **DER OS.** Display, network, and installer servers join, along with a
+   Linux personality and a VM fallback for foreign software.
+
+The split in the first stage pays off before any kernel work starts. The
+later stages swap the transport underneath and keep the design.
+
+### The cut lines already exist
+
+Five seams in the code separate pure logic from privilege. Each one is a
+natural cut line for the port.
+
+| Seam | Where | What it guarantees today |
+| --- | --- | --- |
+| `OperationDispatcher` | `runtime-core/src/session.rs` | The runtime core never performs IO. Every non-builtin operation leaves through one `dispatch()` call. |
+| `RuntimeEnv` | `runtime-core/src/env.rs` | Ids, randomness, the clock, and the timezone reach operations only through four methods, so they can be scripted or real. |
+| Wasm import gate | `platform/host/src/fragments.rs` | A part imports only what its declared, install-consented capabilities cover, which is nothing by default. Fuel, epoch, and memory limits bound every call. |
+| File grants | `platform/host/src/files.rs` | Contracts never see paths. A pick mints an opaque token, reads accept only granted tokens, and saves go only through the save panel. |
+| Per-app store | `platform/host/src/store.rs` | Collections live under `stores/<experienceId>/` and only the owning app reaches them. |
+
+Two more host concerns sit beside these. The confined HTTP core injects a
+credential only after checking the endpoint against the service's base URL,
+and the panel protocol in `sidecar.rs` keeps the native renderer a pure view
+that never holds a secret.
+
+### Grants become capabilities
+
+Every DER grant maps to a capability held by a session's process and invoked
+over IPC. Nothing in the contract format changes.
+
+| DER today | On a capability microkernel | Server |
+| --- | --- | --- |
+| Builtin operations and transforms | Pure computation inside the app's session process. No capability needed. | One session process per app |
+| Clock, randomness, ids (`RuntimeEnv`) | Read-only endpoint capabilities | Time and entropy servers |
+| Wasm compute part with zero imports | Its own process with an empty capability space. A CPU budget and a memory quota replace fuel and the memory limiter. | Part runner |
+| `wasi:clocks`, `wasi:random` | The time or entropy capability, handed over at spawn | Part runner |
+| `wasi:files` | Per-call capabilities to exactly the granted files, plus one fresh write-only output object | File server |
+| `net:<host>:<port>` | A capability to one socket opened to that host and port. The part can name no other. | Network server |
+| `file.pick` token | The pick dialog returns a file object capability, and the token becomes the capability itself | Trusted shell and file server |
+| `file.save` through the save panel | The shell returns a write capability to the one location the user chose | Trusted shell and file server |
+| `store.put`, `store.query`, `store.remove` | A capability to one store namespace, minted when the app's session opens | Store server |
+| `http.get` and integration remotes | A capability to an HTTP client badged with one service's base URL. The server holds the secret and injects it. | HTTP and credential server |
+| `email.send`, `email.list`, `email.fetch` | A capability to the mail server. Contracts never touch the account. | Mail server |
+| LLM calls | A capability to an LLM gateway that only the composer holds. Apps and parts never get one. | LLM gateway |
+| Native renderer over stdio | A display process holding one window surface per app and an IPC channel to its session | Display server |
+| Part install, signature check, key pin | Only the installer may grant new part capabilities, and the signature check gates minting | Installer |
+
+In the resulting layout, every line between layers is IPC on a capability.
+A session process reaches only the servers, files, and endpoints its app
+was granted.
+
+```text
+  DER apps                                   Foreign software
+  (contracts + signed parts)                 (Linux, Windows via Wine, VMs)
+        |                  |                            |
+  Session processes   Part runners               Personality servers
+  (runtime core,      (wasm parts, no            (translate foreign
+   one per app)        capabilities by default)   system calls)
+        |                  |                            |
+  ---------------------- IPC on capabilities ----------------------
+  System servers, each holding only the capabilities it needs:
+  trusted shell, display, file, store, installer, network,
+  HTTP + secrets, mail, LLM gateway, time + entropy
+  ----------------------------------------------------------------
+  Capability microkernel (seL4 or similar):
+  IPC, capabilities, scheduling, memory isolation
+```
+
+### What changes in the code
+
+Carries over unchanged:
+
+- The runtime core (`der-runtime`). It is host-free by construction and
+  needs only a Rust target for the new OS; `no_std` plus `alloc` is the
+  likely ask, and `serde_json` already supports `alloc`.
+- The conformance corpus in `runtime-conformance/`, which becomes the
+  acceptance test for the port. A port is correct when the corpus passes.
+- The panel protocol in `sidecar.rs` (`open`, `update`, `close` out;
+  `setElement`, `dispatch`, `windowClosed` in), which becomes the IPC
+  protocol between a session process and the display server.
+
+Gets a new implementation:
+
+- `HostDispatcher` (`platform/host/src/runtime/host.rs`) holds a Tauri app
+  handle and calls modules in-process today. The new version holds a
+  capability table for its session and turns each `dispatch()` into an IPC
+  call on the matching capability. Its routing logic stays the same.
+- `RuntimeEnv` gets a production implementation that calls the time and
+  entropy endpoints.
+- `FileGrants` loses its token-to-path map. A token becomes a handle to a
+  file object capability held by the session, and the file server never
+  exposes paths.
+- The wasm part host runs each part in its own process so the kernel
+  enforces isolation. Wasmtime stays as a second wall inside that process.
+  The cost is a process spawn per part instance and an IPC hop per part
+  call. The rules in `check_abi` become the rules for which capabilities a
+  part's process receives at spawn.
+- Credentials (`settings.rs`, `integrations.json`) move into a credential
+  server that only the HTTP and mail servers can call.
+
+Goes away on DER OS: Tauri, the webview window plumbing, and the tray. The
+trusted shell and the display server take their place. The webview face
+keeps running on every other platform, and on DER OS wherever a browser
+engine is available.
+
+### What gets stronger
+
+The microkernel takes over enforcement of isolation. It does not make DER's
+own judgment calls any safer.
+
+Stronger:
+
+- A bug in one host module no longer exposes the rest. Today a flaw in the
+  mail code runs in the same process as the credential store and the file
+  grants. As a server it can reach only its own capabilities.
+- A compromised part runner cannot escalate. Wasmtime is the only wall
+  today; on seL4 a formally verified kernel stands behind it.
+- One app cannot read another app's store or files, even through a host
+  bug, because its session never holds those capabilities.
+- Grants become revocable at the kernel level. Closing a session or
+  uninstalling a part revokes its capabilities everywhere at once.
+
+Unchanged:
+
+- What the user consents to. A part approved for `wasi:files` or a network
+  endpoint at install gets it, so the install review stays the real
+  security decision.
+- What an integration does with data it is allowed to send. Confining
+  requests to one service's base URL does not stop that service from
+  misusing what it receives.
+- Composition quality. Validation and the repair round still decide whether
+  an app does what was asked.
+- Foreign software. Linux, Windows, and VM compatibility layers sit beside
+  DER as separate personalities. They gain sandboxing but none of DER's
+  inspectability.
 
 ## License
 
