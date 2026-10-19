@@ -3,7 +3,7 @@ name = "der-runtime-kernel"
 version = "0.1.0"
 edition = "2021"
 description = "The DER runtime kernel compiled to wasm32: the same der_alloc/der_run JSON envelope the parts speak, plus one host_call import for operation dispatch and entropy."
-license = "Apache-2.0"
+license = "AGPL-3.0-or-later"
 
 [lib]
 crate-type = ["cdylib"]

@@ -1,0 +1,73 @@
+DER (Dynamic Experience Runtime)
+Copyright (C) 2025-2026 Seyit Gokce
+https://github.com/Serpo-Technology/der
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or (at your
+option) any later version, together with the additional terms below.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public
+License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program in the file LICENSE. If not, see
+<https://www.gnu.org/licenses/>.
+
+Third-party code included in this repository, or fetched by its build
+scripts, keeps its own license as stated in or beside that code.
+
+
+ADDITIONAL TERMS UNDER SECTION 7 OF THE GNU AFFERO GENERAL PUBLIC LICENSE
+
+1. Author attribution (section 7(b))
+
+   Every copy of this program, and every work based on it, must preserve
+   the following author attribution wherever it appears in this program's
+   source and documentation (including this NOTICE file and the README),
+   and in the Appropriate Legal Notices displayed by any work containing
+   this program:
+
+       DER (Dynamic Experience Runtime) was originally created by
+       Seyit Gokce. https://github.com/Serpo-Technology/der
+
+   You may add your own attributions next to it. You may not remove,
+   alter, or obscure it.
+
+2. Parts exception (additional permission)
+
+   As a special exception, the copyright holder gives you permission to
+   create, convey, install, and run independent Parts under license terms
+   of your choice, and to convey combinations of this program with
+   independent Parts, provided that you comply with the GNU Affero General
+   Public License for this program itself and with each Part's own license
+   for that Part.
+
+   A "Part" is an extension packaged separately from this program, such as
+   a compute module, UI fragment, integration, or recipe distributed as a
+   .derpart bundle. A Part is "independent" when it interacts with this
+   program only through the Part Interface and copies no code from this
+   program beyond the declarations that interface requires (manifest
+   schemas, function signatures, and data shapes).
+
+   The "Part Interface" is the boundary this program defines for Parts:
+   the part manifest, bundle, and signing formats, the der_alloc/der_run
+   calling convention, and the host capabilities and operations exposed
+   through it. Writing a Part against this interface does not by itself
+   make the Part a work based on this program.
+
+   This exception does not cover modified versions of this program, and
+   it does not cover the Parts whose source is in this repository, which
+   remain under the GNU Affero General Public License.
+
+   If you modify this program, you may extend this exception to your
+   version, but you are not obligated to do so. If you do not wish to do
+   so, delete this exception from your version.
+
+3. Generated apps (clarification)
+
+   The apps this program generates (their contracts) and the data those
+   apps keep are not covered by the GNU Affero General Public License
+   merely because this program produced them or runs them.
