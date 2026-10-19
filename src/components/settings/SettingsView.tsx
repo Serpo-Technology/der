@@ -25,6 +25,7 @@ import {
 } from '../../services/settings/llm-settings';
 import { SmtpView, deleteSmtpSettings, getSmtpSettings } from '../../services/settings/smtp';
 import MailAccountForm from './MailAccountForm';
+import AboutSection from './AboutSection';
 
 interface SettingsViewProps {
   onError: (message: string) => void;
@@ -221,8 +222,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
     });
   }, [run]);
 
+  // About stays reachable when settings cannot load (a plain browser).
   if (!view) {
-    return <div className="settings-view">Loading settings...</div>;
+    return (
+      <div className="settings-view">
+        <p>Loading settings...</p>
+        <AboutSection />
+      </div>
+    );
   }
 
   const suggestions = MODEL_SUGGESTIONS[provider] || [];
@@ -505,6 +512,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onError }) => {
       )}
 
       {status && <p className="settings-status">{status}</p>}
+
+      <AboutSection />
     </div>
   );
 };
