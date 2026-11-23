@@ -14,8 +14,9 @@ window/tray management.
 
 The app lives at the repository root: `src/` is the webview face, `runtime-core/` the
 kernel crate, and `platform/` the platform layer (`platform/host/` is the Rust core
-process carrying the Tauri shell, host capabilities, and the bridge; `platform/macos/`
-is the SwiftUI panel; further native faces join beside it). This file is the
+process carrying the Tauri shell, host capabilities, and the bridge; `platform/services/http/`
+is the `der-http` crate, the credential store and outbound HTTP with no shell dependency;
+`platform/macos/` is the SwiftUI panel; further native faces join beside it). This file is the
 authoritative architecture record; read the Architecture section before structural changes.
 
 ## Commands
@@ -124,13 +125,21 @@ PKCE sign-in and token refresh), and `mail.rs` (the mail account in the credenti
 `implementation.auth` references a credential stored under `settings/integrations.json`
 (bearer/header/query kinds, a required service base URL the secret is CONFINED to, and optional
 model-facing notes) that Rust injects at request time after checking the endpoint is the base
-URL or a path under it. `confine.rs` is the one judge for both HTTP paths: the kernel's
+URL or a path under it. The store and every request that may carry a stored secret live in
+the `der-http` crate (`platform/services/http/`), which links no Tauri code: everything a
+caller can ask is one `Request` (an HTTP request naming its credential, or a store operation)
+and no `Reply` holds a secret, with both types serializable as one JSON line each. The host
+resolves a request (placeholder substitution, query or body split, status and JSON handling
+in `build_remote_request` / `remote_reply_value`) and hands it over through `secrets.rs`
+(`Secrets::http` and `Secrets::store`), the host's only door to the store; `mail.rs` is the
+one module that reads its record from the file itself. The crate's `confine.rs` is
+the one judge for both HTTP paths: the kernel's
 `endpoint_within_base` text rule (the character after the base must end the host or the path
 segment, so a longer host that only begins with the base is outside) plus a parsed comparison
 of scheme, host, port, and dot-resolved path, with redirects followed only inside the same
 scope and send errors on secret-carrying requests described without the URL. A credential
 without a base URL (possible only in records older than the requirement) is unusable: the
-host refuses to inject it, the validator fails the reference, and the catalog leaves it out.
+service refuses to inject it, the validator fails the reference, and the catalog leaves it out.
 The webview
 only sees redacted name/kind/target/baseUrl/notes views, the catalog
 teaches names, base URLs, and notes so the model calls the real service, and validation rejects
@@ -320,10 +329,12 @@ Fuel + epoch deadline + memory limiter, fresh instance per call,
 bundle bytes on disk, so an updated file swaps the guest without eviction choreography.
 Operation names are namespaced with camelCase segments allowed (`date.diffDays` matches the
 builtin `list.updateWhere` style). Integration calls run through `execute_part_remote`:
-endpoint placeholders substitute percent-encoded, query values raw (reqwest encodes them),
-redirects stay confined to the service base URL, a projection path that finds nothing fails the
-call naming the path and the fields present, and part-scoped credentials (stored as
-`part:<id>:<name>` in settings/integrations.json) inject host-side. Each part secret is saved
+the host reads the verified manifest and resolves the request (endpoint placeholders
+substitute percent-encoded, query values raw since reqwest encodes them), then hands it to
+`der-http` with the part's declared service and credential shapes; there the request and its
+redirects stay confined to the service base URL and the part-scoped credentials (stored as
+`part:<id>:<name>` in settings/integrations.json) are injected. Back in the host, a
+projection path that finds nothing fails the call naming the path and the fields present. Each part secret is saved
 with the service base URL its part declares, and a request injects it only while the installed
 part still names that address, so the record alone says where the secret may go; a record saved
 for another address counts as missing in the Parts view, and records older than this take

@@ -95,10 +95,10 @@ impl HostDispatcher {
         inputs: &Map<String, Value>,
     ) -> Result<Map<String, Value>, String> {
         let dir = self.fragments_dir()?;
-        let integrations = crate::settings::load_integrations(&self.app);
+        let secrets = crate::secrets::Secrets::for_app(&self.app)?;
         let data = tauri::async_runtime::block_on(execute_part_remote_core(
             &dir,
-            &integrations,
+            &secrets,
             &route.fragment_id,
             request.operation_name,
             &Value::Object(inputs.clone()),
@@ -253,11 +253,11 @@ impl HostDispatcher {
         let implementation: crate::OperationImplementation =
             serde_json::from_value(Value::Object(implementation.clone()))
                 .map_err(|error| format!("Invalid remote implementation: {}", error))?;
-        let integrations = crate::settings::load_integrations(&self.app);
+        let secrets = crate::secrets::Secrets::for_app(&self.app)?;
         tauri::async_runtime::block_on(crate::execute_remote_core(
+            &secrets,
             inputs,
             &implementation,
-            &integrations,
         ))
     }
 

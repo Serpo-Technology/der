@@ -1082,6 +1082,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "der-http"
+version = "0.1.0"
+dependencies = [
+ "der-runtime",
+ "reqwest 0.12.23",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "der-runtime"
 version = "0.1.0"
 dependencies = [
@@ -1273,6 +1283,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
+ "der-http",
  "der-runtime",
  "ed25519-dalek",
  "futures-util",

@@ -4,6 +4,8 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
+use crate::secrets::Secrets;
+
 /// Providers the app understands. "claude-subscription" authenticates with an
 /// OAuth bearer token; every other provider uses an API key from the store.
 pub const PROVIDERS: &[&str] = &[
@@ -72,73 +74,19 @@ pub struct StoredCredentials {
     pub claude_oauth: Option<ClaudeOauthTokens>,
 }
 
-/// A named credential a remote operation can reference via
-/// implementation.auth. Secrets never leave the Rust side unredacted.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IntegrationCredential {
-    /// "bearer" (Authorization header), "header" (custom header), "query"
-    /// (query parameter), or "smtp" (a mail account consumed only by
-    /// email.send, never injectable into HTTP requests).
-    pub kind: String,
-    /// Header or query-parameter name; unused for bearer.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
-    /// The service origin/prefix the secret is confined to; requests using
-    /// this credential must target it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub base_url: Option<String>,
-    /// Non-secret guidance shown to the model: endpoint shapes, response
-    /// fields, units.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub notes: Option<String>,
-    /// Kind-specific non-secret fields (smtp: host, port, security,
-    /// username, from).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fields: Option<std::collections::BTreeMap<String, String>>,
-    pub secret: String,
-}
+pub use der_http::store::{IntegrationCredential, IntegrationCredentialView, StoredIntegrations};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct StoredIntegrations {
-    #[serde(default)]
-    pub credentials: HashMap<String, IntegrationCredential>,
-}
-
-fn integrations_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(settings_dir(app)?.join("integrations.json"))
-}
-
+/// The mail account is a record in the integration store, and the mail
+/// module reads and writes it through these two functions. Every other use
+/// of the store goes through `Secrets`.
 pub fn load_integrations(app: &AppHandle) -> StoredIntegrations {
-    integrations_path(app)
-        .ok()
-        .and_then(|path| fs::read_to_string(path).ok())
-        .and_then(|json| serde_json::from_str(&json).ok())
+    settings_dir(app)
+        .map(|dir| der_http::store::load(&dir))
         .unwrap_or_default()
 }
 
 pub fn save_integrations(app: &AppHandle, integrations: &StoredIntegrations) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(integrations)
-        .map_err(|e| format!("Failed to serialize integrations: {}", e))?;
-    fs::write(integrations_path(app)?, json)
-        .map_err(|e| format!("Failed to save integrations: {}", e))
-}
-
-/// Redacted view: names and shapes only, never secrets.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IntegrationCredentialView {
-    pub name: String,
-    pub kind: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub base_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub notes: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fields: Option<std::collections::BTreeMap<String, String>>,
+    der_http::store::save(&settings_dir(app)?, integrations)
 }
 
 /// True when the configured provider can actually answer: signed in for the
@@ -160,22 +108,19 @@ pub fn llm_ready(app: &AppHandle) -> bool {
     }
 }
 
+fn credential_views(reply: der_http::Reply) -> Result<Vec<IntegrationCredentialView>, String> {
+    match reply {
+        der_http::Reply::Credentials(views) => Ok(views),
+        der_http::Reply::Error(message) => Err(message),
+        _ => Err("The credential store answered out of turn".to_string()),
+    }
+}
+
 #[tauri::command]
 pub fn list_integration_credentials(app: AppHandle) -> Vec<IntegrationCredentialView> {
-    let mut views: Vec<IntegrationCredentialView> = load_integrations(&app)
-        .credentials
-        .into_iter()
-        .map(|(name, cred)| IntegrationCredentialView {
-            name,
-            kind: cred.kind,
-            target: cred.target,
-            base_url: cred.base_url,
-            notes: cred.notes,
-            fields: cred.fields,
-        })
-        .collect();
-    views.sort_by(|a, b| a.name.cmp(&b.name));
-    views
+    Secrets::for_app(&app)
+        .and_then(|secrets| credential_views(secrets.store(der_http::Request::CredentialsList)))
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -188,40 +133,14 @@ pub fn set_integration_credential(
     notes: Option<String>,
     secret: String,
 ) -> Result<Vec<IntegrationCredentialView>, String> {
-    let name = name.trim().to_string();
-    if name.is_empty()
-        || name.len() > 64
-        || !name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-    {
-        return Err("Credential names are 1-64 chars of lowercase, digits, and dashes".to_string());
-    }
-    if !matches!(kind.as_str(), "bearer" | "header" | "query") {
-        return Err("Credential kind must be bearer, header, or query".to_string());
-    }
-    if kind != "bearer" && target.as_deref().map(str::trim).unwrap_or("").is_empty() {
-        return Err("Header and query credentials need a target name".to_string());
-    }
-    if secret.trim().is_empty() {
-        return Err("The secret cannot be empty".to_string());
-    }
-    let base_url = base_url.trim().trim_end_matches('/').to_string();
-    if !base_url.starts_with("https://") && !base_url.starts_with("http://") {
-        return Err("The service base URL must be http(s); the secret is only ever sent there".to_string());
-    }
-    let mut integrations = load_integrations(&app);
-    integrations.credentials.insert(
+    credential_views(Secrets::for_app(&app)?.store(der_http::Request::CredentialsSet {
         name,
-        IntegrationCredential {
-            kind,
-            target: target.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()),
-            base_url: Some(base_url),
-            notes: notes.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()),
-            fields: None,
-            secret,
-        },
-    );
-    save_integrations(&app, &integrations)?;
-    Ok(list_integration_credentials(app))
+        kind,
+        target,
+        base_url,
+        notes,
+        secret,
+    }))
 }
 
 #[tauri::command]
@@ -229,13 +148,12 @@ pub fn delete_integration_credential(
     app: AppHandle,
     name: String,
 ) -> Result<Vec<IntegrationCredentialView>, String> {
-    let mut integrations = load_integrations(&app);
-    integrations.credentials.remove(&name);
-    save_integrations(&app, &integrations)?;
-    Ok(list_integration_credentials(app))
+    credential_views(
+        Secrets::for_app(&app)?.store(der_http::Request::CredentialsRemove { name }),
+    )
 }
 
-fn settings_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn settings_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()

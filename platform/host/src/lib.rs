@@ -5,7 +5,6 @@ use tauri::utils::config::WebviewUrl;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-mod confine;
 pub mod files;
 pub mod fragments;
 pub mod mail;
@@ -13,6 +12,7 @@ pub mod store;
 mod llm;
 mod oauth;
 pub mod runtime;
+mod secrets;
 mod settings;
 
 
@@ -186,18 +186,37 @@ async fn execute_operation(app: tauri::AppHandle, request: OperationRequest) -> 
 }
 
 async fn execute_remote_operation(app: &tauri::AppHandle, request: &OperationRequest) -> Result<Value, String> {
-    let integrations = settings::load_integrations(app);
-    execute_remote_core(&request.inputs, &request.implementation, &integrations).await
+    let secrets = secrets::Secrets::for_app(app)?;
+    execute_remote_core(&secrets, &request.inputs, &request.implementation).await
 }
 
-/// The confined remote HTTP path, shared by the execute_operation command
-/// and the runtime session dispatcher. Credential injection and base-URL
-/// confinement live here and nowhere else.
+/// The contract remote HTTP path, shared by the execute_operation command
+/// and the runtime session dispatcher. The request is resolved here and
+/// performed by the HTTP service, which owns credential injection and
+/// base-URL confinement.
 pub(crate) async fn execute_remote_core(
+    secrets: &secrets::Secrets,
     inputs: &HashMap<String, Value>,
     implementation: &OperationImplementation,
-    integrations: &settings::StoredIntegrations,
 ) -> Result<Value, String> {
+    let request = build_remote_request(inputs, implementation)?;
+    remote_reply_value(secrets.http(request).await?)
+}
+
+fn input_text(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// Resolves a contract remote operation into one request: `{name}`
+/// placeholders substitute from inputs, and the leftovers travel as query
+/// parameters (GET/DELETE) or as a JSON body.
+fn build_remote_request(
+    inputs: &HashMap<String, Value>,
+    implementation: &OperationImplementation,
+) -> Result<der_http::HttpRequest, String> {
     let endpoint_template = implementation.endpoint
         .as_ref()
         .ok_or("Remote operation missing endpoint")?;
@@ -207,18 +226,12 @@ pub(crate) async fn execute_remote_core(
         .unwrap_or_else(|| "GET".to_string())
         .to_uppercase();
 
-    // Substitute {name} placeholders from inputs; leftovers travel as query
-    // parameters (GET/DELETE) or as a JSON body.
     let mut endpoint = endpoint_template.clone();
     let mut remaining: HashMap<String, Value> = HashMap::new();
     for (name, value) in inputs {
         let placeholder = format!("{{{}}}", name);
         if endpoint.contains(&placeholder) {
-            let raw = match value {
-                Value::String(s) => s.clone(),
-                other => other.to_string(),
-            };
-            endpoint = endpoint.replace(&placeholder, &raw);
+            endpoint = endpoint.replace(&placeholder, &input_text(value));
         } else {
             remaining.insert(name.clone(), value.clone());
         }
@@ -226,137 +239,53 @@ pub(crate) async fn execute_remote_core(
     if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
         return Err(format!("Remote endpoint must be an http(s) URL: {}", endpoint));
     }
-
-    // The credential resolves before any request exists: its confinement
-    // decides both where the secret may go and which redirects are followed.
-    let credential = match &implementation.auth {
-        Some(auth_name) => {
-            let credential = integrations.credentials.get(auth_name).ok_or_else(|| {
-                format!(
-                    "No integration credential named \"{}\"; add it in Settings under Integrations",
-                    auth_name
-                )
-            })?;
-            match credential.kind.as_str() {
-                "bearer" | "header" | "query" => {}
-                "smtp" => {
-                    return Err(format!(
-                        "\"{}\" is a mail account; it can only be used by email.send, never sent to an HTTP endpoint",
-                        auth_name
-                    ))
-                }
-                other => return Err(format!("Unknown credential kind \"{}\"", other)),
-            }
-            // Records saved before the service address became required have
-            // none, and a secret without one has nowhere it may go.
-            let base = credential
-                .base_url
-                .as_deref()
-                .filter(|base| !base.trim().is_empty())
-                .ok_or_else(|| {
-                    format!(
-                        "Credential \"{}\" has no service address; edit it in Settings under Integrations and add the address it belongs to",
-                        auth_name
-                    )
-                })?;
-            if !confine::within_base(&endpoint, base) {
-                return Err(format!(
-                    "Credential \"{}\" is confined to {}; refusing to send it to {}",
-                    auth_name, base, endpoint
-                ));
-            }
-            Some((credential, base))
-        }
-        None => None,
-    };
-
-    // A real User-Agent on every operation request: services like Wikipedia
-    // answer 403 to anonymous clients, and reqwest sends no default.
-    let mut builder = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .user_agent(concat!(
-            "DER/",
-            env!("CARGO_PKG_VERSION"),
-            " (+https://github.com/Serpo-Technology/der)"
-        ));
-    if let Some((_, base)) = credential {
-        // A request carrying a secret follows redirects only inside the
-        // credential's service.
-        builder = builder.redirect(confine::redirect_policy(base));
+    if !matches!(method.as_str(), "GET" | "POST" | "PUT" | "PATCH" | "DELETE") {
+        return Err(format!("Unsupported HTTP method: {}", method));
     }
-    let client = builder
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
-    let mut req = match method.as_str() {
-        "GET" => client.get(&endpoint),
-        "POST" => client.post(&endpoint),
-        "PUT" => client.put(&endpoint),
-        "PATCH" => client.patch(&endpoint),
-        "DELETE" => client.delete(&endpoint),
-        other => return Err(format!("Unsupported HTTP method: {}", other)),
-    };
-    if let Some(headers) = &implementation.headers {
-        for (key, value) in headers {
-            req = req.header(key, value);
-        }
-    }
-    if let Some((credential, _)) = credential {
-        match credential.kind.as_str() {
-            "bearer" => {
-                req = req.header("authorization", format!("Bearer {}", credential.secret));
-            }
-            "header" => {
-                let target = credential.target.clone().unwrap_or_else(|| "x-api-key".to_string());
-                req = req.header(target, credential.secret.clone());
-            }
-            _ => {
-                let target = credential.target.clone().unwrap_or_else(|| "key".to_string());
-                req = req.query(&[(target, credential.secret.clone())]);
-            }
-        }
-    }
-    if method == "GET" || method == "DELETE" {
-        let query: Vec<(String, String)> = remaining
+    let (query, json) = if method == "GET" || method == "DELETE" {
+        let query = remaining
             .iter()
-            .map(|(k, v)| (
-                k.clone(),
-                match v {
-                    Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                },
-            ))
+            .map(|(name, value)| (name.clone(), input_text(value)))
             .collect();
-        if !query.is_empty() {
-            req = req.query(&query);
-        }
+        (query, None)
     } else {
-        req = req.json(&remaining);
-    }
-
-    // With a secret attached, failures are described without the request
-    // URL: a query-parameter credential is part of it.
-    let carries_secret = credential.is_some();
-    let describe = |error: reqwest::Error| {
-        if carries_secret {
-            confine::describe_send_error(error)
-        } else {
-            error.to_string()
-        }
+        (Vec::new(), Some(serde_json::json!(remaining)))
     };
-    let response = req
-        .send()
-        .await
-        .map_err(|e| format!("Request failed: {}", describe(e)))?;
-    let status = response.status();
-    let text = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read response: {}", describe(e)))?;
-    if !status.is_success() {
-        return Err(format!("HTTP {}: {}", status, text.chars().take(300).collect::<String>()));
+    Ok(der_http::HttpRequest {
+        method,
+        url: endpoint,
+        headers: implementation
+            .headers
+            .iter()
+            .flatten()
+            .map(|(name, value)| (name.clone(), value.clone()))
+            .collect(),
+        query,
+        json,
+        timeout_secs: 15,
+        auth: match &implementation.auth {
+            Some(name) => der_http::Auth::Credential { name: name.clone() },
+            None => der_http::Auth::None,
+        },
+    })
+}
+
+/// A success status answers the body as JSON, or as `{"raw": text}` when
+/// the body is something else; any other status is the operation's error.
+fn remote_reply_value(reply: der_http::HttpReply) -> Result<Value, String> {
+    let success = (200..300).contains(&reply.status);
+    if !success {
+        let status = reqwest::StatusCode::from_u16(reply.status)
+            .map(|status| status.to_string())
+            .unwrap_or_else(|_| reply.status.to_string());
+        return Err(format!(
+            "HTTP {}: {}",
+            status,
+            reply.body.chars().take(300).collect::<String>()
+        ));
     }
-    Ok(serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({ "raw": text })))
+    Ok(serde_json::from_str(&reply.body).unwrap_or_else(|_| serde_json::json!({ "raw": reply.body })))
 }
 
 async fn execute_local_operation(request: &OperationRequest) -> Result<Value, String> {
@@ -1702,170 +1631,92 @@ mod share_wire_tests {
 
 
 #[cfg(test)]
-mod remote_confinement_tests {
+mod remote_request_tests {
     use std::collections::HashMap;
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
-    use std::thread::JoinHandle;
 
-    use serde_json::Value;
+    use serde_json::{json, Value};
 
-    use super::settings::{IntegrationCredential, StoredIntegrations};
-    use super::{execute_remote_core, OperationImplementation};
+    use super::{build_remote_request, remote_reply_value, OperationImplementation};
 
-    const SECRET: &str = "s3cret-value";
-
-    fn listener() -> (TcpListener, String) {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("loopback listener");
-        let origin = format!("http://{}", listener.local_addr().expect("local addr"));
-        (listener, origin)
+    fn implementation(value: Value) -> OperationImplementation {
+        serde_json::from_value(value).expect("implementation parses")
     }
 
-    /// Answers one connection per scripted response and returns the raw
-    /// requests it received.
-    fn serve(listener: TcpListener, responses: Vec<String>) -> JoinHandle<Vec<String>> {
-        std::thread::spawn(move || {
-            let mut requests = Vec::new();
-            for response in responses {
-                let (mut stream, _) = listener.accept().expect("accept");
-                let mut request = Vec::new();
-                let mut chunk = [0u8; 1024];
-                while !request.windows(4).any(|window| window == b"\r\n\r\n") {
-                    let read = stream.read(&mut chunk).expect("read request");
-                    if read == 0 {
-                        break;
-                    }
-                    request.extend_from_slice(&chunk[..read]);
-                }
-                stream.write_all(response.as_bytes()).expect("write response");
-                requests.push(String::from_utf8_lossy(&request).to_lowercase());
-            }
-            requests
-        })
+    fn inputs(pairs: &[(&str, Value)]) -> HashMap<String, Value> {
+        pairs
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.clone()))
+            .collect()
     }
 
-    fn redirect_to(location: &str) -> String {
-        format!(
-            "HTTP/1.1 302 Found\r\nLocation: {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-            location
+    #[test]
+    fn placeholders_fill_the_endpoint_and_leftovers_become_the_query() {
+        let request = build_remote_request(
+            &inputs(&[("city", json!("Oslo")), ("units", json!("metric")), ("days", json!(3))]),
+            &implementation(json!({
+                "type": "remote",
+                "endpoint": "https://api.service.dev/weather/{city}",
+                "headers": { "x-trace": "abc" },
+                "auth": "weather",
+            })),
         )
+        .expect("resolves");
+        assert_eq!(request.method, "GET");
+        assert_eq!(request.url, "https://api.service.dev/weather/Oslo");
+        assert_eq!(request.headers, vec![("x-trace".to_string(), "abc".to_string())]);
+        let mut query = request.query.clone();
+        query.sort();
+        assert_eq!(
+            query,
+            vec![("days".to_string(), "3".to_string()), ("units".to_string(), "metric".to_string())]
+        );
+        assert_eq!(request.json, None);
+        assert!(matches!(&request.auth, der_http::Auth::Credential { name } if name == "weather"));
     }
 
-    fn json_ok(body: &str) -> String {
-        format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            body.len(),
-            body
+    #[test]
+    fn a_writing_method_sends_the_leftovers_as_a_json_body() {
+        let request = build_remote_request(
+            &inputs(&[("id", json!(7)), ("title", json!("Tea"))]),
+            &implementation(json!({
+                "type": "remote",
+                "endpoint": "https://api.service.dev/items/{id}",
+                "method": "put",
+            })),
         )
+        .expect("resolves");
+        assert_eq!(request.method, "PUT");
+        assert_eq!(request.url, "https://api.service.dev/items/7");
+        assert!(request.query.is_empty());
+        assert_eq!(request.json, Some(json!({ "title": "Tea" })));
+        assert!(matches!(request.auth, der_http::Auth::None));
     }
 
-    fn integrations(kind: &str, base_url: &str) -> StoredIntegrations {
-        stored(kind, Some(base_url.to_string()))
-    }
-
-    fn stored(kind: &str, base_url: Option<String>) -> StoredIntegrations {
-        let mut credentials = HashMap::new();
-        credentials.insert(
-            "svc".to_string(),
-            IntegrationCredential {
-                kind: kind.to_string(),
-                target: Some(if kind == "query" { "key" } else { "x-api-key" }.to_string()),
-                base_url,
-                notes: None,
-                fields: None,
-                secret: SECRET.to_string(),
-            },
+    #[test]
+    fn a_missing_endpoint_a_non_http_url_and_an_unknown_method_are_refused() {
+        let build = |value: Value| build_remote_request(&HashMap::new(), &implementation(value));
+        assert_eq!(
+            build(json!({ "type": "remote" })).unwrap_err(),
+            "Remote operation missing endpoint"
         );
-        StoredIntegrations { credentials }
-    }
-
-    fn call(endpoint: &str, integrations: &StoredIntegrations) -> Result<Value, String> {
-        let implementation: OperationImplementation = serde_json::from_value(serde_json::json!({
-            "type": "remote",
-            "endpoint": endpoint,
-            "auth": "svc",
-        }))
-        .expect("implementation parses");
-        tauri::async_runtime::block_on(execute_remote_core(
-            &HashMap::new(),
-            &implementation,
-            integrations,
-        ))
-    }
-
-    #[test]
-    fn a_host_that_only_begins_with_the_base_gets_no_request() {
-        let integrations = integrations("header", "https://api.service.dev");
-        let error = call("https://api.service.dev.elsewhere.net/v1", &integrations)
-            .expect_err("the lookalike host is refused");
-        assert!(error.contains("is confined to https://api.service.dev"), "{error}");
-    }
-
-    #[test]
-    fn a_credential_without_a_service_address_gets_no_request() {
-        let (service, origin) = listener();
-        service.set_nonblocking(true).expect("nonblocking");
-        for base_url in [None, Some(String::new()), Some("  ".to_string())] {
-            let error = call(&format!("{origin}/data"), &stored("header", base_url))
-                .expect_err("the secret has nowhere it may go");
-            assert!(error.contains("has no service address"), "{error}");
-        }
-        let attempt = service.accept();
-        assert!(
-            matches!(&attempt, Err(e) if e.kind() == std::io::ErrorKind::WouldBlock),
-            "the endpoint saw a connection: {attempt:?}"
+        assert_eq!(
+            build(json!({ "type": "remote", "endpoint": "file:///etc/hosts" })).unwrap_err(),
+            "Remote endpoint must be an http(s) URL: file:///etc/hosts"
+        );
+        assert_eq!(
+            build(json!({ "type": "remote", "endpoint": "https://a.dev", "method": "trace" })).unwrap_err(),
+            "Unsupported HTTP method: TRACE"
         );
     }
 
     #[test]
-    fn mail_and_part_secrets_are_refused_by_kind() {
-        let mail = call("https://api.service.dev/v1", &stored("smtp", None))
-            .expect_err("a mail account is never sent over HTTP");
-        assert!(mail.contains("is a mail account"), "{mail}");
-        let part = call("https://api.service.dev/v1", &stored("partsecret", None))
-            .expect_err("a part secret belongs to its part");
-        assert!(part.contains("Unknown credential kind"), "{part}");
-    }
-
-    #[test]
-    fn a_redirect_inside_the_service_is_followed_with_the_secret() {
-        let (service, origin) = listener();
-        let server = serve(
-            service,
-            vec![redirect_to("/next"), json_ok("{\"ok\":true}")],
+    fn replies_map_to_json_raw_text_or_an_error() {
+        let reply = |status: u16, body: &str| der_http::HttpReply { status, body: body.to_string() };
+        assert_eq!(remote_reply_value(reply(200, "{\"ok\":true}")), Ok(json!({ "ok": true })));
+        assert_eq!(remote_reply_value(reply(200, "<p>hi</p>")), Ok(json!({ "raw": "<p>hi</p>" })));
+        assert_eq!(
+            remote_reply_value(reply(404, "gone")),
+            Err("HTTP 404 Not Found: gone".to_string())
         );
-        let data = call(&format!("{origin}/start"), &integrations("header", &origin))
-            .expect("the request completes");
-        assert_eq!(data, serde_json::json!({ "ok": true }));
-        let requests = server.join().expect("server thread");
-        assert!(requests[1].starts_with("get /next "), "{}", requests[1]);
-        assert!(requests[1].contains(&format!("x-api-key: {SECRET}")), "{}", requests[1]);
-    }
-
-    #[test]
-    fn a_redirect_leaving_the_service_is_refused_before_it_connects() {
-        let (service, origin) = listener();
-        let (outside, outside_origin) = listener();
-        outside.set_nonblocking(true).expect("nonblocking");
-        let server = serve(service, vec![redirect_to(&format!("{outside_origin}/collect"))]);
-        let error = call(&format!("{origin}/start"), &integrations("header", &origin))
-            .expect_err("the redirect is refused");
-        assert!(error.contains("redirected the request outside"), "{error}");
-        server.join().expect("server thread");
-        let attempt = outside.accept();
-        assert!(
-            matches!(&attempt, Err(e) if e.kind() == std::io::ErrorKind::WouldBlock),
-            "the outside host saw a connection: {attempt:?}"
-        );
-    }
-
-    #[test]
-    fn a_failed_request_never_puts_a_query_secret_in_its_message() {
-        let (closed, origin) = listener();
-        drop(closed);
-        let error = call(&format!("{origin}/data"), &integrations("query", &origin))
-            .expect_err("nothing listens there");
-        assert!(error.starts_with("Request failed:"), "{error}");
-        assert!(!error.contains(SECRET), "{error}");
     }
 }

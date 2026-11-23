@@ -1,0 +1,16 @@
+[package]
+name = "der-http"
+version = "0.1.0"
+edition = "2021"
+description = "DER's outbound HTTP service: the integration credential store, base-URL confinement, and every request that may carry a stored secret, with no dependency on the desktop shell."
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+der-runtime = { path = "../../../runtime-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "time", "net"] }

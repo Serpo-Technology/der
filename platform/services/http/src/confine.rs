@@ -1,13 +1,13 @@
 //! Base-URL confinement for requests that carry a stored secret. A secret
 //! travels only to the service it was saved for: the request URL has to sit
 //! at or under the service base URL, and so does every redirect the client
-//! follows. The contract remote path and the integration part path both
-//! decide through this module.
+//! follows. Contract credentials and part secrets both decide through this
+//! module.
 
 use reqwest::redirect::Policy;
 use reqwest::Url;
 
-use crate::runtime::validation::endpoint_within_base;
+use der_runtime::validation::endpoint_within_base;
 
 const MAX_REDIRECTS: usize = 10;
 
