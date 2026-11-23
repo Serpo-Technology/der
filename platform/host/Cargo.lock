@@ -1060,6 +1060,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "der-llm"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "der-wire",
+ "futures-util",
+ "reqwest 0.12.23",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "der-mail"
 version = "0.1.0"
 dependencies = [
@@ -1274,11 +1290,11 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "der-http",
+ "der-llm",
  "der-mail",
  "der-runtime",
  "der-wire",
  "ed25519-dalek",
- "futures-util",
  "rand 0.8.5",
  "regex",
  "reqwest 0.12.23",

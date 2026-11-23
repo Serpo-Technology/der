@@ -17,7 +17,8 @@ kernel crate, and `platform/` the platform layer (`platform/host/` is the Rust c
 process carrying the Tauri shell, host capabilities, and the bridge; `platform/services/`
 holds the crates the host runs as separate processes, none with a shell dependency:
 `http/` is `der-http`, the credential store and outbound HTTP, `mail/` is `der-mail`, the
-mail account with sending and reading, and `wire/` is `der-wire`, the line protocol and
+mail account with sending and reading, `llm/` is `der-llm`, the model settings, keys, and
+every request to a model provider, and `wire/` is `der-wire`, the line protocol and
 process client they share;
 `platform/macos/` is the SwiftUI panel; further native faces join beside it). This file is the
 authoritative architecture record; read the Architecture section before structural changes.
@@ -120,9 +121,10 @@ not in these singletons.
 
 The frontend reaches Rust through `@tauri-apps/api` `invoke`. `platform/host/src/lib.rs` registers the
 commands (storage, `execute_operation`, window/tray control) plus the newer modules: `llm.rs`
-(the `llm_chat` command that performs all LLM HTTP via reqwest), `settings.rs` (LLM settings and
-credentials under `app_data_dir/settings/`, redacted reads), `oauth.rs` (Claude subscription
-PKCE sign-in and token refresh), and `mail.rs` (the host's door to the mail service and the
+(the host's door to the LLM gateway and the `llm_chat` commands), `settings.rs` (the settings
+commands, each passing its request on to the service that owns the data and returning a
+redacted view), `oauth.rs` (the host's part of the Claude subscription sign-in: opening the
+browser and passing the pasted code on), and `mail.rs` (the host's door to the mail service and the
 `email_send`/`mail_list`/`mail_fetch`/`smtp_get`/`smtp_save`/`smtp_delete` commands). `execute_operation`'s `remote` branch performs real HTTP
 (`{name}` endpoint substitution, GET query / JSON body, and named integration credentials:
 `implementation.auth` references a credential stored under `settings/integrations.json`
@@ -135,27 +137,34 @@ and no `Reply` holds a secret, with both types serializable as one JSON line eac
 resolves a request (placeholder substitution, query or body split, status and JSON handling
 in `build_remote_request` / `remote_reply_value`) and hands it over through `secrets.rs`
 (`Secrets::http` and `Secrets::store`), the host's only door to the store: no host module
-reads `settings/integrations.json` itself. The service is its own process, and so is
-mail. The host executable started with `--service <http|mail> --settings-dir <dir>` never
-becomes the app (`services::serve_if_asked` runs first in `main`) and runs that crate's
-`serve` instead. Both sit on `der-wire`: one `RequestLine` per line on stdin, one
-`ReplyLine` per line on stdout, matched by id, generic over each service's own `Request`
-and `Reply`. `der_wire::serve` hands requests to the service in arrival order with a
+reads `settings/integrations.json` itself. The service is its own process, and so are
+mail and the LLM gateway. The host executable started with
+`--service <http|mail|llm> --settings-dir <dir>` never becomes the app
+(`services::serve_if_asked` runs first in `main`) and runs that crate's `serve` instead.
+All three sit on `der-wire`: one `RequestLine` per line on stdin, one `ReplyLine` per line
+on stdout, matched by id, generic over each service's own `Request` and `Reply`. A reply
+that arrives in pieces sends `PartLine`s for its id first (`Responder::part` on the
+service's end, `Client::call_streamed` on the host's), which is how streamed model text
+crosses. A `Responder` dropped without answering, as when its handler panics, writes a
+`FailedLine`, so the caller gets an error at once and never waits out its deadline.
+`der_wire::serve` hands requests to the service in arrival order with a
 `Responder` that may answer later from another thread or task, so requests that touch a
 file (store and account saves) are answered in order and never overwrite each other,
 while requests that use the network run side by side. A line that is not a request is
 answered with fixed text, never an echo. The loop ends when stdin closes, so a service
 never outlives the host. `der_wire::Client` is the host's end: it starts the process on
-the first request (the startup passes make that app launch for HTTP; mail starts when
-first used), starts a fresh one when a request finds it gone, and fails a request the
+the first request (the startup passes make that app launch for HTTP; mail and the
+gateway start when first used), starts a fresh one when a request finds it gone, and fails a request the
 process took and then died on, since that request may already have had its effect. A
 stored secret is therefore read and used outside the host's memory. The boundary is a
 process boundary only: all the processes run as the same user, so nothing yet stops the
-host from opening a service's file. `tests/http_service_process.rs` and
-`tests/mail_service_process.rs` drive the real host binary in service mode through
-`Client`; unit tests use `Secrets::at` and `Mail::at`, which run the same `Service` inside
-the test process. A new service is a crate with its `Request`, `Reply`, and `serve`, a name
-in `services.rs`, and a door module like these two. The crate's `confine.rs` is
+host from opening a service's file. `tests/http_service_process.rs`,
+`tests/mail_service_process.rs`, and `tests/llm_service_process.rs` drive the real host
+binary in service mode through `Client`; unit tests use `Secrets::at`, `Mail::at`, and
+`Llm::at`, which run the same `Service` inside the test process, and `der-wire`'s own
+client tests run it against scripted shell services. A new service is a crate with its
+`Request`, `Reply`, and `serve`, a name in `services.rs`, and a door module like these
+three. The crate's `confine.rs` is
 the one judge for both HTTP paths: the kernel's
 `endpoint_within_base` text rule (the character after the base must end the host or the path
 segment, so a longer host that only begins with the base is outside) plus a parsed comparison
@@ -209,7 +218,16 @@ object or a model instance depending on where it came from. Calling model method
 
 `LLMClient` (`src/services/ai-interpreter/llm-client.ts`) is a thin wrapper over the Tauri
 `llm_chat` command; provider, model, and credentials resolve on the Rust side from stored
-settings, so the webview never holds secrets and CORS does not apply. Providers:
+settings, so the webview never holds secrets and CORS does not apply. The Rust side is the
+LLM gateway (`platform/services/llm/`, reached through `platform/host/src/llm.rs`): a
+separate process that owns `settings/llm.json` and `settings/credentials.json` (the API
+keys and the Claude sign-in tokens, readable by its owner only) and makes every provider
+request, so neither the webview nor the host holds a key. Settings screens get previews
+(`SettingsView`), the sign-in's verifier and token exchange stay in the gateway while the
+host only opens the browser and passes the pasted code on, and token refreshes run one at
+a time. A key is only ever sent to its provider's fixed address: a chat request that names
+a `baseUrl` is refused, and the local provider's address comes from the saved settings.
+Providers:
 `claude-subscription` (OAuth bearer + auto-refresh; sign-in lives in the Settings view),
 `anthropic` (API key), `deepseek`, `gemini`, `openai`, `mercury` (Inception's diffusion models
 behind an OpenAI-shaped API; response_format is never sent since diffusion serving may not
@@ -220,8 +238,8 @@ accepts an optional `systemBlocks: [{text, cache}]` array: on Anthropic-shaped p
 prompt prefix; a legacy single system string is cached whole), while other providers receive the
 blocks as one plain system message. Streaming goes through the separate `llm_chat_stream` command,
 which takes a `Channel<String>`: Anthropic-shaped and OpenAI-shaped providers switch to SSE and
-forward text deltas over the channel (Gemini stays non-streaming), with the full content still
-returned at the end; plain `llm_chat` keeps its channel-less signature. Bare-origin
+the gateway sends each text delta as a part line, which the host forwards over the channel
+(Gemini stays non-streaming), with the full content still returned at the end; plain `llm_chat` keeps its channel-less signature. Bare-origin
 OpenAI-compatible base URLs (e.g. `http://localhost:11434`) normalize to `/v1`. Settings UI:
 `src/components/settings/SettingsView.tsx`; TS wrappers: `src/services/settings/llm-settings.ts`.
 

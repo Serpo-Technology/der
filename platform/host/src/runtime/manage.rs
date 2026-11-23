@@ -284,8 +284,7 @@ pub async fn handle_action(app: &tauri::AppHandle, event: &Value) {
             sidecar::refresh_native_home(app);
         }
         "oauthStart" => {
-            let pending = app.state::<crate::oauth::PendingOauth>();
-            let outcome = crate::oauth::claude_oauth_start(app.clone(), pending).await;
+            let outcome = crate::oauth::claude_oauth_start(app.clone()).await;
             let mut snapshot = match &outcome {
                 Ok(_) => settings_snapshot(
                     app,
@@ -299,9 +298,7 @@ pub async fn handle_action(app: &tauri::AppHandle, event: &Value) {
             sidecar::send_panel_message(app, &snapshot);
         }
         "oauthFinish" => {
-            let pending = app.state::<crate::oauth::PendingOauth>();
-            let outcome =
-                crate::oauth::claude_oauth_finish(app.clone(), pending, text("code")).await;
+            let outcome = crate::oauth::claude_oauth_finish(app.clone(), text("code")).await;
             let note = match outcome {
                 Ok(_) => ("info", "Signed in with Claude".to_string()),
                 Err(error) => ("error", error),

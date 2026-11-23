@@ -256,7 +256,7 @@ impl super::compose::ComposeLlm for HostLlm {
                 .iter()
                 .map(|block| crate::llm::SystemBlock { text: block.text.clone(), cache: block.cache })
                 .collect();
-            let request = crate::llm::LlmChatRequest {
+            let request = crate::llm::ChatRequest {
                 messages: chat_messages,
                 system_blocks: Some(system_blocks),
                 stream: on_chunk.is_some(),

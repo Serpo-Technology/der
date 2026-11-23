@@ -14,9 +14,12 @@ use der_wire::{Asked, Client};
 pub const HTTP: &str = "http";
 /// The mail account, sending, and reading.
 pub const MAIL: &str = "mail";
+/// The model settings, keys, and sign-in tokens, and every request to a
+/// model provider.
+pub const LLM: &str = "llm";
 
 fn refuse() -> ! {
-    eprintln!("{}", der_wire::usage(&[HTTP, MAIL]));
+    eprintln!("{}", der_wire::usage(&[HTTP, MAIL, LLM]));
     std::process::exit(2);
 }
 
@@ -32,6 +35,7 @@ pub fn serve_if_asked() -> bool {
     let outcome = match name.as_str() {
         HTTP => der_http::serve(settings_dir, std::io::stdin().lock(), std::io::stdout()),
         MAIL => der_mail::serve(settings_dir, std::io::stdin().lock(), std::io::stdout()),
+        LLM => der_llm::serve(settings_dir, std::io::stdin().lock(), std::io::stdout()),
         _ => refuse(),
     };
     if let Err(error) = outcome {

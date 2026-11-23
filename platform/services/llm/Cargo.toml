@@ -1,0 +1,21 @@
+[package]
+name = "der-llm"
+version = "0.1.0"
+edition = "2021"
+description = "DER's LLM gateway: the model settings, the API keys and Claude sign-in tokens, and every request to a model provider, with no dependency on the desktop shell."
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+der-wire = { path = "../wire" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+futures-util = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+base64 = "0.22"
+sha2 = "0.10"
+uuid = { version = "1.0", features = ["v4"] }
+chrono = "0.4"
+
+[dev-dependencies]
+tempfile = "3"

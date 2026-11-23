@@ -1,98 +1,22 @@
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+//! The settings commands both faces call. Nothing secret is kept here: the
+//! integration credentials live in the HTTP service and the model settings,
+//! API keys, and sign-in tokens live in the LLM gateway, so each command
+//! passes its request on and returns a redacted view.
+
 use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
+use crate::llm;
 use crate::secrets::Secrets;
 
-/// Providers the app understands. "claude-subscription" authenticates with an
-/// OAuth bearer token; every other provider uses an API key from the store.
-pub const PROVIDERS: &[&str] = &[
-    "claude-subscription",
-    "anthropic",
-    "deepseek",
-    "gemini",
-    "openai",
-    "mercury",
-    "local",
-];
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LlmSettings {
-    pub provider: String,
-    pub model: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub base_url: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub temperature: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<u32>,
-}
-
-impl Default for LlmSettings {
-    fn default() -> Self {
-        Self {
-            provider: "claude-subscription".to_string(),
-            model: String::new(),
-            base_url: None,
-            temperature: None,
-            max_tokens: None,
-        }
-    }
-}
-
-pub fn default_model(provider: &str) -> &'static str {
-    match provider {
-        "claude-subscription" | "anthropic" => "claude-opus-4-8",
-        "deepseek" => "deepseek-chat",
-        "gemini" => "gemini-2.0-flash",
-        "openai" => "gpt-4o-mini",
-        "mercury" => "mercury-2",
-        _ => "",
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct ClaudeOauthTokens {
-    pub access_token: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub refresh_token: Option<String>,
-    /// Unix seconds. None for long-lived manually pasted tokens.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expires_at: Option<i64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct StoredCredentials {
-    #[serde(default)]
-    pub api_keys: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub claude_oauth: Option<ClaudeOauthTokens>,
-}
-
 pub use der_http::store::IntegrationCredentialView;
+pub use der_llm::{Settings as LlmSettings, SettingsView as LlmSettingsView};
 
-/// True when the configured provider can actually answer: signed in for the
-/// Claude subscription, a stored key for API providers, a base URL for
-/// local. The native home gates its create field on this.
+/// True when the configured provider can actually answer. The native home
+/// gates its create field on this.
 pub fn llm_ready(app: &AppHandle) -> bool {
-    let settings = load_settings(app);
-    let credentials = load_credentials(app);
-    match settings.provider.as_str() {
-        "claude-subscription" => credentials.claude_oauth.is_some(),
-        "local" => settings
-            .base_url
-            .as_deref()
-            .is_some_and(|url| !url.trim().is_empty()),
-        provider => credentials
-            .api_keys
-            .get(provider)
-            .is_some_and(|key| !key.trim().is_empty()),
-    }
+    llm::ready(app)
 }
 
 fn credential_views(reply: der_http::Reply) -> Result<Vec<IntegrationCredentialView>, String> {
@@ -150,114 +74,20 @@ pub(crate) fn settings_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(settings_dir(app)?.join("llm.json"))
-}
-
-fn credentials_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(settings_dir(app)?.join("credentials.json"))
-}
-
-pub fn load_settings(app: &AppHandle) -> LlmSettings {
-    settings_path(app)
-        .ok()
-        .and_then(|p| fs::read_to_string(p).ok())
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
-}
-
-pub fn save_settings(app: &AppHandle, settings: &LlmSettings) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(settings)
-        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-    fs::write(settings_path(app)?, json).map_err(|e| format!("Failed to save settings: {}", e))
-}
-
-pub fn load_credentials(app: &AppHandle) -> StoredCredentials {
-    credentials_path(app)
-        .ok()
-        .and_then(|p| fs::read_to_string(p).ok())
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
-}
-
-pub fn save_credentials(app: &AppHandle, credentials: &StoredCredentials) -> Result<(), String> {
-    let path = credentials_path(app)?;
-    let json = serde_json::to_string_pretty(credentials)
-        .map_err(|e| format!("Failed to serialize credentials: {}", e))?;
-    fs::write(&path, json).map_err(|e| format!("Failed to save credentials: {}", e))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
-    }
-    Ok(())
-}
-
-fn redact(secret: &str) -> String {
-    let chars: Vec<char> = secret.chars().collect();
-    if chars.len() <= 10 {
-        return "***".to_string();
-    }
-    let head: String = chars[..6].iter().collect();
-    let tail: String = chars[chars.len() - 4..].iter().collect();
-    format!("{}...{}", head, tail)
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClaudeOauthStatus {
-    pub signed_in: bool,
-    pub has_refresh_token: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expires_at: Option<i64>,
-    pub token_preview: String,
-}
-
-/// What the webview sees: full non-secret settings, redacted credential previews.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LlmSettingsView {
-    pub settings: LlmSettings,
-    pub providers: Vec<String>,
-    pub api_keys: HashMap<String, String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub claude_oauth: Option<ClaudeOauthStatus>,
-}
-
+/// What settings screens see: the full non-secret settings and a redacted
+/// preview of each credential.
 pub fn build_view(app: &AppHandle) -> LlmSettingsView {
-    let settings = load_settings(app);
-    let credentials = load_credentials(app);
-    let api_keys = credentials
-        .api_keys
-        .iter()
-        .map(|(k, v)| (k.clone(), redact(v)))
-        .collect();
-    let claude_oauth = credentials.claude_oauth.as_ref().map(|t| ClaudeOauthStatus {
-        signed_in: true,
-        has_refresh_token: t.refresh_token.is_some(),
-        expires_at: t.expires_at,
-        token_preview: redact(&t.access_token),
-    });
-    LlmSettingsView {
-        settings,
-        providers: PROVIDERS.iter().map(|p| p.to_string()).collect(),
-        api_keys,
-        claude_oauth,
-    }
+    llm::settings_view(app)
 }
 
 #[tauri::command]
 pub async fn get_llm_settings(app: AppHandle) -> Result<LlmSettingsView, String> {
-    Ok(build_view(&app))
+    llm::settings_request(&app, der_llm::Request::SettingsGet).await
 }
 
 #[tauri::command]
 pub async fn set_llm_settings(app: AppHandle, settings: LlmSettings) -> Result<LlmSettingsView, String> {
-    if !PROVIDERS.contains(&settings.provider.as_str()) {
-        return Err(format!("Unknown provider: {}", settings.provider));
-    }
-    save_settings(&app, &settings)?;
-    Ok(build_view(&app))
+    llm::settings_request(&app, der_llm::Request::SettingsSet { settings }).await
 }
 
 /// For "claude-subscription" the value is treated as a long-lived OAuth token
@@ -268,32 +98,10 @@ pub async fn set_llm_credential(
     provider: String,
     secret: String,
 ) -> Result<LlmSettingsView, String> {
-    let secret = secret.trim().to_string();
-    if secret.is_empty() {
-        return Err("Credential is empty".to_string());
-    }
-    let mut credentials = load_credentials(&app);
-    if provider == "claude-subscription" {
-        credentials.claude_oauth = Some(ClaudeOauthTokens {
-            access_token: secret,
-            refresh_token: None,
-            expires_at: None,
-        });
-    } else {
-        credentials.api_keys.insert(provider, secret);
-    }
-    save_credentials(&app, &credentials)?;
-    Ok(build_view(&app))
+    llm::settings_request(&app, der_llm::Request::CredentialSet { provider, secret }).await
 }
 
 #[tauri::command]
 pub async fn clear_llm_credential(app: AppHandle, provider: String) -> Result<LlmSettingsView, String> {
-    let mut credentials = load_credentials(&app);
-    if provider == "claude-subscription" {
-        credentials.claude_oauth = None;
-    } else {
-        credentials.api_keys.remove(&provider);
-    }
-    save_credentials(&app, &credentials)?;
-    Ok(build_view(&app))
+    llm::settings_request(&app, der_llm::Request::CredentialClear { provider }).await
 }

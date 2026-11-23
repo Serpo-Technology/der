@@ -1,786 +1,328 @@
-use futures_util::StreamExt;
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+//! The host's door to the LLM gateway. The model settings, the API keys,
+//! the Claude sign-in tokens, and every request to a model provider live in
+//! the gateway, a separate process. The host passes chat requests and
+//! typed credentials in and gets content, text deltas, and redacted views
+//! back, so a stored key or token is never in the host's memory.
+
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+
+use der_llm::{Reply, Request};
 use tauri::ipc::Channel;
 use tauri::AppHandle;
 
-use crate::oauth;
-use crate::settings::{self, default_model};
+pub use der_llm::{ChatMessage, ChatRequest, ChatResponse, ChunkSink, SettingsView, SystemBlock};
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct ChatMessage {
-    pub role: String,
-    pub content: String,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct SystemBlock {
-    pub text: String,
-    #[serde(default)]
-    pub cache: bool,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LlmChatRequest {
-    pub messages: Vec<ChatMessage>,
-    /// Structured system prompt; blocks flagged `cache` become prompt-cache
-    /// breakpoints on Anthropic-shaped providers. Other providers receive the
-    /// concatenated text as a plain system message.
-    #[serde(default)]
-    pub system_blocks: Option<Vec<SystemBlock>>,
-    /// Stream deltas over the command's channel where the provider supports
-    /// it; the full content still returns at the end either way.
-    #[serde(default)]
-    pub stream: bool,
-    #[serde(default)]
-    pub provider: Option<String>,
-    #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default)]
-    pub max_tokens: Option<u32>,
-    #[serde(default)]
-    pub temperature: Option<f64>,
-    #[serde(default)]
-    pub json_mode: Option<bool>,
-    #[serde(default)]
-    pub base_url: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LlmChatResponse {
-    pub content: String,
-    pub provider: String,
-    pub model: String,
-}
-
-const DEFAULT_MAX_TOKENS: u32 = 8192;
-
+/// How long a settings or credential request may take to answer.
+const SETTINGS_WAIT: Duration = Duration::from_secs(30);
+/// How long finishing a sign-in may take: one token exchange, which the
+/// gateway bounds at 30 seconds.
+const SIGN_IN_WAIT: Duration = Duration::from_secs(60);
+/// What a chat is given on top of the gateway's own deadline, which leaves
+/// room for a token refresh before the request.
+const CHAT_WAIT_MARGIN: Duration = Duration::from_secs(90);
+/// The gateway's deadlines for one provider request, plain and streamed.
 const PLAIN_DEADLINE: Duration = Duration::from_secs(300);
-// Streams stay alive as long as tokens flow; local models can run long.
 const STREAM_DEADLINE: Duration = Duration::from_secs(1800);
 
-fn http_client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))
+type Client = der_wire::Client<Request, Reply>;
+
+#[derive(Clone)]
+enum Door {
+    Process(Arc<Client>),
+    #[cfg(test)]
+    Local(Arc<der_llm::Service>),
 }
 
-fn request_deadline(streaming: bool) -> Duration {
-    if streaming { STREAM_DEADLINE } else { PLAIN_DEADLINE }
+#[derive(Clone)]
+pub struct Llm {
+    door: Door,
 }
 
-fn api_key(app: &AppHandle, provider: &str) -> Result<String, String> {
-    settings::load_credentials(app)
-        .api_keys
-        .get(provider)
-        .cloned()
-        .ok_or_else(|| {
-            format!(
-                "No API key configured for {}. Add one in Settings.",
-                provider
-            )
+fn wait_for(request: &Request) -> Duration {
+    match request {
+        Request::Chat(chat) if chat.stream => STREAM_DEADLINE + CHAT_WAIT_MARGIN,
+        Request::Chat(_) => PLAIN_DEADLINE + CHAT_WAIT_MARGIN,
+        Request::SignInFinish { .. } => SIGN_IN_WAIT,
+        _ => SETTINGS_WAIT,
+    }
+}
+
+impl Llm {
+    /// The gateway over this app's settings directory, shared by every
+    /// caller in the process.
+    pub fn for_app(app: &AppHandle) -> Result<Self, String> {
+        static CLIENT: OnceLock<Arc<Client>> = OnceLock::new();
+        let settings_dir = crate::settings::settings_dir(app)?;
+        let client = match CLIENT.get() {
+            Some(client) => client,
+            None => {
+                let client = crate::services::client("LLM", crate::services::LLM, &settings_dir)?;
+                CLIENT.get_or_init(|| Arc::new(client))
+            }
+        };
+        Ok(Llm {
+            door: Door::Process(client.clone()),
         })
-}
-
-fn error_body(status: reqwest::StatusCode, body: &str) -> String {
-    format!(
-        "{} error: {}",
-        status,
-        body.chars().take(300).collect::<String>()
-    )
-}
-
-fn split_system(messages: &[ChatMessage]) -> (String, Vec<&ChatMessage>) {
-    let system = messages
-        .iter()
-        .filter(|m| m.role == "system")
-        .map(|m| m.content.as_str())
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    let conversation = messages.iter().filter(|m| m.role != "system").collect();
-    (system, conversation)
-}
-
-enum AnthropicAuth {
-    ApiKey(String),
-    Bearer(String),
-}
-
-fn build_anthropic_body(
-    is_bearer: bool,
-    model: &str,
-    messages: &[ChatMessage],
-    system_blocks: Option<&[SystemBlock]>,
-    max_tokens: u32,
-) -> Value {
-    let (system, conversation) = split_system(messages);
-
-    // Subscription bearer tokens are scoped to CLI-shaped requests; identify as
-    // one via the leading system block so inference is accepted.
-    let mut blocks: Vec<Value> = Vec::new();
-    if is_bearer {
-        blocks.push(json!({
-            "type": "text",
-            "text": "You are Claude Code, Anthropic's official CLI for Claude."
-        }));
     }
-    match system_blocks {
-        Some(structured) => {
-            for block in structured {
-                let mut value = json!({ "type": "text", "text": block.text });
-                if block.cache {
-                    value["cache_control"] = json!({ "type": "ephemeral" });
-                }
-                blocks.push(value);
+
+    /// The gateway run inside the test process over an explicit settings
+    /// directory.
+    #[cfg(test)]
+    pub fn at(settings_dir: &std::path::Path) -> Self {
+        Llm {
+            door: Door::Local(Arc::new(der_llm::Service::new(settings_dir))),
+        }
+    }
+
+    /// Answers one request. Blocks until the gateway has.
+    pub fn call(&self, request: Request) -> Reply {
+        self.call_streamed(request, &mut |_| {})
+    }
+
+    /// Like `call`, handing each text delta of a streamed chat to `on_part`
+    /// as it arrives.
+    pub fn call_streamed(&self, request: Request, on_part: ChunkSink<'_>) -> Reply {
+        match &self.door {
+            Door::Process(client) => {
+                let wait = wait_for(&request);
+                client
+                    .call_streamed(request, wait, on_part)
+                    .unwrap_or_else(Reply::Error)
             }
-            if !system.is_empty() {
-                blocks.push(json!({ "type": "text", "text": system }));
-            }
-        }
-        None => {
-            // Legacy single-string system: stable per mode, so cache it whole.
-            if !system.is_empty() {
-                blocks.push(json!({
-                    "type": "text",
-                    "text": system,
-                    "cache_control": { "type": "ephemeral" }
-                }));
-            }
+            #[cfg(test)]
+            Door::Local(service) => tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime")
+                .block_on(service.handle(request, Some(on_part))),
         }
     }
 
-    let mut body = json!({
-        "model": model,
-        "max_tokens": max_tokens,
-        "messages": conversation
-            .iter()
-            .map(|m| json!({ "role": m.role, "content": m.content }))
-            .collect::<Vec<_>>(),
-    });
-    if !blocks.is_empty() {
-        body["system"] = json!(blocks);
+    /// Runs a blocking call off the async threads.
+    async fn ask(&self, request: Request) -> Result<Reply, String> {
+        let llm = self.clone();
+        tauri::async_runtime::spawn_blocking(move || llm.call(request))
+            .await
+            .map_err(|error| format!("The LLM request could not run: {}", error))
     }
-    body
 }
 
-/// A base URL with no path gets the standard OpenAI-compatible /v1 prefix;
-/// an explicit path is respected (users often enter just the origin, e.g.
-/// http://localhost:11434 for Ollama).
-fn normalize_openai_base(base: &str) -> String {
-    let trimmed = base.trim_end_matches('/');
-    if let Ok(url) = reqwest::Url::parse(trimmed) {
-        if url.path().is_empty() || url.path() == "/" {
-            return format!("{}/v1", trimmed);
-        }
+fn view_of(reply: Reply) -> Result<SettingsView, String> {
+    match reply {
+        Reply::Settings(view) => Ok(view),
+        Reply::Error(message) => Err(message),
+        _ => Err("The LLM gateway answered out of turn".to_string()),
     }
-    trimmed.to_string()
 }
 
-/// Splits complete lines off an SSE byte buffer and returns their `data:`
-/// payloads; an unterminated tail stays in the buffer so multi-byte
-/// characters split across chunks survive.
-fn drain_sse_data(buffer: &mut Vec<u8>) -> Vec<String> {
-    let mut out = Vec::new();
-    while let Some(pos) = buffer.iter().position(|b| *b == b'\n') {
-        let line: Vec<u8> = buffer.drain(..=pos).collect();
-        let line = String::from_utf8_lossy(&line);
-        let line = line.trim_end_matches(['\n', '\r']);
-        if let Some(data) = line.strip_prefix("data:") {
-            out.push(data.trim_start().to_string());
-        }
-    }
-    out
+/// The settings and a preview of each credential, after `request` has been
+/// applied.
+pub async fn settings_request(app: &AppHandle, request: Request) -> Result<SettingsView, String> {
+    view_of(Llm::for_app(app)?.ask(request).await?)
 }
 
-fn anthropic_delta_text(payload: &str) -> Option<String> {
-    let value: Value = serde_json::from_str(payload).ok()?;
-    if value.get("type")?.as_str()? != "content_block_delta" {
-        return None;
-    }
-    value
-        .get("delta")?
-        .get("text")
-        .and_then(|t| t.as_str())
-        .map(|s| s.to_string())
+/// What settings screens see. A gateway that cannot answer shows as one
+/// with nothing saved.
+pub fn settings_view(app: &AppHandle) -> SettingsView {
+    Llm::for_app(app)
+        .and_then(|llm| view_of(llm.call(Request::SettingsGet)))
+        .unwrap_or_else(|_| SettingsView::empty())
 }
 
-fn openai_delta_text(payload: &str) -> Option<String> {
-    let value: Value = serde_json::from_str(payload).ok()?;
-    value
-        .get("choices")?
-        .get(0)?
-        .get("delta")?
-        .get("content")
-        .and_then(|c| c.as_str())
-        .map(|s| s.to_string())
+/// True when the configured provider can answer: signed in for the Claude
+/// subscription, a stored key for API providers, a base URL for local. The
+/// native home gates its create field on this.
+pub fn ready(app: &AppHandle) -> bool {
+    Llm::for_app(app).is_ok_and(|llm| llm.call(Request::Ready) == Reply::Ready(true))
 }
 
-fn openai_delta_reasoning(payload: &str) -> bool {
-    let value: Value = match serde_json::from_str(payload) {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-    let delta = &value["choices"][0]["delta"];
-    delta["reasoning"].as_str().map_or(false, |s| !s.is_empty())
-        || delta["reasoning_content"].as_str().map_or(false, |s| !s.is_empty())
+/// Starts a Claude sign-in and answers the authorize URL to open.
+pub async fn sign_in_start(app: &AppHandle) -> Result<String, String> {
+    match Llm::for_app(app)?.ask(Request::SignInStart).await? {
+        Reply::SignInUrl(url) => Ok(url),
+        Reply::Error(message) => Err(message),
+        _ => Err("The LLM gateway answered out of turn".to_string()),
+    }
 }
 
-const THINKING_ONLY_ERROR: &str =
-    "The model spent its entire token budget thinking and returned no answer. Raise max tokens, or use a non-thinking model.";
-
-/// Where streamed text deltas go: a webview channel or a native callback.
-pub(crate) type ChunkSink<'a> = &'a mut (dyn FnMut(&str) + Send);
-
-/// Reads an SSE response to completion, forwarding each extracted text delta
-/// into the sink. Returns the accumulated content and whether any
-/// reasoning-only deltas were seen (thinking models).
-async fn consume_sse<F>(
-    response: reqwest::Response,
-    extract: fn(&str) -> Option<String>,
-    detect_reasoning: fn(&str) -> bool,
-    on_chunk: &mut F,
-) -> Result<(String, bool), String>
-where
-    F: FnMut(&str) + Send + ?Sized,
-{
-    let mut stream = response.bytes_stream();
-    let mut buffer: Vec<u8> = Vec::new();
-    let mut content = String::new();
-    let mut saw_reasoning = false;
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("Stream read failed: {}", e))?;
-        buffer.extend_from_slice(&chunk);
-        for payload in drain_sse_data(&mut buffer) {
-            if payload == "[DONE]" {
-                continue;
-            }
-            saw_reasoning = saw_reasoning || detect_reasoning(&payload);
-            if let Some(text) = extract(&payload) {
-                if !text.is_empty() {
-                    on_chunk(&text);
-                    content.push_str(&text);
-                }
-            }
-        }
-    }
-    Ok((content, saw_reasoning))
-}
-
-async fn anthropic_chat<F>(
-    auth: &AnthropicAuth,
-    model: &str,
-    messages: &[ChatMessage],
-    system_blocks: Option<&[SystemBlock]>,
-    max_tokens: u32,
-    on_chunk: Option<&mut F>,
-) -> Result<String, String>
-where
-    F: FnMut(&str) + Send + ?Sized,
-{
-    let mut body = build_anthropic_body(
-        matches!(auth, AnthropicAuth::Bearer(_)),
-        model,
-        messages,
-        system_blocks,
-        max_tokens,
-    );
-    if on_chunk.is_some() {
-        body["stream"] = json!(true);
-    }
-
-    let mut request = http_client()?
-        .post("https://api.anthropic.com/v1/messages")
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json");
-    request = match auth {
-        AnthropicAuth::ApiKey(key) => request.header("x-api-key", key),
-        AnthropicAuth::Bearer(token) => request
-            .header("authorization", format!("Bearer {}", token))
-            .header("anthropic-beta", "oauth-2025-04-20"),
-    };
-
-    let response = request
-        .timeout(request_deadline(on_chunk.is_some()))
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("Anthropic request failed: {}", e))?;
-    let status = response.status();
-    if status.as_u16() == 401 {
-        let text = response.text().await.unwrap_or_default();
-        return Err(format!("unauthorized: {}", error_body(status, &text)));
-    }
-    if !status.is_success() {
-        let text = response.text().await.unwrap_or_default();
-        return Err(format!("Anthropic {}", error_body(status, &text)));
-    }
-
-    if let Some(sink) = on_chunk {
-        let (content, _) = consume_sse(response, anthropic_delta_text, |_| false, sink).await?;
-        if content.is_empty() {
-            return Err("Anthropic returned an empty response.".to_string());
-        }
-        return Ok(content);
-    }
-
-    let text = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read Anthropic response: {}", e))?;
-    let value: Value =
-        serde_json::from_str(&text).map_err(|e| format!("Unexpected Anthropic response: {}", e))?;
-    if value["stop_reason"] == json!("refusal") {
-        return Err("The model declined this request.".to_string());
-    }
-    let content = value["content"]
-        .as_array()
-        .map(|blocks| {
-            blocks
-                .iter()
-                .filter(|b| b["type"] == json!("text"))
-                .filter_map(|b| b["text"].as_str())
-                .collect::<Vec<_>>()
-                .join("")
-        })
-        .unwrap_or_default();
-    if content.is_empty() {
-        return Err("Anthropic returned an empty response.".to_string());
-    }
-    Ok(content)
-}
-
-async fn openai_compat_chat<F>(
-    base_url: &str,
-    api_key: Option<&str>,
-    model: &str,
-    messages: &[ChatMessage],
-    max_tokens: u32,
-    temperature: Option<f64>,
-    json_mode: bool,
-    on_chunk: Option<&mut F>,
-) -> Result<String, String>
-where
-    F: FnMut(&str) + Send + ?Sized,
-{
-    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
-    let mut body = json!({
-        "model": model,
-        "max_tokens": max_tokens,
-        "messages": messages
-            .iter()
-            .map(|m| json!({ "role": m.role, "content": m.content }))
-            .collect::<Vec<_>>(),
-    });
-    if let Some(t) = temperature {
-        body["temperature"] = json!(t);
-    }
-    if json_mode {
-        body["response_format"] = json!({ "type": "json_object" });
-    }
-    if on_chunk.is_some() {
-        body["stream"] = json!(true);
-    }
-
-    let mut request = http_client()?.post(&url).header("content-type", "application/json");
-    if let Some(key) = api_key {
-        request = request.header("authorization", format!("Bearer {}", key));
-    }
-
-    let response = request
-        .timeout(request_deadline(on_chunk.is_some()))
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("Request to {} failed: {}", url, e))?;
-    let status = response.status();
-    if !status.is_success() {
-        let text = response.text().await.unwrap_or_default();
-        return Err(error_body(status, &text));
-    }
-
-    if let Some(sink) = on_chunk {
-        let (content, saw_reasoning) =
-            consume_sse(response, openai_delta_text, openai_delta_reasoning, sink).await?;
-        if content.is_empty() {
-            return Err(if saw_reasoning {
-                THINKING_ONLY_ERROR.to_string()
-            } else {
-                "Model returned an empty response.".to_string()
+/// Sends one chat through the gateway. Text deltas go to `on_chunk` when
+/// the request asks to stream and a sink is given; the full content
+/// returns at the end either way.
+async fn chat(
+    llm: Llm,
+    mut request: ChatRequest,
+    on_chunk: Option<ChunkSink<'_>>,
+) -> Result<ChatResponse, String> {
+    request.stream = request.stream && on_chunk.is_some();
+    let reply = match on_chunk {
+        Some(sink) if request.stream => {
+            // The call blocks on its own thread and sends each delta over a
+            // channel, so the sink runs here and need not outlive the call.
+            let (parts, mut arriving) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let call = tauri::async_runtime::spawn_blocking(move || {
+                let mut forward = move |part: &str| {
+                    let _ = parts.send(part.to_string());
+                };
+                llm.call_streamed(Request::Chat(request), &mut forward)
             });
+            while let Some(part) = arriving.recv().await {
+                sink(&part);
+            }
+            call.await
+                .map_err(|error| format!("The LLM request could not run: {}", error))?
         }
-        return Ok(content);
+        _ => llm.ask(Request::Chat(request)).await?,
+    };
+    match reply {
+        Reply::Chat(response) => Ok(response),
+        Reply::Error(message) => Err(message),
+        _ => Err("The LLM gateway answered out of turn".to_string()),
     }
-
-    let text = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read response: {}", e))?;
-    let value: Value =
-        serde_json::from_str(&text).map_err(|e| format!("Unexpected response: {}", e))?;
-    let message = &value["choices"][0]["message"];
-    let content = message["content"].as_str().unwrap_or_default();
-    if content.is_empty() {
-        let thought = message["reasoning"]
-            .as_str()
-            .or_else(|| message["reasoning_content"].as_str())
-            .unwrap_or_default();
-        if !thought.is_empty() {
-            return Err(THINKING_ONLY_ERROR.to_string());
-        }
-        return Err("Model returned an empty response.".to_string());
-    }
-    Ok(content.to_string())
 }
 
-async fn gemini_chat(
-    api_key: &str,
-    model: &str,
-    messages: &[ChatMessage],
-    max_tokens: u32,
-    temperature: Option<f64>,
-    json_mode: bool,
-) -> Result<String, String> {
-    let (system, conversation) = split_system(messages);
-    let contents: Vec<Value> = conversation
-        .iter()
-        .map(|m| {
-            json!({
-                "role": if m.role == "assistant" { "model" } else { "user" },
-                "parts": [{ "text": m.content }],
-            })
-        })
-        .collect();
-
-    let mut generation_config = json!({ "maxOutputTokens": max_tokens });
-    if let Some(t) = temperature {
-        generation_config["temperature"] = json!(t);
-    }
-    if json_mode {
-        generation_config["responseMimeType"] = json!("application/json");
-    }
-
-    let mut body = json!({ "contents": contents, "generationConfig": generation_config });
-    if !system.is_empty() {
-        body["systemInstruction"] = json!({ "parts": [{ "text": system }] });
-    }
-
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
-        model
-    );
-    let response = http_client()?
-        .post(&url)
-        .header("x-goog-api-key", api_key)
-        .header("content-type", "application/json")
-        .timeout(request_deadline(false))
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("Gemini request failed: {}", e))?;
-    let status = response.status();
-    let text = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read Gemini response: {}", e))?;
-    if !status.is_success() {
-        return Err(format!("Gemini {}", error_body(status, &text)));
-    }
-
-    let value: Value =
-        serde_json::from_str(&text).map_err(|e| format!("Unexpected Gemini response: {}", e))?;
-    let content = value["candidates"][0]["content"]["parts"]
-        .as_array()
-        .map(|parts| {
-            parts
-                .iter()
-                .filter_map(|p| p["text"].as_str())
-                .collect::<Vec<_>>()
-                .join("")
-        })
-        .unwrap_or_default();
-    if content.is_empty() {
-        return Err("Gemini returned an empty response.".to_string());
-    }
-    Ok(content)
+pub(crate) async fn llm_chat_impl(
+    app: AppHandle,
+    request: ChatRequest,
+    on_chunk: Option<ChunkSink<'_>>,
+) -> Result<ChatResponse, String> {
+    chat(Llm::for_app(&app)?, request, on_chunk).await
 }
 
 #[tauri::command]
-pub async fn llm_chat(app: AppHandle, request: LlmChatRequest) -> Result<LlmChatResponse, String> {
+pub async fn llm_chat(app: AppHandle, request: ChatRequest) -> Result<ChatResponse, String> {
     llm_chat_impl(app, request, None).await
 }
 
 #[tauri::command]
 pub async fn llm_chat_stream(
     app: AppHandle,
-    request: LlmChatRequest,
+    request: ChatRequest,
     on_chunk: Channel<String>,
-) -> Result<LlmChatResponse, String> {
+) -> Result<ChatResponse, String> {
     let mut forward = move |delta: &str| {
         let _ = on_chunk.send(delta.to_string());
     };
     llm_chat_impl(app, request, Some(&mut forward)).await
 }
 
-pub(crate) async fn llm_chat_impl(
-    app: AppHandle,
-    request: LlmChatRequest,
-    on_chunk: Option<ChunkSink<'_>>,
-) -> Result<LlmChatResponse, String> {
-    if request.messages.is_empty() {
-        return Err("No messages to send.".to_string());
-    }
-
-    let stored = settings::load_settings(&app);
-    let provider = request
-        .provider
-        .filter(|p| !p.is_empty())
-        .unwrap_or_else(|| stored.provider.clone());
-    let model = request
-        .model
-        .filter(|m| !m.is_empty())
-        .or_else(|| Some(stored.model.clone()).filter(|m| !m.is_empty()))
-        .unwrap_or_else(|| default_model(&provider).to_string());
-    if model.is_empty() {
-        return Err(format!("No model configured for {}. Set one in Settings.", provider));
-    }
-    let max_tokens = request
-        .max_tokens
-        .or(stored.max_tokens)
-        .unwrap_or(DEFAULT_MAX_TOKENS);
-    let temperature = request.temperature.or(stored.temperature);
-    let json_mode = request.json_mode.unwrap_or(false);
-    // The stored base URL belongs to the local provider; official providers
-    // have fixed endpoints and must not inherit it.
-    let base_url = request.base_url.or_else(|| {
-        if provider == "local" { stored.base_url.clone() } else { None }
-    });
-
-    let mut chunk_sink = if request.stream { on_chunk } else { None };
-
-    // Providers without system-block support get the structured prompt as one
-    // plain system message ahead of the conversation.
-    let merged: Vec<ChatMessage>;
-    let flat_messages: &[ChatMessage] = match &request.system_blocks {
-        Some(blocks) if !blocks.is_empty() => {
-            let joined = blocks
-                .iter()
-                .map(|b| b.text.as_str())
-                .collect::<Vec<_>>()
-                .join("\n\n");
-            let mut v = Vec::with_capacity(request.messages.len() + 1);
-            v.push(ChatMessage { role: "system".to_string(), content: joined });
-            v.extend(request.messages.iter().cloned());
-            merged = v;
-            &merged
-        }
-        _ => &request.messages,
-    };
-
-    let content = match provider.as_str() {
-        "claude-subscription" => {
-            let token = oauth::claude_access_token(&app, false).await?;
-            let auth = AnthropicAuth::Bearer(token);
-            let first = anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens, chunk_sink.as_deref_mut()).await;
-            match first {
-                Err(e) if e.starts_with("unauthorized") => {
-                    let token = oauth::claude_access_token(&app, true).await?;
-                    let auth = AnthropicAuth::Bearer(token);
-                    anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens, chunk_sink.as_deref_mut()).await?
-                }
-                other => other?,
-            }
-        }
-        "anthropic" => {
-            let auth = AnthropicAuth::ApiKey(api_key(&app, "anthropic")?);
-            anthropic_chat(&auth, &model, &request.messages, request.system_blocks.as_deref(), max_tokens, chunk_sink.as_deref_mut()).await?
-        }
-        "deepseek" => {
-            let key = api_key(&app, "deepseek")?;
-            let base = normalize_openai_base(
-                &base_url.unwrap_or_else(|| "https://api.deepseek.com/v1".to_string()),
-            );
-            openai_compat_chat(
-                &base,
-                Some(&key),
-                &model,
-                flat_messages,
-                max_tokens,
-                temperature,
-                json_mode,
-                chunk_sink.as_deref_mut(),
-            )
-            .await?
-        }
-        "openai" => {
-            let key = api_key(&app, "openai")?;
-            let base = normalize_openai_base(
-                &base_url.unwrap_or_else(|| "https://api.openai.com/v1".to_string()),
-            );
-            openai_compat_chat(
-                &base,
-                Some(&key),
-                &model,
-                flat_messages,
-                max_tokens,
-                temperature,
-                json_mode,
-                chunk_sink.as_deref_mut(),
-            )
-            .await?
-        }
-        "mercury" => {
-            let key = api_key(&app, "mercury")?;
-            let base = base_url.unwrap_or_else(|| "https://api.inceptionlabs.ai/v1".to_string());
-            openai_compat_chat(
-                &base,
-                Some(&key),
-                &model,
-                flat_messages,
-                max_tokens,
-                temperature,
-                false,
-                chunk_sink.as_deref_mut(),
-            )
-            .await?
-        }
-        "local" => {
-            let base = normalize_openai_base(&base_url.ok_or(
-                "Local provider needs a base URL (for example http://localhost:11434/v1). Set one in Settings.",
-            )?);
-            let key = settings::load_credentials(&app).api_keys.get("local").cloned();
-            openai_compat_chat(
-                &base,
-                key.as_deref(),
-                &model,
-                flat_messages,
-                max_tokens,
-                temperature,
-                json_mode,
-                chunk_sink.as_deref_mut(),
-            )
-            .await?
-        }
-        "gemini" => {
-            let key = api_key(&app, "gemini")?;
-            gemini_chat(&key, &model, flat_messages, max_tokens, temperature, json_mode).await?
-        }
-        other => return Err(format!("Unknown provider: {}", other)),
-    };
-
-    Ok(LlmChatResponse {
-        content,
-        provider,
-        model,
-    })
-}
-
 #[cfg(test)]
 mod tests {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    use der_llm::Settings;
+
     use super::*;
 
-    fn msg(role: &str, content: &str) -> ChatMessage {
-        ChatMessage { role: role.to_string(), content: content.to_string() }
+    /// A loopback provider that streams the given deltas for one request.
+    fn streaming_provider(deltas: &'static [&'static str]) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("loopback listener");
+        let origin = format!("http://{}", listener.local_addr().expect("local addr"));
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut request = Vec::new();
+            let mut chunk = [0u8; 4096];
+            loop {
+                let read = stream.read(&mut chunk).expect("read request");
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..read]);
+                let text = String::from_utf8_lossy(&request).to_lowercase();
+                if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                    let length = head
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length:"))
+                        .and_then(|value| value.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if body.len() >= length {
+                        break;
+                    }
+                }
+            }
+            let mut body = String::new();
+            for delta in deltas {
+                let event = serde_json::json!({ "choices": [{ "delta": { "content": delta } }] });
+                body.push_str(&format!("data: {event}\n\n"));
+            }
+            body.push_str("data: [DONE]\n\n");
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).expect("write response");
+        });
+        origin
+    }
+
+    fn local_gateway(dir: &std::path::Path, base_url: &str) -> Llm {
+        let llm = Llm::at(dir);
+        let saved = llm.call(Request::SettingsSet {
+            settings: Settings {
+                provider: "local".to_string(),
+                model: "test-model".to_string(),
+                base_url: Some(base_url.to_string()),
+                temperature: None,
+                max_tokens: None,
+            },
+        });
+        assert!(matches!(saved, Reply::Settings(_)), "{saved:?}");
+        llm
+    }
+
+    fn ask(stream: bool) -> ChatRequest {
+        ChatRequest {
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+            }],
+            system_blocks: None,
+            stream,
+            provider: None,
+            model: None,
+            max_tokens: None,
+            temperature: None,
+            json_mode: None,
+            base_url: None,
+        }
     }
 
     #[test]
-    fn legacy_system_string_becomes_one_cached_block() {
-        let body = build_anthropic_body(
-            false,
-            "m",
-            &[msg("system", "SYS"), msg("user", "hi")],
-            None,
-            100,
-        );
-        let system = body["system"].as_array().unwrap();
-        assert_eq!(system.len(), 1);
-        assert_eq!(system[0]["text"], "SYS");
-        assert_eq!(system[0]["cache_control"]["type"], "ephemeral");
-        assert_eq!(body["messages"].as_array().unwrap().len(), 1);
-        assert_eq!(body["messages"][0]["role"], "user");
+    fn a_streamed_chat_reaches_the_sink_in_order_and_returns_the_whole_text() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let llm = local_gateway(dir.path(), &streaming_provider(&["Hel", "lo ", "there"]));
+        let mut parts: Vec<String> = Vec::new();
+        let mut sink = |part: &str| parts.push(part.to_string());
+        let response = tauri::async_runtime::block_on(chat(llm, ask(true), Some(&mut sink))).expect("answers");
+        assert_eq!(response.content, "Hello there");
+        assert_eq!(response.provider, "local");
+        assert_eq!(parts, vec!["Hel", "lo ", "there"]);
     }
 
     #[test]
-    fn structured_blocks_cache_only_where_flagged() {
-        let blocks = vec![
-            SystemBlock { text: "BASE".to_string(), cache: true },
-            SystemBlock { text: "MODE".to_string(), cache: false },
-        ];
-        let body = build_anthropic_body(false, "m", &[msg("user", "hi")], Some(&blocks), 100);
-        let system = body["system"].as_array().unwrap();
-        assert_eq!(system.len(), 2);
-        assert_eq!(system[0]["text"], "BASE");
-        assert_eq!(system[0]["cache_control"]["type"], "ephemeral");
-        assert_eq!(system[1]["text"], "MODE");
-        assert!(system[1].get("cache_control").is_none());
+    fn a_chat_without_a_sink_does_not_ask_the_provider_to_stream() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        // No provider is listening, so the request fails at the connection.
+        // The failure message shows the gateway was asked, and nothing
+        // panics on the missing sink.
+        let llm = local_gateway(dir.path(), "http://127.0.0.1:9");
+        let error = tauri::async_runtime::block_on(chat(llm, ask(true), None)).expect_err("nothing listens");
+        assert!(error.contains("/v1/chat/completions"), "{error}");
     }
 
     #[test]
-    fn bearer_identity_block_leads_and_stays_uncached() {
-        let blocks = vec![SystemBlock { text: "BASE".to_string(), cache: true }];
-        let body = build_anthropic_body(true, "m", &[msg("user", "hi")], Some(&blocks), 100);
-        let system = body["system"].as_array().unwrap();
-        assert_eq!(
-            system[0]["text"],
-            "You are Claude Code, Anthropic's official CLI for Claude."
-        );
-        assert!(system[0].get("cache_control").is_none());
-        assert_eq!(system[1]["text"], "BASE");
-        assert_eq!(system[1]["cache_control"]["type"], "ephemeral");
-    }
-
-    #[test]
-    fn reasoning_deltas_are_detected_but_carry_no_text() {
-        let thinking = r#"{"choices":[{"delta":{"reasoning":"hmm","content":null}}]}"#;
-        assert!(openai_delta_reasoning(thinking));
-        assert_eq!(openai_delta_text(thinking), None);
-        let answering = r#"{"choices":[{"delta":{"content":"{"}}]}"#;
-        assert!(!openai_delta_reasoning(answering));
-    }
-
-    #[test]
-    fn bare_origins_get_the_standard_v1_path() {
-        assert_eq!(normalize_openai_base("http://localhost:11434"), "http://localhost:11434/v1");
-        assert_eq!(normalize_openai_base("http://localhost:11434/"), "http://localhost:11434/v1");
-        assert_eq!(normalize_openai_base("http://localhost:11434/v1"), "http://localhost:11434/v1");
-        assert_eq!(
-            normalize_openai_base("http://box.local:8080/serve/v1/"),
-            "http://box.local:8080/serve/v1"
-        );
-    }
-
-    #[test]
-    fn sse_buffer_drains_complete_lines_and_keeps_the_tail() {
-        let mut buffer = b"event: x\ndata: {\"a\":1}\n\ndata: par".to_vec();
-        let drained = drain_sse_data(&mut buffer);
-        assert_eq!(drained, vec!["{\"a\":1}".to_string()]);
-        assert_eq!(buffer, b"data: par".to_vec());
-
-        buffer.extend_from_slice(b"tial\n");
-        let drained = drain_sse_data(&mut buffer);
-        assert_eq!(drained, vec!["partial".to_string()]);
-        assert!(buffer.is_empty());
-    }
-
-    #[test]
-    fn provider_delta_extractors_pull_text_only_from_text_deltas() {
-        let anthropic =
-            r#"{"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}"#;
-        assert_eq!(anthropic_delta_text(anthropic), Some("hi".to_string()));
-        assert_eq!(anthropic_delta_text(r#"{"type":"message_start"}"#), None);
-
-        let openai = r#"{"choices":[{"delta":{"content":"yo"}}]}"#;
-        assert_eq!(openai_delta_text(openai), Some("yo".to_string()));
-        assert_eq!(openai_delta_text(r#"{"choices":[{"delta":{}}]}"#), None);
-    }
-
-    #[test]
-    fn no_system_at_all_omits_the_field() {
-        let body = build_anthropic_body(false, "m", &[msg("user", "hi")], None, 100);
-        assert!(body.get("system").is_none());
+    fn settings_requests_answer_with_previews() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let llm = Llm::at(dir.path());
+        let view = view_of(llm.call(Request::CredentialSet {
+            provider: "openai".to_string(),
+            secret: "sk-test-0123456789abcdef".to_string(),
+        }))
+        .expect("the view");
+        assert_eq!(view.api_keys["openai"], "sk-tes...cdef");
+        assert_eq!(llm.call(Request::Ready), Reply::Ready(false), "the default provider needs a sign-in");
+        assert!(view_of(Reply::Ready(true)).is_err());
     }
 }
