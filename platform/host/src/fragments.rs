@@ -2467,22 +2467,15 @@ pub async fn execute_part_remote_core(
         return Err(fail(FragmentErrorKind::Io, "Endpoint escaped its path"));
     }
     let url = format!("{}{}", service.base_url.trim_end_matches('/'), endpoint);
-    if !url.starts_with(&service.base_url) {
+    if !crate::confine::within_base(&url, &service.base_url) {
         return Err(fail(FragmentErrorKind::Io, "Endpoint escaped the service"));
     }
 
-    // Redirects must stay inside the service: a credential in the query
-    // string would otherwise travel to wherever the service points.
-    let base_for_redirect = service.base_url.clone();
+    // Redirects must stay inside the service: a credential would otherwise
+    // travel to wherever the service points.
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
-        .redirect(reqwest::redirect::Policy::custom(move |attempt| {
-            if attempt.url().as_str().starts_with(&base_for_redirect) {
-                attempt.follow()
-            } else {
-                attempt.stop()
-            }
-        }))
+        .redirect(crate::confine::redirect_policy(Some(&service.base_url)))
         .build()
         .map_err(|e| fail(FragmentErrorKind::Io, format!("HTTP client: {}", e)))?;
     let method = remote.method.clone().unwrap_or_else(|| "GET".to_string()).to_uppercase();
@@ -2547,12 +2540,19 @@ pub async fn execute_part_remote_core(
     let response = request
         .send()
         .await
-        .map_err(|e| fail(FragmentErrorKind::Io, format!("Request failed: {}", e)))?;
+        .map_err(|e| {
+            fail(
+                FragmentErrorKind::Io,
+                format!("Request failed: {}", crate::confine::describe_send_error(e)),
+            )
+        })?;
     let status = response.status();
-    let body: Value = response
-        .json()
-        .await
-        .map_err(|e| fail(FragmentErrorKind::Io, format!("Response was not JSON: {}", e)))?;
+    let body: Value = response.json().await.map_err(|e| {
+        fail(
+            FragmentErrorKind::Io,
+            format!("Response was not JSON: {}", e.without_url()),
+        )
+    })?;
     if !status.is_success() {
         return Err(fail(
             FragmentErrorKind::Io,

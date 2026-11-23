@@ -123,8 +123,13 @@ PKCE sign-in and token refresh), and `mail.rs` (the mail account in the credenti
 (`{name}` endpoint substitution, GET query / JSON body, and named integration credentials:
 `implementation.auth` references a credential stored under `settings/integrations.json`
 (bearer/header/query kinds, a required service base URL the secret is CONFINED to, and optional
-model-facing notes) that Rust injects at request time after checking the endpoint starts with
-the base URL; the webview only sees redacted name/kind/target/baseUrl/notes views, the catalog
+model-facing notes) that Rust injects at request time after checking the endpoint is the base
+URL or a path under it. `confine.rs` is the one judge for both HTTP paths: the kernel's
+`endpoint_within_base` text rule (the character after the base must end the host or the path
+segment, so a longer host that only begins with the base is outside) plus a parsed comparison
+of scheme, host, port, and dot-resolved path, with redirects followed only inside the same
+scope and send errors on secret-carrying requests described without the URL. The webview
+only sees redacted name/kind/target/baseUrl/notes views, the catalog
 teaches names, base URLs, and notes so the model calls the real service, and validation rejects
 unknown names and out-of-confinement endpoints); the `local` and `repository` branches in
 Rust are legacy and unreachable from contracts. Rust `query_repository` still returns mock

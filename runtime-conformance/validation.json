@@ -5098,6 +5098,18 @@
               {
                 "event": "click",
                 "operationId": "op-escaped"
+              },
+              {
+                "event": "click",
+                "operationId": "op-lookalike"
+              },
+              {
+                "event": "click",
+                "operationId": "op-glued"
+              },
+              {
+                "event": "click",
+                "operationId": "op-inside"
               }
             ]
           }
@@ -5143,6 +5155,54 @@
               "endpoint": "https://elsewhere.dev/x",
               "auth": "weatherkey"
             }
+          },
+          {
+            "id": "op-lookalike",
+            "operationName": "fourth.fetch",
+            "inputs": [],
+            "outputs": [],
+            "triggers": [],
+            "implementation": {
+              "type": "remote",
+              "endpoint": "https://api.openweathermap.org.elsewhere.dev/data/2.5/weather",
+              "auth": "weatherkey"
+            }
+          },
+          {
+            "id": "op-glued",
+            "operationName": "fifth.fetch",
+            "inputs": [
+              {
+                "name": "suffix",
+                "source": "constant",
+                "sourceId": "/data"
+              }
+            ],
+            "outputs": [],
+            "triggers": [],
+            "implementation": {
+              "type": "remote",
+              "endpoint": "https://api.openweathermap.org{suffix}",
+              "auth": "weatherkey"
+            }
+          },
+          {
+            "id": "op-inside",
+            "operationName": "sixth.fetch",
+            "inputs": [
+              {
+                "name": "city",
+                "source": "constant",
+                "sourceId": "Oslo"
+              }
+            ],
+            "outputs": [],
+            "triggers": [],
+            "implementation": {
+              "type": "remote",
+              "endpoint": "https://api.openweathermap.org/data/2.5/weather?q={city}",
+              "auth": "weatherkey"
+            }
           }
         ],
         "layout": {
@@ -5177,7 +5237,17 @@
           },
           {
             "path": "operations.2.implementation.endpoint",
-            "message": "Credential \"weatherkey\" is confined to https://api.openweathermap.org; the endpoint must start with it",
+            "message": "Credential \"weatherkey\" is confined to https://api.openweathermap.org; the endpoint must be that address or a path under it",
+            "code": "CREDENTIAL_CONFINEMENT"
+          },
+          {
+            "path": "operations.3.implementation.endpoint",
+            "message": "Credential \"weatherkey\" is confined to https://api.openweathermap.org; the endpoint must be that address or a path under it",
+            "code": "CREDENTIAL_CONFINEMENT"
+          },
+          {
+            "path": "operations.4.implementation.endpoint",
+            "message": "Credential \"weatherkey\" is confined to https://api.openweathermap.org; the endpoint must be that address or a path under it",
             "code": "CREDENTIAL_CONFINEMENT"
           }
         ],
@@ -5218,6 +5288,18 @@
                 {
                   "event": "click",
                   "operationId": "op-escaped"
+                },
+                {
+                  "event": "click",
+                  "operationId": "op-lookalike"
+                },
+                {
+                  "event": "click",
+                  "operationId": "op-glued"
+                },
+                {
+                  "event": "click",
+                  "operationId": "op-inside"
                 }
               ]
             }
@@ -5261,6 +5343,54 @@
               "implementation": {
                 "type": "remote",
                 "endpoint": "https://elsewhere.dev/x",
+                "auth": "weatherkey"
+              }
+            },
+            {
+              "id": "op-lookalike",
+              "operationName": "fourth.fetch",
+              "inputs": [],
+              "outputs": [],
+              "triggers": [],
+              "implementation": {
+                "type": "remote",
+                "endpoint": "https://api.openweathermap.org.elsewhere.dev/data/2.5/weather",
+                "auth": "weatherkey"
+              }
+            },
+            {
+              "id": "op-glued",
+              "operationName": "fifth.fetch",
+              "inputs": [
+                {
+                  "name": "suffix",
+                  "source": "constant",
+                  "sourceId": "/data"
+                }
+              ],
+              "outputs": [],
+              "triggers": [],
+              "implementation": {
+                "type": "remote",
+                "endpoint": "https://api.openweathermap.org{suffix}",
+                "auth": "weatherkey"
+              }
+            },
+            {
+              "id": "op-inside",
+              "operationName": "sixth.fetch",
+              "inputs": [
+                {
+                  "name": "city",
+                  "source": "constant",
+                  "sourceId": "Oslo"
+                }
+              ],
+              "outputs": [],
+              "triggers": [],
+              "implementation": {
+                "type": "remote",
+                "endpoint": "https://api.openweathermap.org/data/2.5/weather?q={city}",
                 "auth": "weatherkey"
               }
             }

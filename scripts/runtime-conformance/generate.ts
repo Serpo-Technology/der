@@ -2278,6 +2278,9 @@ const VALIDATION_CASES: ValidationCase[] = [
             { event: 'click', operationId: 'op-placeholder' },
             { event: 'click', operationId: 'op-bad-auth' },
             { event: 'click', operationId: 'op-escaped' },
+            { event: 'click', operationId: 'op-lookalike' },
+            { event: 'click', operationId: 'op-glued' },
+            { event: 'click', operationId: 'op-inside' },
           ],
         },
       ],
@@ -2309,6 +2312,41 @@ const VALIDATION_CASES: ValidationCase[] = [
             auth: 'weatherkey',
           },
           inputs: [],
+          outputs: [],
+        },
+        // A host that only begins with the base, and a placeholder glued to
+        // the host, are both outside the service.
+        {
+          id: 'op-lookalike',
+          operationName: 'fourth.fetch',
+          implementation: {
+            type: 'remote',
+            endpoint: 'https://api.openweathermap.org.elsewhere.dev/data/2.5/weather',
+            auth: 'weatherkey',
+          },
+          inputs: [],
+          outputs: [],
+        },
+        {
+          id: 'op-glued',
+          operationName: 'fifth.fetch',
+          implementation: {
+            type: 'remote',
+            endpoint: 'https://api.openweathermap.org{suffix}',
+            auth: 'weatherkey',
+          },
+          inputs: [{ name: 'suffix', source: 'constant', sourceId: '/data' }],
+          outputs: [],
+        },
+        {
+          id: 'op-inside',
+          operationName: 'sixth.fetch',
+          implementation: {
+            type: 'remote',
+            endpoint: 'https://api.openweathermap.org/data/2.5/weather?q={city}',
+            auth: 'weatherkey',
+          },
+          inputs: [{ name: 'city', source: 'constant', sourceId: 'Oslo' }],
           outputs: [],
         },
       ],

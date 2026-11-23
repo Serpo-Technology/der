@@ -23,6 +23,35 @@ fn is_hex_accent(value: &str) -> bool {
     let bytes = value.as_bytes();
     bytes.len() == 7 && bytes[0] == b'#' && bytes[1..].iter().all(u8::is_ascii_hexdigit)
 }
+/// Whether `endpoint` addresses the service at `base`: the base itself, or
+/// the base continued by a path, query, or fragment. A bare prefix test
+/// would also accept a longer host name that only begins with the base
+/// ("https://api.service.dev.elsewhere.net"), so the character after the
+/// base has to end the authority or the path segment. A base that is not
+/// an http(s) URL with a plain host matches nothing.
+pub fn endpoint_within_base(endpoint: &str, base: &str) -> bool {
+    let base = base.trim_end_matches('/');
+    let Some(rest) = base
+        .strip_prefix("https://")
+        .or_else(|| base.strip_prefix("http://"))
+    else {
+        return false;
+    };
+    let authority = rest.split('/').next().unwrap_or("");
+    let malformed = authority.is_empty()
+        || authority.contains('@')
+        || base
+            .chars()
+            .any(|c| matches!(c, '?' | '#' | '\\') || c.is_whitespace() || c.is_control());
+    if malformed {
+        return false;
+    }
+    match endpoint.strip_prefix(base) {
+        Some(tail) => tail.is_empty() || tail.starts_with(['/', '?', '#']),
+        None => false,
+    }
+}
+
 /// Transforms that read a row field while the value is still the original
 /// object array.
 const FIELD_READING_TRANSFORMS: [&str; 6] =
@@ -1623,11 +1652,11 @@ fn check_operation(op: &mut Value, op_path: &str, checker: &mut Checker) {
             }
             Some(credential) => {
                 let base_url = as_str(&credential, "baseUrl");
-                if !base_url.is_empty() && !endpoint.starts_with(base_url) {
+                if !base_url.is_empty() && !endpoint_within_base(&endpoint, base_url) {
                     checker.fail(
                         &format!("{}.implementation.endpoint", op_path),
                         format!(
-                            "Credential \"{}\" is confined to {}; the endpoint must start with it",
+                            "Credential \"{}\" is confined to {}; the endpoint must be that address or a path under it",
                             auth, base_url
                         ),
                         "CREDENTIAL_CONFINEMENT",
