@@ -81,7 +81,7 @@ impl Runner {
         let client = match CLIENT.get() {
             Some(client) => client,
             None => {
-                let client = crate::services::client("part runner", crate::services::PARTS, &dir)
+                let client = crate::services::client("part runner", crate::services::PARTS, Some(&dir))
                     .map_err(|message| fail(FragmentErrorKind::Io, message))?;
                 CLIENT.get_or_init(|| Arc::new(client))
             }

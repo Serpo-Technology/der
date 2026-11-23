@@ -14,9 +14,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::{json, Map, Value};
 use tauri::Manager;
 
-use super::env::SystemEnv;
-use super::host::HostDispatcher;
-use super::sessions::{open_session_core, resolve_entry_view, SessionEntry};
+use super::live::LiveSession;
 
 /// Outbound messages travel through this seam so tests drive the bridge
 /// with a recording transport instead of a process.
@@ -25,8 +23,7 @@ pub trait SidecarTransport: Send {
 }
 
 pub struct WindowSession {
-    entry: SessionEntry,
-    elements: Vec<Value>,
+    session: LiveSession,
     experience_id: String,
     /// The contract the window currently renders; edits start from it.
     contract: Value,
@@ -127,12 +124,11 @@ impl SidecarBridge {
         window_id: &str,
         experience_id: &str,
         title: &str,
-        entry: SessionEntry,
-        elements: Vec<Value>,
+        session: LiveSession,
         contract: Value,
         assembling: bool,
     ) -> Result<(), String> {
-        let tree = self.rewritten(resolve_entry_view(&entry, &elements));
+        let tree = self.rewritten(session.tree());
         let (theme, accent, background) = contract_look(&contract);
         self.transport.lock().unwrap().send(&json!({
             "cmd": "open",
@@ -147,8 +143,7 @@ impl SidecarBridge {
         self.windows.insert(
             window_id.to_string(),
             Arc::new(Mutex::new(WindowSession {
-                entry,
-                elements,
+                session,
                 experience_id: experience_id.to_string(),
                 contract,
                 assembling,
@@ -201,7 +196,7 @@ impl SidecarBridge {
         self.windows
             .values()
             .find(|cell| cell.lock().unwrap().experience_id == experience_id)
-            .map(|cell| cell.lock().unwrap().entry.session().state().clone())
+            .map(|cell| cell.lock().unwrap().session.state().clone())
     }
 
     /// Swaps an open window's session (a contract edit or the next assembly
@@ -210,8 +205,7 @@ impl SidecarBridge {
     pub fn replace_session(
         &mut self,
         experience_id: &str,
-        entry: SessionEntry,
-        elements: Vec<Value>,
+        session: LiveSession,
         contract: Value,
         assembling: bool,
     ) -> Result<(), String> {
@@ -220,8 +214,7 @@ impl SidecarBridge {
             .ok_or_else(|| format!("No native window for experience {}", experience_id))?;
         if let Some(cell) = self.windows.get(&window_id) {
             let mut window = cell.lock().unwrap();
-            window.entry = entry;
-            window.elements = elements;
+            window.session = session;
             window.contract = contract;
             window.assembling = assembling;
         }
@@ -329,7 +322,7 @@ fn send_window_update(
     let (tree, assembling, look) = {
         let window = cell.lock().unwrap();
         (
-            shared.rewritten(resolve_entry_view(&window.entry, &window.elements)),
+            shared.rewritten(window.session.tree()),
             window.assembling,
             // Edits can change the look; every update re-states it.
             contract_look(&window.contract),
@@ -403,7 +396,7 @@ fn notify_window_change(cell: &WindowCell, shared: &WindowShared) {
         if window.assembling {
             return;
         }
-        on_change(&window.experience_id, window.entry.session().state());
+        on_change(&window.experience_id, window.session.state());
     }
 }
 
@@ -425,11 +418,7 @@ pub fn run_window_event(
                 .and_then(Value::as_str)
                 .ok_or("setElement without an elementId")?;
             let value = message.get("value").cloned().unwrap_or(Value::Null);
-            cell.lock()
-                .unwrap()
-                .entry
-                .session_mut()
-                .set_element(element_id, value);
+            cell.lock().unwrap().session.set_element(element_id, value)?;
         }
         "dispatch" => {
             let operation_ids: Vec<String> = message
@@ -446,8 +435,7 @@ pub fn run_window_event(
             let failed = cell
                 .lock()
                 .unwrap()
-                .entry
-                .session_mut()
+                .session
                 .run_chain_detailed(&operation_ids, item.as_ref());
             if let Some((operation_id, text)) = failed {
                 shared.transport.lock().unwrap().send(&json!({
@@ -1034,31 +1022,15 @@ fn ensure_running(app: &tauri::AppHandle) -> Result<Arc<Mutex<SidecarBridge>>, S
     Ok(bridge)
 }
 
-pub(crate) fn build_entry(
+/// Opens an app's session in a process of its own, with the host
+/// dispatcher made for that app.
+pub(crate) fn build_session(
     app: &tauri::AppHandle,
     experience_id: &str,
     contract: &Value,
     initial_data: Map<String, Value>,
-) -> Result<(SessionEntry, Vec<Value>), String> {
-    let (fragment_defs, parts) = super::sessions::installed_vocabulary(app);
-    let dispatcher = HostDispatcher {
-        app: app.clone(),
-        parts,
-        experience_id: experience_id.to_string(),
-    };
-    let entry = open_session_core(
-        contract,
-        initial_data,
-        fragment_defs,
-        Box::new(SystemEnv),
-        Some(Box::new(dispatcher)),
-    )?;
-    let elements = contract
-        .get("elements")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    Ok((entry, elements))
+) -> Result<LiveSession, String> {
+    LiveSession::for_app(app, experience_id, contract, initial_data)
 }
 
 
@@ -1075,7 +1047,7 @@ pub fn open_native_for_experience(
     let initial_data = saved_state
         .and_then(|state| state.as_object().cloned())
         .unwrap_or_default();
-    let (entry, elements) = build_entry(app, experience_id, &contract, initial_data)?;
+    let session = build_session(app, experience_id, &contract, initial_data)?;
     let title = title.unwrap_or_else(|| {
         contract
             .get("name")
@@ -1085,15 +1057,14 @@ pub fn open_native_for_experience(
     });
     let mut bridge = bridge.lock().unwrap();
     if bridge.window_for_experience(experience_id).is_some() {
-        return bridge.replace_session(experience_id, entry, elements, contract, false);
+        return bridge.replace_session(experience_id, session, contract, false);
     }
     let window_id = format!("nw-{}", uuid::Uuid::new_v4());
     bridge.open_window(
         &window_id,
         experience_id,
         &title,
-        entry,
-        elements,
+        session,
         contract,
         false,
     )
@@ -1184,18 +1155,17 @@ pub fn native_edit(app: &tauri::AppHandle, window_id: String, instruction: Strin
                 )
                 .await;
                 let preserved = bridge.lock().unwrap().state_of_experience(&experience_id);
-                let rebuilt = build_entry(
+                let rebuilt = build_session(
                     &app,
                     &experience_id,
                     &outcome.contract,
                     preserved.unwrap_or_default(),
                 );
                 match rebuilt {
-                    Ok((entry, elements)) => {
+                    Ok(session) => {
                         let replaced = bridge.lock().unwrap().replace_session(
                             &experience_id,
-                            entry,
-                            elements,
+                            session,
                             outcome.contract,
                             false,
                         );
@@ -1302,10 +1272,10 @@ async fn land_edited_contract(
         .to_string();
     persist_created_experience(app, &experience_id, &contract, &description, now_iso, None).await;
     let preserved = bridge.lock().unwrap().state_of_experience(&experience_id);
-    let (entry, elements) = build_entry(app, &experience_id, &contract, preserved.unwrap_or_default())?;
+    let session = build_session(app, &experience_id, &contract, preserved.unwrap_or_default())?;
     let outcome = {
         let mut guard = bridge.lock().unwrap();
-        guard.replace_session(&experience_id, entry, elements, contract, false)
+        guard.replace_session(&experience_id, session, contract, false)
     };
     outcome?;
     refresh_native_home(app);
@@ -1454,31 +1424,20 @@ pub fn show_assembly_preview(
         }
     }
     // Display drafts carry no operations, so the session is inert by
-    // construction; no dispatcher is wired on purpose.
+    // construction; no dispatcher is wired on purpose. A draft is replaced
+    // many times a second while it grows, so it stays in this process.
     let (fragment_defs, _) = super::sessions::installed_vocabulary(app);
-    let entry = open_session_core(
-        &contract,
-        Map::new(),
-        fragment_defs,
-        Box::new(SystemEnv),
-        None,
-    )?;
-    let elements = contract
-        .get("elements")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let session = LiveSession::inert(&contract, fragment_defs)?;
     let mut bridge = bridge.lock().unwrap();
     if bridge.window_for_experience(experience_id).is_some() {
-        return bridge.replace_session(experience_id, entry, elements, contract, true);
+        return bridge.replace_session(experience_id, session, contract, true);
     }
     let window_id = format!("nw-{}", uuid::Uuid::new_v4());
     bridge.open_window(
         &window_id,
         experience_id,
         title,
-        entry,
-        elements,
+        session,
         contract,
         true,
     )
@@ -1875,10 +1834,10 @@ pub async fn native_update_experience_contract(
         let Some(preserved) = preserved else {
             return Ok(());
         };
-        let (entry, elements) = build_entry(&app, &experience_id, &contract, preserved)?;
+        let session = build_session(&app, &experience_id, &contract, preserved)?;
         let outcome = {
             let mut guard = bridge.lock().unwrap();
-            guard.replace_session(&experience_id, entry, elements, contract, false)
+            guard.replace_session(&experience_id, session, contract, false)
         };
         outcome
     })

@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use super::sessions::{resolve_entry_view, SessionEntry};
+use super::live::LiveSession;
 
 /// The visible timer chains of a resolved tree: each entry is one timer's
 /// tick operation ids, in document order. The resolver already applies
@@ -43,12 +43,12 @@ fn collect_timer_chains(tree: &[Value], chains: &mut Vec<Vec<String>>) {
 
 /// One background beat: every visible timer's tick chain runs once, exactly
 /// as a renderer moment would fire them. Returns how many chains ran.
-pub fn run_timer_chains(entry: &mut SessionEntry, elements: &[Value]) -> usize {
-    let tree = resolve_entry_view(entry, elements);
+pub fn run_timer_chains(session: &mut LiveSession) -> usize {
+    let tree = session.tree();
     let mut chains: Vec<Vec<String>> = Vec::new();
     collect_timer_chains(&tree, &mut chains);
     for chain in &chains {
-        entry.session_mut().run_chain(chain, None);
+        session.run_chain(chain, None);
     }
     chains.len()
 }
@@ -65,15 +65,10 @@ pub fn refresh_experience(app: &tauri::AppHandle, experience_id: &str) -> Result
     let initial_data = crate::read_experience_state(app, experience_id)
         .and_then(|state| state.as_object().cloned())
         .unwrap_or_default();
-    let elements = contract
-        .get("elements")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let (mut entry, _) = super::sidecar::build_entry(app, experience_id, &contract, initial_data)?;
-    let ran = run_timer_chains(&mut entry, &elements);
+    let mut session = super::sidecar::build_session(app, experience_id, &contract, initial_data)?;
+    let ran = run_timer_chains(&mut session);
     if ran > 0 {
-        let state = Value::Object(entry.session().state().clone());
+        let state = Value::Object(session.state().clone());
         crate::write_experience_state_file(app, experience_id, &state)?;
     }
     Ok(ran)

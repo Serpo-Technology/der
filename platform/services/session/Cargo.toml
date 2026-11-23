@@ -1,0 +1,12 @@
+[package]
+name = "der-session"
+version = "0.1.0"
+edition = "2021"
+description = "DER's session service: one app's running session, its state, and its resolved view, with every privileged operation asked of the host."
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+der-runtime = { path = "../../../runtime-core" }
+der-wire = { path = "../wire" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }

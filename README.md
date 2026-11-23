@@ -131,6 +131,7 @@ cd platform/services/http && cargo test # the HTTP service and credential store
 cd platform/services/mail && cargo test # the mail service
 cd platform/services/llm && cargo test  # the LLM gateway
 cd platform/services/parts && cargo test # the part runner and the part suites
+cd platform/services/session && cargo test # the session service
 cd platform/services/wire && cargo test # the line protocol the services share
 npm run eval -- --provider mercury   # generation + behavioral scoring
 ```
@@ -168,12 +169,13 @@ layout.
    JSON protocol the native panel already speaks. This makes DER sturdier on
    macOS, brings Windows and Linux in, and is exactly the server layout the
    microkernel needs later. Gate: the corpus passes with the host split.
-   Four servers are running, each in a process of its own under
+   Five kinds of server are running, each in a process of its own under
    `platform/services`: the HTTP service owns the credential store and
    performs every request that carries a stored secret, the mail service
    owns the mail account and does all sending and reading, the LLM gateway
-   owns the model keys and makes every request to a provider, and the part
-   runner executes every signed part.
+   owns the model keys and makes every request to a provider, the part
+   runner executes every signed part, and every open app has a session
+   process that holds its state and the runtime core.
 2. **Linux kiosk:** a minimal Linux boots straight into the DER shell and
    sandboxes every server with seccomp. Gate: a kiosk or classroom pilot.
 3. **seL4 prototype:** a `no_std` runtime core runs under QEMU with the
@@ -199,7 +201,8 @@ natural cut line for the port.
 | Per-app store | `platform/host/src/store.rs` | Collections live under `stores/<experienceId>/` and only the owning app reaches them. |
 
 Two more concerns sit beside these. The HTTP service, the mail service,
-the LLM gateway, and the part runner are already separate processes. The HTTP service holds
+the LLM gateway, the part runner, and each app's session are already
+separate processes. The HTTP service holds
 the credential store, injects a credential only after checking the
 endpoint against the service's base URL, and never returns a secret to the
 host. The mail service holds the account password and parses everything a
@@ -268,10 +271,12 @@ Carries over unchanged:
 
 Gets a new implementation:
 
-- `HostDispatcher` (`platform/host/src/runtime/host.rs`) holds a Tauri app
-  handle and calls modules in-process today. The new version holds a
-  capability table for its session and turns each `dispatch()` into an IPC
-  call on the matching capability. Its routing logic stays the same.
+- `HostDispatcher` (`platform/host/src/runtime/host.rs`) runs in the host
+  today, one per app, and answers the calls that app's session process
+  sends back over its pipe. On a microkernel the session holds a
+  capability table of its own and each `dispatch()` becomes an IPC call on
+  the matching capability, with no host in between. Its routing logic
+  stays the same.
 - `RuntimeEnv` gets a production implementation that calls the time and
   entropy endpoints.
 - `FileGrants` loses its token-to-path map. A token becomes a handle to a

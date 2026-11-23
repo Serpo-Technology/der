@@ -27,6 +27,7 @@ der-wire = { path = "../services/wire" }
 der-mail = { path = "../services/mail" }
 der-llm = { path = "../services/llm" }
 der-parts = { path = "../services/parts" }
+der-session = { path = "../services/session" }
 serde_json = { version = "1", features = ["preserve_order"] }
 regex = "1"
 chrono = { version = "0.4", features = ["serde"] }

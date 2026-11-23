@@ -6,6 +6,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use dynamic_experience_runtime_lib::runtime::env::ScriptedEnv;
+use dynamic_experience_runtime_lib::runtime::live::LiveSession;
 use dynamic_experience_runtime_lib::runtime::sessions::open_session_core;
 use dynamic_experience_runtime_lib::runtime::sidecar::{SidecarBridge, SidecarTransport};
 use serde_json::{json, Map, Value};
@@ -68,7 +69,7 @@ fn open_bridge() -> (SidecarBridge, Recorder) {
     .expect("session opens");
     let elements = contract["elements"].as_array().cloned().unwrap();
     bridge
-        .open_window("w1", "exp-counter", "Counter", entry, elements, contract.clone(), false)
+        .open_window("w1", "exp-counter", "Counter", LiveSession::local(entry, elements), contract.clone(), false)
         .expect("window opens");
     (bridge, recorder)
 }
@@ -206,7 +207,7 @@ fn replacing_a_session_preserves_state_and_updates_the_view() {
     .expect("rebuilt session");
     let elements = contract["elements"].as_array().cloned().unwrap();
     bridge
-        .replace_session("exp-counter", entry, elements, contract.clone(), false)
+        .replace_session("exp-counter", LiveSession::local(entry, elements), contract.clone(), false)
         .expect("session replaced");
 
     let sent = recorder.0.lock().unwrap();
@@ -262,19 +263,18 @@ fn assembly_windows_flag_their_trees_and_finish_live() {
             "w1",
             "exp-live",
             "Building",
-            display_entry(&contract),
-            elements.clone(),
+            LiveSession::local(display_entry(&contract), elements.clone()),
             contract.clone(),
             true,
         )
         .expect("assembly window opens");
     // The next draft replaces the tree, still assembling.
     bridge
-        .replace_session("exp-live", display_entry(&contract), elements.clone(), contract.clone(), true)
+        .replace_session("exp-live", LiveSession::local(display_entry(&contract), elements.clone()), contract.clone(), true)
         .expect("draft replaces");
     // The finished app takes the window over.
     bridge
-        .replace_session("exp-live", display_entry(&contract), elements, contract.clone(), false)
+        .replace_session("exp-live", LiveSession::local(display_entry(&contract), elements), contract.clone(), false)
         .expect("final replaces");
 
     let sent = recorder.0.lock().unwrap();
@@ -297,8 +297,7 @@ fn assembling_windows_never_persist_and_close_on_failure() {
             "w1",
             "exp-draft",
             "Building",
-            display_entry(&contract),
-            elements,
+            LiveSession::local(display_entry(&contract), elements),
             contract.clone(),
             true,
         )
@@ -333,8 +332,7 @@ fn a_dismissed_assembly_stays_dismissed() {
             "w1",
             "exp-gone",
             "Building",
-            display_entry(&contract),
-            elements,
+            LiveSession::local(display_entry(&contract), elements),
             contract.clone(),
             true,
         )
@@ -397,7 +395,7 @@ fn a_dispatch_can_send_through_the_transport_while_the_bridge_is_held() {
     .expect("session opens");
     let elements = contract["elements"].as_array().cloned().unwrap();
     bridge
-        .open_window("w1", "exp-pick", "Picker", entry, elements, contract.clone(), false)
+        .open_window("w1", "exp-pick", "Picker", LiveSession::local(entry, elements), contract.clone(), false)
         .expect("window opens");
 
     // Would deadlock before the transport split; completes now.
@@ -472,7 +470,7 @@ fn a_parked_chain_in_one_window_never_stalls_another() {
     .expect("slow session opens");
     let slow_elements = slow_contract["elements"].as_array().cloned().unwrap();
     bridge
-        .open_window("w-slow", "exp-slow", "Slow", slow_entry, slow_elements, slow_contract.clone(), false)
+        .open_window("w-slow", "exp-slow", "Slow", LiveSession::local(slow_entry, slow_elements), slow_contract.clone(), false)
         .expect("opens");
 
     // Window B: the plain counter.
@@ -492,7 +490,7 @@ fn a_parked_chain_in_one_window_never_stalls_another() {
     .expect("counter session opens");
     let elements = contract["elements"].as_array().cloned().unwrap();
     bridge
-        .open_window("w-fast", "exp-fast", "Fast", entry, elements, contract.clone(), false)
+        .open_window("w-fast", "exp-fast", "Fast", LiveSession::local(entry, elements), contract.clone(), false)
         .expect("opens");
 
     let (slow_cell, slow_shared) = bridge.window_handles("w-slow").expect("handles");

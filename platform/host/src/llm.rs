@@ -57,7 +57,7 @@ impl Llm {
         let client = match CLIENT.get() {
             Some(client) => client,
             None => {
-                let client = crate::services::client("LLM", crate::services::LLM, &settings_dir)?;
+                let client = crate::services::client("LLM", crate::services::LLM, Some(&settings_dir))?;
                 CLIENT.get_or_init(|| Arc::new(client))
             }
         };

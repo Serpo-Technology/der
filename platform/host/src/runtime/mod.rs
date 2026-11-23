@@ -10,6 +10,7 @@ pub use der_runtime::{
 };
 
 pub mod host;
+pub mod live;
 pub mod manage;
 pub mod schedule;
 pub mod sessions;

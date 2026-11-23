@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 use serde_json::{Map, Value};
 use tauri::Manager;
 
-use super::env::SystemEnv;
-use super::host::{HostDispatcher, PartRoute};
+use super::host::PartRoute;
+use super::live::LiveSession;
 
 pub use der_runtime::entry::{open_session_core, resolve_entry_view, SessionEntry};
 
@@ -22,8 +22,8 @@ pub use der_runtime::entry::{open_session_core, resolve_entry_view, SessionEntry
 // Tauri surface
 // ---------------------------------------------------------------------------
 
-/// One window's session plus its contract's elements (the tree source).
-pub(crate) type SessionCell = Arc<Mutex<(SessionEntry, Vec<Value>)>>;
+/// One window's session.
+pub(crate) type SessionCell = Arc<Mutex<LiveSession>>;
 
 type SessionsMap = HashMap<String, SessionCell>;
 
@@ -121,32 +121,26 @@ pub async fn runtime_open_session(
     initial_data: Option<Map<String, Value>>,
     experience_id: Option<String>,
 ) -> Result<SessionOpened, String> {
-    let (fragment_defs, parts) = installed_vocabulary(&app);
-    let dispatcher = HostDispatcher {
-        app: app.clone(),
-        parts,
-        experience_id: experience_id.unwrap_or_default(),
-    };
-    let entry = open_session_core(
-        &contract,
-        initial_data.unwrap_or_default(),
-        fragment_defs,
-        Box::new(SystemEnv),
-        Some(Box::new(dispatcher)),
-    )?;
-    let elements = contract
-        .get("elements")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    // Opening starts the session's own process; keep that off the async
+    // runtime's core threads.
+    let session = tauri::async_runtime::spawn_blocking(move || {
+        LiveSession::for_app(
+            &app,
+            &experience_id.unwrap_or_default(),
+            &contract,
+            initial_data.unwrap_or_default(),
+        )
+    })
+    .await
+    .map_err(|error| format!("Opening the session failed: {}", error))??;
     let session_id = format!("rs-{}", uuid::Uuid::new_v4());
-    let tree = resolve_entry_view(&entry, &elements);
-    let session_state = entry.session().state().clone();
+    let tree = session.tree();
+    let session_state = session.state().clone();
     state
         .0
         .lock()
         .unwrap()
-        .insert(session_id.clone(), Arc::new(Mutex::new((entry, elements))));
+        .insert(session_id.clone(), Arc::new(Mutex::new(session)));
     Ok(SessionOpened {
         session_id,
         tree,
@@ -160,9 +154,8 @@ pub async fn runtime_resolve_view(
     session_id: String,
 ) -> Result<Vec<Value>, String> {
     let cell = session_cell(&state, &session_id)?;
-    let guard = cell.lock().unwrap();
-    let (entry, elements) = &*guard;
-    Ok(resolve_entry_view(entry, elements))
+    let tree = cell.lock().unwrap().tree();
+    Ok(tree)
 }
 
 #[tauri::command]
@@ -173,9 +166,9 @@ pub async fn runtime_set_element(
     value: Value,
 ) -> Result<(), String> {
     let cell = session_cell(&state, &session_id)?;
-    let mut guard = cell.lock().unwrap();
-    guard.0.session_mut().set_element(&element_id, value);
-    Ok(())
+    tauri::async_runtime::spawn_blocking(move || cell.lock().unwrap().set_element(&element_id, value))
+        .await
+        .map_err(|error| format!("Writing the element failed: {}", error))?
 }
 
 #[tauri::command]
@@ -189,11 +182,8 @@ pub async fn runtime_dispatch_event(
     // runtime's core threads.
     let cell = session_cell(&state, &session_id)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let mut guard = cell.lock().unwrap();
-        let (entry, elements) = &mut *guard;
-        let outcome = entry
-            .session_mut()
-            .run_chain_detailed(&operation_ids, item.as_ref());
+        let mut session = cell.lock().unwrap();
+        let outcome = session.run_chain_detailed(&operation_ids, item.as_ref());
         let (failed, error) = match outcome {
             Some((operation_id, message)) => (Some(operation_id), Some(message)),
             None => (None, None),
@@ -201,8 +191,8 @@ pub async fn runtime_dispatch_event(
         Ok(EventOutcome {
             failed,
             error,
-            tree: resolve_entry_view(entry, elements),
-            state: entry.session().state().clone(),
+            tree: session.tree(),
+            state: session.state().clone(),
         })
     })
     .await

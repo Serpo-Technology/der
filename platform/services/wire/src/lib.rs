@@ -3,7 +3,9 @@
 //! reply per line on its output, and each reply carries the id of the
 //! request it answers. A reply that arrives in pieces sends any number of
 //! part lines for its id first, and a request whose handler ends without
-//! answering gets a failed line, so its caller is never left waiting.
+//! answering gets a failed line, so its caller is never left waiting. A
+//! service that needs something only the host may do sends a call line
+//! while it handles a request and waits for the host's answer line.
 //! `serve` is the service's end and `Client` is the host's end. Both are generic over the request and reply types, so every
 //! service speaks the same framing with its own vocabulary.
 
@@ -16,7 +18,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 pub use client::Client;
-pub use serve::{serve, Responder};
+pub use serve::{serve, Caller, Responder};
 
 /// One request on the wire.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +50,23 @@ pub struct FailedLine {
     pub failed: bool,
 }
 
+/// A question the service puts to the host while it handles the request
+/// with this id. `call` numbers the question so its answer finds it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CallLine {
+    pub id: u64,
+    pub call: u64,
+    pub body: serde_json::Value,
+}
+
+/// The host's answer to the call with the same numbers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AnswerLine {
+    pub id: u64,
+    pub answer: u64,
+    pub body: serde_json::Value,
+}
+
 const SERVICE_FLAG: &str = "--service";
 const DIR_FLAG: &str = "--dir";
 
@@ -57,14 +76,21 @@ pub fn service_arguments(name: &str, dir: &Path) -> Vec<OsString> {
     vec![SERVICE_FLAG.into(), name.into(), DIR_FLAG.into(), dir.into()]
 }
 
+/// The arguments that start an executable as a named service that owns
+/// nothing on disk.
+pub fn service_arguments_without_dir(name: &str) -> Vec<OsString> {
+    vec![SERVICE_FLAG.into(), name.into()]
+}
+
 /// What a process's arguments ask of it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Asked {
     /// No service was asked for.
     Nothing,
-    /// Run the named service over the directory.
-    Service { name: String, dir: PathBuf },
-    /// A service was asked for without a name or a directory.
+    /// Run the named service, over the directory when one is given.
+    Service { name: String, dir: Option<PathBuf> },
+    /// A service was asked for without a name, or the directory flag came
+    /// without a directory.
     Malformed,
 }
 
@@ -79,10 +105,11 @@ pub fn asked(arguments: &[String]) -> Asked {
     if !arguments.iter().any(|argument| argument == SERVICE_FLAG) {
         return Asked::Nothing;
     }
+    let names_a_dir = arguments.iter().any(|argument| argument == DIR_FLAG);
     match (value_after(SERVICE_FLAG), value_after(DIR_FLAG)) {
-        (Some(name), Some(dir)) if !name.starts_with("--") => Asked::Service {
+        (Some(name), dir) if !name.starts_with("--") && dir.is_some() == names_a_dir => Asked::Service {
             name: name.clone(),
-            dir: PathBuf::from(dir),
+            dir: dir.map(PathBuf::from),
         },
         _ => Asked::Malformed,
     }
@@ -90,7 +117,7 @@ pub fn asked(arguments: &[String]) -> Asked {
 
 /// The usage line for an executable that can run as one of `names`.
 pub fn usage(names: &[&str]) -> String {
-    format!("usage: {SERVICE_FLAG} <{}> {DIR_FLAG} <directory>", names.join("|"))
+    format!("usage: {SERVICE_FLAG} <{}> [{DIR_FLAG} <directory>]", names.join("|"))
 }
 
 #[cfg(test)]
@@ -112,7 +139,16 @@ mod tests {
             asked(&arguments),
             Asked::Service {
                 name: "http".to_string(),
-                dir: PathBuf::from("/data/settings"),
+                dir: Some(PathBuf::from("/data/settings")),
+            }
+        );
+        let mut bare = vec!["/path/to/host".to_string()];
+        bare.extend(strings(&service_arguments_without_dir("session")));
+        assert_eq!(
+            asked(&bare),
+            Asked::Service {
+                name: "session".to_string(),
+                dir: None,
             }
         );
     }
@@ -123,10 +159,9 @@ mod tests {
     }
 
     #[test]
-    fn a_service_without_its_name_or_directory_is_malformed() {
+    fn a_service_without_its_name_or_a_flag_without_its_directory_is_malformed() {
         for arguments in [
             vec!["--service"],
-            vec!["--service", "http"],
             vec!["--service", "--dir", "/data"],
             vec!["--service", "http", "--dir"],
         ] {

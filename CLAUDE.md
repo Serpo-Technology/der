@@ -19,8 +19,9 @@ holds the crates the host runs as separate processes, none with a shell dependen
 `http/` is `der-http`, the credential store and outbound HTTP, `mail/` is `der-mail`, the
 mail account with sending and reading, `llm/` is `der-llm`, the model settings, keys, and
 every request to a model provider, `parts/` is `der-parts`, bundle verification, trust
-pinning, and the wasmtime host that runs signed parts, and `wire/` is `der-wire`, the line
-protocol and process client they share;
+pinning, and the wasmtime host that runs signed parts, `session/` is `der-session`, one
+app's running session, and `wire/` is `der-wire`, the line protocol and process client
+they share;
 `platform/macos/` is the SwiftUI panel; further native faces join beside it). This file is the
 authoritative architecture record; read the Architecture section before structural changes.
 
@@ -139,11 +140,12 @@ resolves a request (placeholder substitution, query or body split, status and JS
 in `build_remote_request` / `remote_reply_value`) and hands it over through `secrets.rs`
 (`Secrets::http` and `Secrets::store`), the host's only door to the store: no host module
 reads `settings/integrations.json` itself. The service is its own process, and so are
-mail, the LLM gateway, and the part runner. The host executable started with
-`--service <http|mail|llm|parts> --dir <dir>` never becomes the app
+mail, the LLM gateway, the part runner, and every app's session. The host executable
+started with `--service <http|mail|llm|parts|session> [--dir <dir>]` never becomes the app
 (`services::serve_if_asked` runs first in `main`) and runs that crate's `serve` instead,
 over the directory that holds what the service owns (the settings folder, or the installed
-bundles for the runner). All four sit on `der-wire`: one `RequestLine` per line on stdin, one `ReplyLine` per line
+bundles for the runner; a session owns nothing on disk and takes none). All five sit on
+`der-wire`: one `RequestLine` per line on stdin, one `ReplyLine` per line
 on stdout, matched by id, generic over each service's own `Request` and `Reply`. A reply
 that arrives in pieces sends `PartLine`s for its id first (`Responder::part` on the
 service's end, `Client::call_streamed` on the host's), which is how streamed model text
@@ -161,12 +163,15 @@ process took and then died on, since that request may already have had its effec
 stored secret is therefore read and used outside the host's memory. The boundary is a
 process boundary only: all the processes run as the same user, so nothing yet stops the
 host from opening a service's file. `tests/http_service_process.rs`,
-`tests/mail_service_process.rs`, `tests/llm_service_process.rs`, and
-`tests/parts_service_process.rs` drive the real host binary in service mode through
-`Client`; unit tests use `Secrets::at`, `Mail::at`, `Llm::at`, and `Runner::at`, which run
+`tests/mail_service_process.rs`, `tests/llm_service_process.rs`,
+`tests/parts_service_process.rs`, and `tests/session_service_process.rs` drive the real
+host binary in service mode through `Client`; unit tests use `Secrets::at`, `Mail::at`, `Llm::at`, and `Runner::at`, which run
 the same `Service` inside the test process, and `der-wire`'s own client tests run it
 against scripted shell services. A new service is a crate with its `Request`, `Reply`,
-and `serve`, a name in `services.rs`, and a door module like these four. The crate's `confine.rs` is
+and `serve`, a name in `services.rs`, and a door module like these. A service that needs
+something only the host may do calls back while it handles a request: a `Caller` (from
+`Responder::caller`) writes a `CallLine` and blocks for the host's `AnswerLine`, and
+`Client::call_with` hands each call to its `on_call` on the thread that made the request. The crate's `confine.rs` is
 the one judge for both HTTP paths: the kernel's
 `endpoint_within_base` text rule (the character after the base must end the host or the path
 segment, so a longer host that only begins with the base is outside) plus a parsed comparison
@@ -572,7 +577,20 @@ remotes through the signed service path, contract remotes and `http.get` through
 confined HTTP core extracted from `execute_operation` (credential injection and confinement
 live in one place; local code stays webview-only). Ids, randomness, and the clock reach
 operations only through the `RuntimeEnv` trait (`runtime/env.rs`): scripted in vectors, real
-in production. `runtime/sessions.rs` is the live-session surface: `runtime_open_session`
+in production. An app's session runs in a process of its own, the session service
+(`platform/services/session/`): the contract, the app's state, and the kernel that
+interprets them live there, apart from the host and from every other app, and the process
+owns nothing on disk and holds no secret and no grant. `runtime/live.rs` is how the host
+holds one: `LiveSession::for_app` starts the process, opens the session with the saved
+state and the installed fragment defs, and keeps the view tree and state from every reply,
+so showing and saving never ask again. When a chain reaches an operation the kernel cannot
+run, the session puts it to the host as a call, and the host answers it with the
+`HostDispatcher` made for that app at open: the experience id is fixed on the host's side,
+so a session cannot ask for another app's store. A session whose process died is opened
+again in a fresh one with the state it last reported, on the next action; a chain that was
+in flight fails with a message. Assembly drafts are inert and replaced many times a second,
+so they stay in the host process (`LiveSession::inert`), as do sessions tests build
+(`LiveSession::local`). `runtime/sessions.rs` is the live-session surface: `runtime_open_session`
 (pack operations instantiated, installed fragment defs and part routes loaded from the
 manifests on disk, saved data merged), `runtime_resolve_view`, `runtime_set_element`,
 `runtime_dispatch_event` (off the async core threads), `runtime_close_session`; its
@@ -583,8 +601,8 @@ dialog never stalls another app; the parked-chain bridge test freezes the proper
 `runtime/schedule.rs` is background refresh: a bookmarked app can opt in
 (the home row's context menu natively, the bookmark card in the webview; a
 `backgroundMinutes` field on the bookmark record) and the core then runs the
-app's visible timer tick chains once per cadence in a headless session (saved
-state in, timer beats, state persisted back), skipping apps with an open
+app's visible timer tick chains once per cadence in a headless session of its own
+process (saved state in, timer beats, state persisted back), skipping apps with an open
 native window because their renderer owns the timers. The timer element is
 the app's own declaration of periodic work, so no new vocabulary exists for
 this; the timer howto teaches minutes-scale refresh timers.

@@ -13,24 +13,29 @@ use std::time::{Duration, Instant};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-use crate::RequestLine;
+use crate::{AnswerLine, RequestLine};
 
-/// What the service sends for one request: pieces of a streamed reply,
-/// then the reply.
+/// What the service sends for one request: pieces of a streamed reply and
+/// calls back to the host, then the reply.
 enum Event<P> {
     Part(String),
+    Call(u64, Value),
     Reply(P),
     Failed,
 }
 
-/// A line from the service: a reply line, a part line, or a failed line.
+/// A line from the service: a reply line, a part line, a call line, or a
+/// failed line.
 #[derive(Deserialize)]
 #[serde(bound(deserialize = "P: DeserializeOwned"))]
 struct Incoming<P> {
     id: u64,
     reply: Option<P>,
     part: Option<String>,
+    call: Option<u64>,
+    body: Option<Value>,
     failed: Option<bool>,
 }
 
@@ -124,6 +129,10 @@ where
                     if let Some(waiter) = locked(&waiting).get(&incoming.id) {
                         let _ = waiter.send(Event::Part(part));
                     }
+                } else if let Some(call) = incoming.call {
+                    if let Some(waiter) = locked(&waiting).get(&incoming.id) {
+                        let _ = waiter.send(Event::Call(call, incoming.body.unwrap_or(Value::Null)));
+                    }
                 } else if incoming.failed == Some(true) {
                     if let Some(waiter) = locked(&waiting).remove(&incoming.id) {
                         let _ = waiter.send(Event::Failed);
@@ -160,6 +169,20 @@ where
         wait: Duration,
         on_part: &mut dyn FnMut(&str),
     ) -> Result<P, String> {
+        self.call_with(request, wait, on_part, &mut |_| Value::Null)
+    }
+
+    /// Like `call_streamed`, for a service that calls back: `on_call` gets
+    /// each question the service puts while it handles this request, on
+    /// the calling thread, and what it returns is sent back as the answer.
+    /// `wait` bounds the whole exchange, the time spent answering included.
+    pub fn call_with(
+        &self,
+        request: R,
+        wait: Duration,
+        on_part: &mut dyn FnMut(&str),
+        on_call: &mut dyn FnMut(Value) -> Value,
+    ) -> Result<P, String> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let mut line = serde_json::to_string(&RequestLine { id, request })
             .map_err(|error| format!("The request could not be written: {}", error))?;
@@ -195,6 +218,27 @@ where
         loop {
             match events.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
                 Ok(Event::Part(text)) => on_part(&text),
+                Ok(Event::Call(call, body)) => {
+                    let answer = AnswerLine {
+                        id,
+                        answer: call,
+                        body: on_call(body),
+                    };
+                    let Ok(mut line) = serde_json::to_string(&answer) else {
+                        continue;
+                    };
+                    line.push('\n');
+                    // An answer for a process that has gone has nowhere to
+                    // go; the wait ends when its pipe closes.
+                    if let Some(running) = locked(&self.link).as_mut() {
+                        if Arc::ptr_eq(&running.pending, &pending) {
+                            let _ = running
+                                .stdin
+                                .write_all(line.as_bytes())
+                                .and_then(|()| running.stdin.flush());
+                        }
+                    }
+                }
                 Ok(Event::Reply(reply)) => return Ok(reply),
                 Ok(Event::Failed) => {
                     return Err(format!("The {} service failed while handling the request", self.name));
@@ -237,6 +281,25 @@ mod tests {
         let reply = client.call_streamed("hello".to_string(), WAIT, &mut |part| parts.push(part.to_string()));
         assert_eq!(reply, Ok("done".to_string()));
         assert_eq!(parts, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn a_call_from_the_service_is_answered_on_its_way_to_the_reply() {
+        let script = concat!(
+            "read request; ",
+            r#"printf '%s\n' '{"id":1,"call":1,"body":"ping"}'; "#,
+            "read answer; ",
+            r#"case "$answer" in *'"answer":1'*pong*) printf '%s\n' '{"id":1,"reply":"heard"}';; "#,
+            r#"*) printf '%s\n' '{"id":1,"reply":"missed"}';; esac"#,
+        );
+        let client: Client<String, String> = Client::new("test", "/bin/sh", vec!["-c".into(), script.into()]);
+        let mut asked = Vec::new();
+        let reply = client.call_with("hello".to_string(), WAIT, &mut |_| {}, &mut |body| {
+            asked.push(body);
+            Value::String("pong".to_string())
+        });
+        assert_eq!(reply, Ok("heard".to_string()));
+        assert_eq!(asked, vec![Value::String("ping".to_string())]);
     }
 
     #[test]

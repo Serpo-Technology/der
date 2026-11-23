@@ -1,15 +1,60 @@
 //! The service's end of the line protocol.
 
+use std::collections::HashMap;
 use std::io::{BufRead, Write};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};
 
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{FailedLine, PartLine, ReplyLine, RequestLine};
+use crate::{CallLine, FailedLine, PartLine, ReplyLine};
 
 type Output = Arc<Mutex<Box<dyn Write + Send>>>;
+
+/// The calls to the host that are waiting for their answers, by request id
+/// and call number.
+#[derive(Default)]
+struct Calls {
+    next: AtomicU64,
+    waiting: Mutex<HashMap<(u64, u64), Sender<Value>>>,
+}
+
+/// Puts questions to the host on behalf of one request. It can be cloned
+/// and kept for as long as the request is being handled, on any thread
+/// except the one running `serve`, which has to stay free to read answers.
+#[derive(Clone)]
+pub struct Caller {
+    id: u64,
+    output: Output,
+    calls: Arc<Calls>,
+}
+
+impl Caller {
+    /// Sends one call and blocks until the host answers it. Fails when the
+    /// input closes first, which is when the host is gone.
+    pub fn call(&self, body: Value) -> Result<Value, String> {
+        let call = self.calls.next.fetch_add(1, Ordering::SeqCst) + 1;
+        let (waiter, answer) = channel();
+        self.calls
+            .waiting
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert((self.id, call), waiter);
+        let line = serde_json::to_string(&CallLine {
+            id: self.id,
+            call,
+            body,
+        })
+        .map_err(|error| format!("The call could not be written: {}", error))?;
+        write_line(&self.output, line);
+        answer
+            .recv()
+            .map_err(|_| "The host closed the connection before answering".to_string())
+    }
+}
 
 /// Answers one request. It can cross to another thread or task, so a
 /// handler may answer a slow request after later ones. One that is dropped
@@ -18,6 +63,7 @@ type Output = Arc<Mutex<Box<dyn Write + Send>>>;
 pub struct Responder<P> {
     id: u64,
     output: Output,
+    calls: Arc<Calls>,
     answered: bool,
     reply: std::marker::PhantomData<fn(P)>,
 }
@@ -54,6 +100,16 @@ impl<P: Serialize> Responder<P> {
         }
     }
 
+    /// The way to put questions to the host while this request is being
+    /// handled.
+    pub fn caller(&self) -> Caller {
+        Caller {
+            id: self.id,
+            output: self.output.clone(),
+            calls: self.calls.clone(),
+        }
+    }
+
     /// Writes one piece of a streamed reply. The reply itself still has to
     /// be given with `answer`.
     pub fn part(&self, text: &str) {
@@ -72,7 +128,8 @@ impl<P: Serialize> Responder<P> {
 /// arrive, on the calling thread. A line that carries an id but is not a
 /// request is answered with `unreadable()`, whose text is the caller's and
 /// never the line's, since the line may hold a secret. A line without an id
-/// has no reply to address and is skipped.
+/// has no reply to address and is skipped. Answer lines go to the calls
+/// that wait for them.
 pub fn serve<R, P, In, Out>(
     input: In,
     output: Out,
@@ -86,19 +143,48 @@ where
     Out: Write + Send + 'static,
 {
     let output: Output = Arc::new(Mutex::new(Box::new(output)));
+    let calls = Arc::new(Calls::default());
     let responder = |id: u64| Responder {
         id,
         output: output.clone(),
+        calls: calls.clone(),
         answered: false,
         reply: std::marker::PhantomData,
     };
+    let mut outcome = Ok(());
     for line in input.lines() {
-        let line = line?;
+        let line = match line {
+            Ok(line) => line,
+            Err(error) => {
+                outcome = Err(error);
+                break;
+            }
+        };
         if line.trim().is_empty() {
             continue;
         }
-        match serde_json::from_str::<RequestLine<R>>(&line) {
-            Ok(RequestLine { id, request }) => handle(request, responder(id)),
+        match serde_json::from_str::<Inbound<R>>(&line) {
+            Ok(Inbound {
+                id,
+                request: Some(request),
+                ..
+            }) => handle(request, responder(id)),
+            Ok(Inbound {
+                id,
+                answer: Some(call),
+                body,
+                ..
+            }) => {
+                let waiter = calls
+                    .waiting
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .remove(&(id, call));
+                if let Some(waiter) = waiter {
+                    let _ = waiter.send(body.unwrap_or(Value::Null));
+                }
+            }
+            Ok(Inbound { id, .. }) => responder(id).answer(unreadable()),
             Err(_) => {
                 if let Some(id) = line_id(&line) {
                     responder(id).answer(unreadable());
@@ -106,7 +192,23 @@ where
             }
         }
     }
-    Ok(())
+    // Nobody is left to answer: dropping the senders ends every wait.
+    calls
+        .waiting
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clear();
+    outcome
+}
+
+/// A line from the host: a request line or an answer line.
+#[derive(Deserialize)]
+#[serde(bound(deserialize = "R: DeserializeOwned"))]
+struct Inbound<R> {
+    id: u64,
+    request: Option<R>,
+    answer: Option<u64>,
+    body: Option<Value>,
 }
 
 fn line_id(line: &str) -> Option<u64> {
@@ -128,6 +230,7 @@ mod tests {
         Later { value: i64 },
         Spell { word: String },
         Panic,
+        Relay { question: String },
     }
 
     #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -155,6 +258,13 @@ mod tests {
                             responder.part(&letter.to_string());
                         }
                         responder.answer(Answer::Number(word.chars().count() as i64));
+                    }
+                    Ask::Relay { question } => {
+                        let caller = responder.caller();
+                        std::thread::spawn(move || match caller.call(Value::String(question)) {
+                            Ok(answer) => responder.answer(Answer::Number(answer.as_i64().unwrap_or(-1))),
+                            Err(message) => responder.answer(Answer::Error(message)),
+                        });
                     }
                     Ask::Panic => {
                         std::thread::spawn(move || {
@@ -220,6 +330,39 @@ mod tests {
         assert_eq!(next(&mut replies), ReplyLine { id: 7, reply: Answer::Number(2) });
         drop(requests);
         thread.join().expect("no panic").expect("ends");
+    }
+
+    #[test]
+    fn a_call_to_the_host_waits_for_its_answer_while_other_requests_go_on() {
+        let (mut requests, mut replies, thread) = running();
+        writeln!(requests, r#"{{"id":8,"request":{{"op":"relay","question":"how many"}}}}"#).expect("writes");
+        let mut line = String::new();
+        replies.read_line(&mut line).expect("reads");
+        assert_eq!(line.trim_end(), r#"{"id":8,"call":1,"body":"how many"}"#);
+
+        // The loop keeps serving while the call waits.
+        writeln!(requests, r#"{{"id":9,"request":{{"op":"double","value":2}}}}"#).expect("writes");
+        assert_eq!(next(&mut replies), ReplyLine { id: 9, reply: Answer::Number(4) });
+        // An answer for a call nobody made is dropped.
+        writeln!(requests, r#"{{"id":8,"answer":99,"body":1}}"#).expect("writes");
+        writeln!(requests, r#"{{"id":8,"answer":1,"body":42}}"#).expect("writes");
+        assert_eq!(next(&mut replies), ReplyLine { id: 8, reply: Answer::Number(42) });
+        drop(requests);
+        thread.join().expect("no panic").expect("ends");
+    }
+
+    #[test]
+    fn a_call_ends_with_an_error_when_the_host_goes_away() {
+        let (mut requests, mut replies, thread) = running();
+        writeln!(requests, r#"{{"id":8,"request":{{"op":"relay","question":"anyone"}}}}"#).expect("writes");
+        let mut line = String::new();
+        replies.read_line(&mut line).expect("reads");
+        assert!(line.contains(r#""call":1"#), "{line}");
+        drop(requests);
+        thread.join().expect("no panic").expect("ends");
+        let reply = next(&mut replies);
+        assert_eq!(reply.id, 8);
+        assert!(matches!(reply.reply, Answer::Error(ref message) if message.contains("closed the connection")));
     }
 
     #[test]

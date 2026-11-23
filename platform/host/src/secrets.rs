@@ -35,7 +35,7 @@ impl Secrets {
         let client = match CLIENT.get() {
             Some(client) => client,
             None => {
-                let client = crate::services::client("HTTP", crate::services::HTTP, &settings_dir)?;
+                let client = crate::services::client("HTTP", crate::services::HTTP, Some(&settings_dir))?;
                 CLIENT.get_or_init(|| Arc::new(client))
             }
         };

@@ -5,6 +5,7 @@
 use std::collections::VecDeque;
 
 use dynamic_experience_runtime_lib::runtime::env::ScriptedEnv;
+use dynamic_experience_runtime_lib::runtime::live::LiveSession;
 use dynamic_experience_runtime_lib::runtime::schedule::run_timer_chains;
 use dynamic_experience_runtime_lib::runtime::sessions::open_session_core;
 use serde_json::{json, Map, Value};
@@ -66,30 +67,36 @@ fn elements_of(contract: &Value) -> Vec<Value> {
 fn a_visible_timer_chain_runs_once_per_beat() {
     let contract = ticker_contract(false);
     let elements = elements_of(&contract);
-    let mut entry =
-        open_session_core(&contract, Map::new(), Map::new(), scripted_env(), None).unwrap();
+    let mut session = LiveSession::local(
+        open_session_core(&contract, Map::new(), Map::new(), scripted_env(), None).unwrap(),
+        elements.clone(),
+    );
 
-    assert_eq!(run_timer_chains(&mut entry, &elements), 1);
-    assert_eq!(run_timer_chains(&mut entry, &elements), 1);
-    assert_eq!(entry.session().state().get("beats").and_then(Value::as_f64), Some(2.0));
+    assert_eq!(run_timer_chains(&mut session), 1);
+    assert_eq!(run_timer_chains(&mut session), 1);
+    assert_eq!(session.state().get("beats").and_then(Value::as_f64), Some(2.0));
 }
 
 #[test]
 fn a_gated_timer_stays_paused_in_the_background() {
     let contract = ticker_contract(true);
     let elements = elements_of(&contract);
-    let mut entry =
-        open_session_core(&contract, Map::new(), Map::new(), scripted_env(), None).unwrap();
+    let mut session = LiveSession::local(
+        open_session_core(&contract, Map::new(), Map::new(), scripted_env(), None).unwrap(),
+        elements.clone(),
+    );
 
-    assert_eq!(run_timer_chains(&mut entry, &elements), 0);
-    assert_eq!(entry.session().state().get("beats").and_then(Value::as_f64), Some(0.0));
+    assert_eq!(run_timer_chains(&mut session), 0);
+    assert_eq!(session.state().get("beats").and_then(Value::as_f64), Some(0.0));
 
     // Saved state with the flag on resumes the beats, exactly like an app
     // the user left running.
     let mut resumed = Map::new();
     resumed.insert("running".to_string(), json!(true));
-    let mut entry =
-        open_session_core(&contract, resumed, Map::new(), scripted_env(), None).unwrap();
-    assert_eq!(run_timer_chains(&mut entry, &elements), 1);
-    assert_eq!(entry.session().state().get("beats").and_then(Value::as_f64), Some(1.0));
+    let mut session = LiveSession::local(
+        open_session_core(&contract, resumed, Map::new(), scripted_env(), None).unwrap(),
+        elements.clone(),
+    );
+    assert_eq!(run_timer_chains(&mut session), 1);
+    assert_eq!(session.state().get("beats").and_then(Value::as_f64), Some(1.0));
 }
