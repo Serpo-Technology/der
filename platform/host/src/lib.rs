@@ -12,7 +12,7 @@ pub mod store;
 mod llm;
 mod oauth;
 pub mod runtime;
-mod secrets;
+pub mod secrets;
 mod settings;
 
 

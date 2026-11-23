@@ -2,7 +2,8 @@
 //! and performs every request that may carry a stored secret, so a secret
 //! is read, checked against its service address, and injected in one place.
 //! Everything a caller can ask for is a `Request`, and no `Reply` holds a
-//! secret. The crate has no dependency on the desktop shell.
+//! secret. `serve` runs the service as a process speaking one JSON line per
+//! request and reply. The crate has no dependency on the desktop shell.
 
 use std::path::PathBuf;
 
@@ -10,9 +11,11 @@ use serde::{Deserialize, Serialize};
 
 pub mod confine;
 pub mod request;
+pub mod serve;
 pub mod store;
 
 pub use request::{Auth, HttpReply, HttpRequest, PartSecret};
+pub use serve::{serve, ReplyLine, RequestLine};
 pub use store::{IntegrationCredentialView, PartSecretRef};
 
 /// Everything the service does for a caller.
