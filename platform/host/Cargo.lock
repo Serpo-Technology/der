@@ -1132,6 +1132,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "der-store"
+version = "0.1.0"
+dependencies = [
+ "der-runtime",
+ "der-wire",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "der-wire"
 version = "0.1.0"
 dependencies = [
@@ -1325,6 +1336,7 @@ dependencies = [
  "der-parts",
  "der-runtime",
  "der-session",
+ "der-store",
  "der-wire",
  "rand 0.8.5",
  "regex",

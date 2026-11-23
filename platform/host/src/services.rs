@@ -21,9 +21,11 @@ pub const LLM: &str = "llm";
 pub const PARTS: &str = "parts";
 /// One app's running session: its state and the kernel that interprets it.
 pub const SESSION: &str = "session";
+/// The per-app record stores.
+pub const STORE: &str = "store";
 
 fn refuse() -> ! {
-    eprintln!("{}", der_wire::usage(&[HTTP, MAIL, LLM, PARTS, SESSION]));
+    eprintln!("{}", der_wire::usage(&[HTTP, MAIL, LLM, PARTS, SESSION, STORE]));
     std::process::exit(2);
 }
 
@@ -45,6 +47,7 @@ pub fn serve_if_asked() -> bool {
         (MAIL, Some(dir)) => der_mail::serve(dir, input, output),
         (LLM, Some(dir)) => der_llm::serve(dir, input, output),
         (PARTS, Some(dir)) => der_parts::service::serve(dir, input, output),
+        (STORE, Some(dir)) => der_store::serve(dir, input, output),
         _ => refuse(),
     };
     if let Err(error) = outcome {

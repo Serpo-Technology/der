@@ -132,6 +132,7 @@ cd platform/services/mail && cargo test # the mail service
 cd platform/services/llm && cargo test  # the LLM gateway
 cd platform/services/parts && cargo test # the part runner and the part suites
 cd platform/services/session && cargo test # the session service
+cd platform/services/store && cargo test # the store service
 cd platform/services/wire && cargo test # the line protocol the services share
 npm run eval -- --provider mercury   # generation + behavioral scoring
 ```
@@ -169,13 +170,14 @@ layout.
    JSON protocol the native panel already speaks. This makes DER sturdier on
    macOS, brings Windows and Linux in, and is exactly the server layout the
    microkernel needs later. Gate: the corpus passes with the host split.
-   Five kinds of server are running, each in a process of its own under
+   Six kinds of server are running, each in a process of its own under
    `platform/services`: the HTTP service owns the credential store and
    performs every request that carries a stored secret, the mail service
    owns the mail account and does all sending and reading, the LLM gateway
    owns the model keys and makes every request to a provider, the part
-   runner executes every signed part, and every open app has a session
-   process that holds its state and the runtime core.
+   runner executes every signed part, the store service keeps each app's
+   records, and every open app has a session process that holds its state
+   and the runtime core.
 2. **Linux kiosk:** a minimal Linux boots straight into the DER shell and
    sandboxes every server with seccomp. Gate: a kiosk or classroom pilot.
 3. **seL4 prototype:** a `no_std` runtime core runs under QEMU with the
@@ -198,11 +200,11 @@ natural cut line for the port.
 | `RuntimeEnv` | `runtime-core/src/env.rs` | Ids, randomness, the clock, and the timezone reach operations only through four methods, so they can be scripted or real. |
 | Wasm import gate | `platform/services/parts/src/lib.rs` | A part imports only what its declared, install-consented capabilities cover, which is nothing by default. Fuel, epoch, and memory limits bound every call. |
 | File grants | `platform/host/src/files.rs` | Contracts never see paths. A pick mints an opaque token, reads accept only granted tokens, and saves go only through the save panel. |
-| Per-app store | `platform/host/src/store.rs` | Collections live under `stores/<experienceId>/` and only the owning app reaches them. |
+| Per-app store | `platform/services/store/src/records.rs` | Collections live under `stores/<experienceId>/` and only the owning app reaches them. |
 
 Two more concerns sit beside these. The HTTP service, the mail service,
-the LLM gateway, the part runner, and each app's session are already
-separate processes. The HTTP service holds
+the LLM gateway, the part runner, the store, and each app's session are
+already separate processes. The HTTP service holds
 the credential store, injects a credential only after checking the
 endpoint against the service's base URL, and never returns a secret to the
 host. The mail service holds the account password and parses everything a

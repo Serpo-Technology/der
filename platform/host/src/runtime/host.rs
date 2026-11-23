@@ -145,11 +145,10 @@ impl HostDispatcher {
                 .map(super::value::js_to_string)
                 .unwrap_or_default()
         };
-        let base = match crate::store::stores_dir(&self.app) {
-            Ok(dir) => dir,
-            Err(error) => return Some(Err(error)),
-        };
-        let result = match request.operation_name {
+        // Which app a request is for comes from this dispatcher, which the
+        // host made for the session; nothing in the request can change it.
+        let experience_id = self.experience_id.clone();
+        let call = match request.operation_name {
             "store.put" => {
                 // The session hands dispatched inputs flat; assemble the
                 // record.* prefix here like the webview executor does.
@@ -162,27 +161,31 @@ impl HostDispatcher {
                         record.insert(field.to_string(), value.clone());
                     }
                 }
-                crate::store::put_core(&base, &self.experience_id, &text("collection"), &record, || {
-                    uuid::Uuid::new_v4().to_string()
-                })
+                der_store::Request::Put {
+                    experience_id,
+                    collection: text("collection"),
+                    record,
+                }
             }
-            "store.query" => crate::store::query_core(
-                &base,
-                &self.experience_id,
-                &text("collection"),
-                &text("field"),
-                request.inputs.get("equals").unwrap_or(&Value::Null),
-                &text("contains"),
-                &text("sortBy"),
-                &text("direction"),
-                &text("limit"),
-                &text("offset"),
-            ),
-            "store.remove" => {
-                crate::store::remove_core(&base, &self.experience_id, &text("collection"), &text("id"))
-            }
+            "store.query" => der_store::Request::Query {
+                experience_id,
+                collection: text("collection"),
+                field: text("field"),
+                equals: request.inputs.get("equals").cloned().unwrap_or(Value::Null),
+                contains: text("contains"),
+                sort_by: text("sortBy"),
+                direction: text("direction"),
+                limit: text("limit"),
+                offset: text("offset"),
+            },
+            "store.remove" => der_store::Request::Remove {
+                experience_id,
+                collection: text("collection"),
+                id: text("id"),
+            },
             _ => return None,
         };
+        let result = crate::store::Store::for_app(&self.app).and_then(|store| store.call(call));
         Some(result.and_then(as_outputs))
     }
 

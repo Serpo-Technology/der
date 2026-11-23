@@ -20,8 +20,8 @@ holds the crates the host runs as separate processes, none with a shell dependen
 mail account with sending and reading, `llm/` is `der-llm`, the model settings, keys, and
 every request to a model provider, `parts/` is `der-parts`, bundle verification, trust
 pinning, and the wasmtime host that runs signed parts, `session/` is `der-session`, one
-app's running session, and `wire/` is `der-wire`, the line protocol and process client
-they share;
+app's running session, `store/` is `der-store`, the per-app record stores, and `wire/` is
+`der-wire`, the line protocol and process client they share;
 `platform/macos/` is the SwiftUI panel; further native faces join beside it). This file is the
 authoritative architecture record; read the Architecture section before structural changes.
 
@@ -140,12 +140,12 @@ resolves a request (placeholder substitution, query or body split, status and JS
 in `build_remote_request` / `remote_reply_value`) and hands it over through `secrets.rs`
 (`Secrets::http` and `Secrets::store`), the host's only door to the store: no host module
 reads `settings/integrations.json` itself. The service is its own process, and so are
-mail, the LLM gateway, the part runner, and every app's session. The host executable
-started with `--service <http|mail|llm|parts|session> [--dir <dir>]` never becomes the app
-(`services::serve_if_asked` runs first in `main`) and runs that crate's `serve` instead,
-over the directory that holds what the service owns (the settings folder, or the installed
-bundles for the runner; a session owns nothing on disk and takes none). All five sit on
-`der-wire`: one `RequestLine` per line on stdin, one `ReplyLine` per line
+mail, the LLM gateway, the part runner, the store, and every app's session. The host
+executable started with `--service <http|mail|llm|parts|session|store> [--dir <dir>]`
+never becomes the app (`services::serve_if_asked` runs first in `main`) and runs that
+crate's `serve` instead, over the directory that holds what the service owns (the settings
+folder, the installed bundles for the runner, the stores folder for the store; a session
+owns nothing on disk and takes none). All six sit on `der-wire`: one `RequestLine` per line on stdin, one `ReplyLine` per line
 on stdout, matched by id, generic over each service's own `Request` and `Reply`. A reply
 that arrives in pieces sends `PartLine`s for its id first (`Responder::part` on the
 service's end, `Client::call_streamed` on the host's), which is how streamed model text
@@ -164,8 +164,8 @@ stored secret is therefore read and used outside the host's memory. The boundary
 process boundary only: all the processes run as the same user, so nothing yet stops the
 host from opening a service's file. `tests/http_service_process.rs`,
 `tests/mail_service_process.rs`, `tests/llm_service_process.rs`,
-`tests/parts_service_process.rs`, and `tests/session_service_process.rs` drive the real
-host binary in service mode through `Client`; unit tests use `Secrets::at`, `Mail::at`, `Llm::at`, and `Runner::at`, which run
+`tests/parts_service_process.rs`, `tests/session_service_process.rs`, and
+`tests/store_service_process.rs` drive the real host binary in service mode through `Client`; unit tests use `Secrets::at`, `Mail::at`, `Llm::at`, and `Runner::at`, which run
 the same `Service` inside the test process, and `der-wire`'s own client tests run it
 against scripted shell services. A new service is a crate with its `Request`, `Reply`,
 and `serve`, a name in `services.rs`, and a door module like these. A service that needs
@@ -462,10 +462,13 @@ these small bits (pick, read, convert, save) wired through state, proven end to 
 the pdf-viewer, image-shrink, and md-to-pdf eval prompts with stubbed dialogs and real
 wasm.
 The per-app record store is the platform layer for data that outgrows the
-state map: `store.put` / `store.query` / `store.remove` (`platform/host/src/store.rs`)
-keep JSON collections under `stores/<experienceId>/`, confined to the owning
-experience (the dispatcher carries the experience id; the webview executor
-passes it via the operation context). put upserts by id (generated when
+state map: `store.put` / `store.query` / `store.remove` keep JSON collections under
+`stores/<experienceId>/`, confined to the owning experience. The files belong to the
+store service (`platform/services/store/`, reached through `platform/host/src/store.rs`),
+a process of its own that answers one request at a time, so two writes to a collection
+never overwrite each other. Every request names the app it is for, and that name comes
+from the dispatcher the host made for the app's session, never from the contract or the
+session. No command lets a window name an app directly. put upserts by id (generated when
 absent, structured `record.<field>` inputs), query filters one field (loose
 equals or case-insensitive contains, empty keeps everything, mirroring the
 transforms), sorts numeric-aware, and pages ({items, count, total}); rows

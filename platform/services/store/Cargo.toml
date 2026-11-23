@@ -1,0 +1,16 @@
+[package]
+name = "der-store"
+version = "0.1.0"
+edition = "2021"
+description = "DER's store service: the per-app record stores, each confined to the app that owns it, with no dependency on the desktop shell."
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+der-runtime = { path = "../../../runtime-core" }
+der-wire = { path = "../wire" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+uuid = { version = "1.0", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
