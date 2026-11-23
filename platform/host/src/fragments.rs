@@ -1003,6 +1003,23 @@ impl wasmtime_wasi::cli::StdoutStream for BridgedOut {
     }
 }
 
+/// The TLS setup for a part's socket to a remote host. The crypto provider
+/// is named here because rustls cannot choose one by itself in a build that
+/// links more than one, and it panics when asked to.
+fn socket_tls_config() -> Result<tokio_rustls::rustls::ClientConfig, String> {
+    let roots = tokio_rustls::rustls::RootCertStore {
+        roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+    };
+    let config = tokio_rustls::rustls::ClientConfig::builder_with_provider(Arc::new(
+        tokio_rustls::rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .map_err(|e| format!("TLS setup failed: {}", e))?
+    .with_root_certificates(roots)
+    .with_no_client_auth();
+    Ok(config)
+}
+
 /// Connects the declared endpoint for a net-capable call: TLS for remote
 /// hosts, plain TCP on loopback (local services rarely speak TLS and local
 /// trust is different). The stream's halves become the guest's stdio.
@@ -1026,12 +1043,7 @@ fn connect_bridge(host: &str, port: u16) -> FragmentResult<(BridgedIn, BridgedOu
             let write: Box<dyn tokio::io::AsyncWrite + Send + Sync + Unpin> = Box::new(write);
             return Ok::<_, String>((read, write));
         }
-        let roots = tokio_rustls::rustls::RootCertStore {
-            roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
-        };
-        let config = tokio_rustls::rustls::ClientConfig::builder()
-            .with_root_certificates(roots)
-            .with_no_client_auth();
+        let config = socket_tls_config()?;
         let server_name = tokio_rustls::rustls::pki_types::ServerName::try_from(host.to_string())
             .map_err(|_| format!("{} is not a valid TLS host name", host))?;
         let tls = tokio_rustls::TlsConnector::from(Arc::new(config))
@@ -2766,6 +2778,14 @@ mod remote_tests {
         let err = super::apply_projection(&body, &projection, &inputs).unwrap_err();
         assert!(err.contains("rates.EUR"), "path missing from: {}", err);
         assert!(err.contains("rates"), "fields missing from: {}", err);
+    }
+}
+
+#[cfg(test)]
+mod socket_tls_tests {
+    #[test]
+    fn the_socket_tls_setup_names_its_provider() {
+        super::socket_tls_config().expect("builds without a process-wide provider");
     }
 }
 
