@@ -1,11 +1,12 @@
-//! Host-owned SMTP sending: the platform layer behind the email.send
-//! builtin. The mail account is one credential in the shared store (kind
-//! "smtp", name "mail"): the password is the secret, the server details are
-//! its fields, and it follows the same redaction rules as every other
-//! credential. Contracts supply only the message fields, and the first
+//! Host-owned mail: the platform layer behind the email.* builtins. The
+//! mail account lives in its own file, settings/mail.json, readable by its
+//! owner only: the password beside the server details. Settings screens see
+//! a redacted view. Contracts supply only the message fields, and the first
 //! unconfigured send opens the host-drawn account sheet in the app's flow.
 
 use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
 
 use lettre::message::Mailbox;
 use lettre::transport::smtp::authentication::Credentials;
@@ -14,10 +15,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 
-use crate::settings::{load_integrations, save_integrations, IntegrationCredential};
+use crate::secrets::Secrets;
+use crate::settings::settings_dir;
 
-/// The reserved credential name the mail account lives under.
-pub const ACCOUNT_NAME: &str = "mail";
+const ACCOUNT_FILE: &str = der_http::store::MAIL_ACCOUNT_FILE;
+const LEGACY_FILE: &str = "smtp.json";
+
+/// The account as its file holds it: the password is the secret and the
+/// server details are string fields.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+struct AccountRecord {
+    fields: BTreeMap<String, String>,
+    secret: String,
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -37,20 +48,13 @@ pub struct SmtpConfig {
 }
 
 impl SmtpConfig {
-    fn from_credential(credential: &IntegrationCredential) -> Self {
-        let field = |key: &str| -> String {
-            credential
-                .fields
-                .as_ref()
-                .and_then(|fields| fields.get(key))
-                .cloned()
-                .unwrap_or_default()
-        };
+    fn from_record(record: &AccountRecord) -> Self {
+        let field = |key: &str| -> String { record.fields.get(key).cloned().unwrap_or_default() };
         SmtpConfig {
             host: field("host"),
             port: field("port").trim().parse::<u16>().ok(),
             username: field("username"),
-            password: credential.secret.clone(),
+            password: record.secret.clone(),
             security: field("security"),
             from: field("from"),
             imap_host: field("imapHost"),
@@ -58,7 +62,7 @@ impl SmtpConfig {
         }
     }
 
-    fn to_credential(&self) -> IntegrationCredential {
+    fn to_record(&self) -> AccountRecord {
         let mut fields = BTreeMap::new();
         fields.insert("host".to_string(), self.host.clone());
         if let Some(port) = self.port {
@@ -76,57 +80,82 @@ impl SmtpConfig {
         if let Some(port) = self.imap_port {
             fields.insert("imapPort".to_string(), port.to_string());
         }
-        IntegrationCredential {
-            kind: "smtp".to_string(),
-            target: None,
-            base_url: None,
-            notes: None,
-            fields: Some(fields),
+        AccountRecord {
+            fields,
             secret: self.password.clone(),
         }
     }
 }
 
-/// One-time migration from the short-lived settings/smtp.json file into the
-/// credential store.
-fn migrate_legacy_file(app: &AppHandle) -> Option<SmtpConfig> {
-    use tauri::Manager;
-    let path = app.path().app_data_dir().ok()?.join("settings").join("smtp.json");
-    let config: SmtpConfig = serde_json::from_str(&std::fs::read_to_string(&path).ok()?).ok()?;
-    if config.host.is_empty() {
-        let _ = std::fs::remove_file(&path);
-        return None;
+fn read_account(dir: &Path) -> SmtpConfig {
+    fs::read_to_string(dir.join(ACCOUNT_FILE))
+        .ok()
+        .and_then(|json| serde_json::from_str::<AccountRecord>(&json).ok())
+        .map(|record| SmtpConfig::from_record(&record))
+        .unwrap_or_default()
+}
+
+fn write_account(dir: &Path, config: &SmtpConfig) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(&config.to_record())
+        .map_err(|e| format!("Failed to serialize the mail account: {}", e))?;
+    let path = dir.join(ACCOUNT_FILE);
+    fs::write(&path, json).map_err(|e| format!("Failed to save the mail account: {}", e))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
     }
-    let mut integrations = load_integrations(app);
-    integrations
-        .credentials
-        .insert(ACCOUNT_NAME.to_string(), config.to_credential());
-    if save_integrations(app, &integrations).is_ok() {
-        let _ = std::fs::remove_file(&path);
+    Ok(())
+}
+
+fn remove_account(dir: &Path) -> Result<(), String> {
+    match fs::remove_file(dir.join(ACCOUNT_FILE)) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("Failed to remove the mail account: {}", error)),
     }
-    Some(config)
+}
+
+/// Brings an account saved in an older place into the account file. The
+/// credential store releases a mail record it holds, and it writes the file
+/// itself so the password never crosses back. A settings/smtp.json file
+/// converts when no account file exists, and is removed either way.
+pub(crate) fn migrate_account_core(dir: &Path, secrets: &Secrets) {
+    let _ = secrets.store(der_http::Request::MailAccountRelease);
+    let legacy = dir.join(LEGACY_FILE);
+    let Ok(text) = fs::read_to_string(&legacy) else {
+        return;
+    };
+    if dir.join(ACCOUNT_FILE).exists() {
+        let _ = fs::remove_file(&legacy);
+        return;
+    }
+    let Ok(config) = serde_json::from_str::<SmtpConfig>(&text) else {
+        return;
+    };
+    if config.host.is_empty() || write_account(dir, &config).is_ok() {
+        let _ = fs::remove_file(&legacy);
+    }
+}
+
+pub fn migrate_account(app: &AppHandle) {
+    if let (Ok(dir), Ok(secrets)) = (settings_dir(app), Secrets::for_app(app)) {
+        migrate_account_core(&dir, &secrets);
+    }
 }
 
 pub fn load_config(app: &AppHandle) -> SmtpConfig {
-    let integrations = load_integrations(app);
-    match integrations.credentials.get(ACCOUNT_NAME) {
-        Some(credential) if credential.kind == "smtp" => SmtpConfig::from_credential(credential),
-        _ => migrate_legacy_file(app).unwrap_or_default(),
-    }
+    settings_dir(app)
+        .map(|dir| read_account(&dir))
+        .unwrap_or_default()
 }
 
 pub fn save_config(app: &AppHandle, config: &SmtpConfig) -> Result<(), String> {
-    let mut integrations = load_integrations(app);
-    integrations
-        .credentials
-        .insert(ACCOUNT_NAME.to_string(), config.to_credential());
-    save_integrations(app, &integrations)
+    write_account(&settings_dir(app)?, config)
 }
 
 pub fn delete_account(app: &AppHandle) -> Result<(), String> {
-    let mut integrations = load_integrations(app);
-    integrations.credentials.remove(ACCOUNT_NAME);
-    save_integrations(app, &integrations)
+    remove_account(&settings_dir(app)?)
 }
 
 /// What settings screens see: everything except the password, which only
@@ -195,9 +224,9 @@ pub fn send_core(
 ) -> Result<Value, String> {
     let mut config = load_config(app);
     if config.host.is_empty() {
-        // In-flow setup: the panel draws the account sheet, the secret goes
-        // straight into the store, and the send continues. Without a panel
-        // the error points at Settings.
+        // In-flow setup: the panel draws the account sheet, the password
+        // goes straight into the account file, and the send continues.
+        // Without a panel the error points at Settings.
         match crate::runtime::sidecar::panel_mail_account(app, &redacted_view(app)) {
             Some(saved) => {
                 save_keeping_password(app, saved)?;
@@ -533,21 +562,35 @@ mod tests {
         assert_eq!(merged.password, "fresh");
     }
 
-    #[test]
-    fn the_account_round_trips_through_the_credential_record() {
-        let config = SmtpConfig {
+    fn account() -> SmtpConfig {
+        SmtpConfig {
             host: "smtp.example.net".to_string(),
             port: Some(587),
             username: "me@example.net".to_string(),
-            password: "secret".to_string(),
+            password: "mail-passw0rd".to_string(),
             security: "starttls".to_string(),
             from: "Me <me@example.net>".to_string(),
             imap_host: "imap.example.net".to_string(),
             imap_port: Some(993),
-        };
-        let credential = config.to_credential();
-        assert_eq!(credential.kind, "smtp");
-        let back = SmtpConfig::from_credential(&credential);
+        }
+    }
+
+    #[test]
+    fn the_account_round_trips_through_its_file() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        assert!(read_account(dir.path()).host.is_empty());
+        let config = account();
+        write_account(dir.path(), &config).expect("saves");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(dir.path().join(ACCOUNT_FILE))
+                .expect("metadata")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        let back = read_account(dir.path());
         assert_eq!(back.host, config.host);
         assert_eq!(back.port, config.port);
         assert_eq!(back.username, config.username);
@@ -556,6 +599,56 @@ mod tests {
         assert_eq!(back.from, config.from);
         assert_eq!(back.imap_host, config.imap_host);
         assert_eq!(back.imap_port, config.imap_port);
+
+        remove_account(dir.path()).expect("removes");
+        assert!(read_account(dir.path()).host.is_empty());
+        remove_account(dir.path()).expect("removing a missing account is fine");
+    }
+
+    #[test]
+    fn an_account_in_the_credential_store_moves_into_the_file() {
+        use der_http::store::{self, IntegrationCredential, StoredIntegrations};
+        let dir = tempfile::tempdir().expect("temp dir");
+        let record = account().to_record();
+        let mut integrations = StoredIntegrations::default();
+        integrations.credentials.insert(
+            "mail".to_string(),
+            IntegrationCredential {
+                kind: "smtp".to_string(),
+                target: None,
+                base_url: None,
+                notes: None,
+                fields: Some(record.fields),
+                secret: record.secret,
+            },
+        );
+        store::save(dir.path(), &integrations).expect("seeds the store");
+
+        migrate_account_core(dir.path(), &Secrets::at(dir.path()));
+        let moved = read_account(dir.path());
+        assert_eq!(moved.host, "smtp.example.net");
+        assert_eq!(moved.port, Some(587));
+        assert_eq!(moved.imap_port, Some(993));
+        assert_eq!(moved.password, "mail-passw0rd");
+        assert!(store::load(dir.path()).credentials.is_empty());
+    }
+
+    #[test]
+    fn a_legacy_account_file_converts_once() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let legacy = dir.path().join(LEGACY_FILE);
+        fs::write(&legacy, serde_json::to_string(&account()).expect("json")).expect("writes");
+        migrate_account_core(dir.path(), &Secrets::at(dir.path()));
+        assert!(!legacy.exists());
+        assert_eq!(read_account(dir.path()).password, "mail-passw0rd");
+
+        // A leftover legacy file never replaces the account file.
+        let mut other = account();
+        other.host = "other.example.net".to_string();
+        fs::write(&legacy, serde_json::to_string(&other).expect("json")).expect("writes");
+        migrate_account_core(dir.path(), &Secrets::at(dir.path()));
+        assert!(!legacy.exists());
+        assert_eq!(read_account(dir.path()).host, "smtp.example.net");
     }
 
     #[test]

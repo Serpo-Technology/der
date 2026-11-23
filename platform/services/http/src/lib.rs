@@ -53,6 +53,9 @@ pub enum Request {
         name: String,
         base_url: String,
     },
+    /// Move a mail account record out of the store into the mail account
+    /// file beside it.
+    MailAccountRelease,
 }
 
 /// The answer to a `Request`.
@@ -159,6 +162,10 @@ impl Service {
                 }
                 Reply::Done
             }
+            Request::MailAccountRelease => match store::release_mail_account(dir) {
+                Ok(_) => Reply::Done,
+                Err(message) => Reply::Error(message),
+            },
         }
     }
 }
@@ -246,6 +253,7 @@ mod tests {
             }),
             service.handle_store(Request::CredentialsList),
             service.handle_store(Request::PartSecretsUnaddressed),
+            service.handle_store(Request::MailAccountRelease),
         ];
         for reply in replies {
             let line = serde_json::to_string(&reply).expect("serializes");

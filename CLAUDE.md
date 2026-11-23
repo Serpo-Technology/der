@@ -119,7 +119,7 @@ The frontend reaches Rust through `@tauri-apps/api` `invoke`. `platform/host/src
 commands (storage, `execute_operation`, window/tray control) plus the newer modules: `llm.rs`
 (the `llm_chat` command that performs all LLM HTTP via reqwest), `settings.rs` (LLM settings and
 credentials under `app_data_dir/settings/`, redacted reads), `oauth.rs` (Claude subscription
-PKCE sign-in and token refresh), and `mail.rs` (the mail account in the credential store and the
+PKCE sign-in and token refresh), and `mail.rs` (the mail account in its own file, `settings/mail.json`, and the
 `email_send`/`mail_list`/`mail_fetch`/`smtp_get`/`smtp_save`/`smtp_delete` commands). `execute_operation`'s `remote` branch performs real HTTP
 (`{name}` endpoint substitution, GET query / JSON body, and named integration credentials:
 `implementation.auth` references a credential stored under `settings/integrations.json`
@@ -131,8 +131,8 @@ caller can ask is one `Request` (an HTTP request naming its credential, or a sto
 and no `Reply` holds a secret, with both types serializable as one JSON line each. The host
 resolves a request (placeholder substitution, query or body split, status and JSON handling
 in `build_remote_request` / `remote_reply_value`) and hands it over through `secrets.rs`
-(`Secrets::http` and `Secrets::store`), the host's only door to the store; `mail.rs` is the
-one module that reads its record from the file itself. The crate's `confine.rs` is
+(`Secrets::http` and `Secrets::store`), the host's only door to the store: no host module reads `settings/integrations.json`
+itself. The crate's `confine.rs` is
 the one judge for both HTTP paths: the kernel's
 `endpoint_within_base` text rule (the character after the base must end the host or the path
 segment, so a longer host that only begins with the base is outside) plus a parsed comparison
@@ -417,20 +417,23 @@ text/plain with a tag-stripped html fallback; fetching a message marks it read).
 Operations name the CAPABILITY, never the protocol: contracts say "list my mail"
 and the account record decides the transport, so recipes survive account changes
 and future protocols (POP3, JMAP) arrive as new drivers behind the same three
-operations. The mail account is one credential in the shared store (kind `smtp`,
-name `mail`, in `settings/integrations.json` beside the HTTP and part-scoped
-kinds: the password is the secret, the server details are its `fields`, including
-`imapHost`/`imapPort` for incoming), with the standard redaction (both faces see
-host/username/`hasPassword` views, an empty password on save keeps the stored one,
-and a legacy `settings/smtp.json` migrates in on first read). Contracts supply
+operations. The mail account lives in mail's own file, `settings/mail.json`,
+readable by its owner only and apart from the HTTP credential store: the password
+is its `secret` and the server details are its `fields`, including
+`imapHost`/`imapPort` for incoming. Redaction is the standard one (both faces see
+host/username/`hasPassword` views, and an empty password on save keeps the stored
+one). An account saved in an older place moves in at startup: the store releases an
+`smtp` record named `mail` by writing the file itself (`MailAccountRelease`, so the
+password never crosses back to the host), and a `settings/smtp.json` converts when
+no account file exists. Contracts supply
 only message fields and ids. Setup happens in the app's own flow: an unconfigured
 send or list opens the host-drawn account sheet natively (a `mailAccount` dialog
 request next to pickFile/saveFile) and then continues, the webview face offers
 "Set up email" on the error strip, and Settings reuses the same form as a row
 beside the HTTP credentials (add/edit/remove). Only bearer/header/query
 credentials are valid `implementation.auth` references and taught in the catalog;
-smtp and part-scoped kinds are invisible there (frozen in a validation vector)
-and refused at injection. Mail sits in the host platform layer next to the file
+part-scoped secrets and any `smtp` record not yet released are invisible there
+(frozen in a validation vector) and refused at injection. Mail sits in the host platform layer next to the file
 dialogs because the account credential, its redaction, and the in-flow setup sheet
 are host concerns either way; socket-capable parts (a future wasi grant behind the
 capability gate) would still not hold the account secret.

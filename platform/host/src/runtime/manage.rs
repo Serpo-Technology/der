@@ -59,15 +59,9 @@ fn version_newer(a: &str, b: &str) -> bool {
 
 pub fn settings_snapshot(app: &tauri::AppHandle, note: Option<(&str, &str)>) -> Value {
     let view = serde_json::to_value(crate::settings::build_view(app)).unwrap_or(Value::Null);
-    // The mail account travels as the dedicated smtp view; the generic list
-    // keeps only HTTP credentials.
-    let integrations = serde_json::to_value(
-        crate::settings::list_integration_credentials(app.clone())
-            .into_iter()
-            .filter(|credential| credential.kind != "smtp")
-            .collect::<Vec<_>>(),
-    )
-    .unwrap_or(Value::Null);
+    let integrations =
+        serde_json::to_value(crate::settings::list_integration_credentials(app.clone()))
+            .unwrap_or(Value::Null);
     let mut message = json!({
         "cmd": "settings",
         "view": view,

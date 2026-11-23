@@ -74,20 +74,7 @@ pub struct StoredCredentials {
     pub claude_oauth: Option<ClaudeOauthTokens>,
 }
 
-pub use der_http::store::{IntegrationCredential, IntegrationCredentialView, StoredIntegrations};
-
-/// The mail account is a record in the integration store, and the mail
-/// module reads and writes it through these two functions. Every other use
-/// of the store goes through `Secrets`.
-pub fn load_integrations(app: &AppHandle) -> StoredIntegrations {
-    settings_dir(app)
-        .map(|dir| der_http::store::load(&dir))
-        .unwrap_or_default()
-}
-
-pub fn save_integrations(app: &AppHandle, integrations: &StoredIntegrations) -> Result<(), String> {
-    der_http::store::save(&settings_dir(app)?, integrations)
-}
+pub use der_http::store::IntegrationCredentialView;
 
 /// True when the configured provider can actually answer: signed in for the
 /// Claude subscription, a stored key for API providers, a base URL for

@@ -10,15 +10,20 @@ use serde::{Deserialize, Serialize};
 
 const FILE_NAME: &str = "integrations.json";
 
+/// The file the mail account lives in, beside the store. Mail owns it.
+pub const MAIL_ACCOUNT_FILE: &str = "mail.json";
+const MAIL_RECORD_NAME: &str = "mail";
+
 /// A named credential a remote operation can reference via
 /// implementation.auth, or a secret an installed part declared.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IntegrationCredential {
     /// "bearer" (Authorization header), "header" (custom header), "query"
-    /// (query parameter), "partsecret" (a part's secret, shaped by its
-    /// manifest), or "smtp" (a mail account consumed only by the mail
-    /// operations, never injectable into HTTP requests).
+    /// (query parameter), or "partsecret" (a part's secret, shaped by its
+    /// manifest). A record of kind "smtp" is a mail account saved while
+    /// mail shared this store; it is never injected, and
+    /// `release_mail_account` moves it out.
     pub kind: String,
     /// Header or query-parameter name; unused for bearer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -31,8 +36,7 @@ pub struct IntegrationCredential {
     /// fields, units.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
-    /// Kind-specific non-secret fields (smtp: host, port, security,
-    /// username, from).
+    /// The server details of an "smtp" record; no other kind has any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fields: Option<BTreeMap<String, String>>,
     pub secret: String,
@@ -59,14 +63,53 @@ pub fn save(dir: &Path, integrations: &StoredIntegrations) -> Result<(), String>
     let json = serde_json::to_string_pretty(integrations)
         .map_err(|e| format!("Failed to serialize integrations: {}", e))?;
     fs::create_dir_all(dir).map_err(|e| format!("Failed to create settings directory: {}", e))?;
-    let path = dir.join(FILE_NAME);
-    fs::write(&path, json).map_err(|e| format!("Failed to save integrations: {}", e))?;
+    write_private(&dir.join(FILE_NAME), &json)
+        .map_err(|e| format!("Failed to save integrations: {}", e))
+}
+
+fn write_private(path: &Path, contents: &str) -> std::io::Result<()> {
+    fs::write(path, contents)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+        let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
     }
     Ok(())
+}
+
+/// The mail account as it sits in its own file.
+#[derive(Serialize)]
+struct MailAccountFile<'a> {
+    fields: &'a BTreeMap<String, String>,
+    secret: &'a str,
+}
+
+/// Moves the mail account out of the store into `MAIL_ACCOUNT_FILE`: the
+/// "smtp" record named "mail" is written there as its fields and secret,
+/// then removed here. Such a record can only have been saved after the
+/// last move, so it replaces a file already present. Returns whether a
+/// record moved; the secret never leaves this function.
+pub fn release_mail_account(dir: &Path) -> Result<bool, String> {
+    let mut integrations = load(dir);
+    let Some(record) = integrations
+        .credentials
+        .get(MAIL_RECORD_NAME)
+        .filter(|record| record.kind == "smtp")
+    else {
+        return Ok(false);
+    };
+    let no_fields = BTreeMap::new();
+    let account = MailAccountFile {
+        fields: record.fields.as_ref().unwrap_or(&no_fields),
+        secret: &record.secret,
+    };
+    let json = serde_json::to_string_pretty(&account)
+        .map_err(|e| format!("Failed to serialize the mail account: {}", e))?;
+    write_private(&dir.join(MAIL_ACCOUNT_FILE), &json)
+        .map_err(|e| format!("Failed to save the mail account: {}", e))?;
+    integrations.credentials.remove(MAIL_RECORD_NAME);
+    save(dir, &integrations)?;
+    Ok(true)
 }
 
 /// Redacted view: names and shapes only, never secrets.
@@ -81,8 +124,6 @@ pub struct IntegrationCredentialView {
     pub base_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fields: Option<BTreeMap<String, String>>,
 }
 
 /// Every record as a redacted view, sorted by name.
@@ -96,7 +137,6 @@ pub fn views(integrations: &StoredIntegrations) -> Vec<IntegrationCredentialView
             target: cred.target.clone(),
             base_url: cred.base_url.clone(),
             notes: cred.notes.clone(),
-            fields: cred.fields.clone(),
         })
         .collect();
     views.sort_by(|a, b| a.name.cmp(&b.name));
@@ -309,6 +349,77 @@ mod tests {
         save(dir.path(), &StoredIntegrations::default()).expect("writes");
         let mode = fs::metadata(dir.path().join(FILE_NAME)).expect("metadata").permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    fn mail_record() -> IntegrationCredential {
+        let mut fields = BTreeMap::new();
+        fields.insert("host".to_string(), "smtp.example.net".to_string());
+        fields.insert("port".to_string(), "587".to_string());
+        IntegrationCredential {
+            kind: "smtp".to_string(),
+            target: None,
+            base_url: None,
+            notes: None,
+            fields: Some(fields),
+            secret: "mail-passw0rd".to_string(),
+        }
+    }
+
+    #[test]
+    fn the_mail_account_moves_out_of_the_store_into_its_own_file() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let mut integrations = StoredIntegrations::default();
+        integrations.credentials.insert("mail".to_string(), mail_record());
+        set_credential(&mut integrations, "weather", "bearer", None, "https://a.dev", None, "x".into())
+            .expect("saves");
+        save(dir.path(), &integrations).expect("writes");
+        // A file from an earlier move is older than the record.
+        fs::write(dir.path().join(MAIL_ACCOUNT_FILE), "{\"secret\":\"older\"}").expect("writes");
+
+        assert_eq!(release_mail_account(dir.path()), Ok(true));
+        let account: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(dir.path().join(MAIL_ACCOUNT_FILE)).expect("the account file"),
+        )
+        .expect("json");
+        assert_eq!(account["fields"]["host"], "smtp.example.net");
+        assert_eq!(account["fields"]["port"], "587");
+        assert_eq!(account["secret"], "mail-passw0rd");
+
+        let back = load(dir.path());
+        assert!(!back.credentials.contains_key("mail"));
+        assert!(back.credentials.contains_key("weather"));
+        let stored = fs::read_to_string(dir.path().join(FILE_NAME)).expect("the store");
+        assert!(!stored.contains("mail-passw0rd"), "{stored}");
+
+        assert_eq!(release_mail_account(dir.path()), Ok(false));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_released_mail_account_is_readable_by_its_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("temp dir");
+        let mut integrations = StoredIntegrations::default();
+        integrations.credentials.insert("mail".to_string(), mail_record());
+        save(dir.path(), &integrations).expect("writes");
+        release_mail_account(dir.path()).expect("moves");
+        let mode = fs::metadata(dir.path().join(MAIL_ACCOUNT_FILE))
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    fn an_http_credential_named_mail_stays_in_the_store() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let mut integrations = StoredIntegrations::default();
+        set_credential(&mut integrations, "mail", "bearer", None, "https://a.dev", None, "x".into())
+            .expect("saves");
+        save(dir.path(), &integrations).expect("writes");
+        assert_eq!(release_mail_account(dir.path()), Ok(false));
+        assert_eq!(load(dir.path()).credentials["mail"].kind, "bearer");
+        assert!(!dir.path().join(MAIL_ACCOUNT_FILE).exists());
     }
 
     #[test]
