@@ -166,7 +166,7 @@ fn a_request_in_flight_fails_when_the_service_dies() {
 fn the_service_ends_when_its_input_closes() {
     let settings = tempfile::tempdir().expect("temp dir");
     let mut service = Command::new(HOST)
-        .args(["--service", "http", "--settings-dir"])
+        .args(["--service", "http", "--dir"])
         .arg(settings.path())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -194,6 +194,6 @@ fn service_arguments_that_make_no_sense_never_start_the_app() {
             .expect("runs");
         assert_eq!(output.status.code(), Some(2), "{arguments:?}");
         let message = String::from_utf8_lossy(&output.stderr);
-        assert!(message.contains("usage: --service <http|mail|llm> --settings-dir"), "{arguments:?}: {message}");
+        assert!(message.contains("usage: --service <http|mail|llm|parts> --dir"), "{arguments:?}: {message}");
     }
 }

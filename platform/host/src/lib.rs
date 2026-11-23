@@ -1399,7 +1399,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(files::FileGrants::default())
-        .manage(fragments::FragmentsState::new())
+        .manage(fragments::PartsState::new())
         .manage(runtime::sessions::RuntimeSessionsState::default())
         .manage(runtime::sidecar::NativeRendererState::default())
         .manage(runtime::sidecar::PendingDialogs::default())

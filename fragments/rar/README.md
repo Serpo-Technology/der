@@ -9,5 +9,5 @@ write the format. This part does not even use RARLAB sources: it builds
 on libarchive's independent, BSD-licensed RAR readers (version and
 sha256 pinned in `build.sh`), compiled to wasm32-wasip1 as a read-only
 file set. Password-protected archives are refused with a readable
-message. The test fixtures under `platform/host/tests/fixtures/rar/`
+message. The test fixtures under `platform/services/parts/tests/fixtures/rar/`
 are decoded from libarchive's own BSD-licensed test corpus.

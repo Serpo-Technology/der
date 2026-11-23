@@ -2,14 +2,14 @@
 //! install, evaluate through the sandbox, and error reporting. Hermetic:
 //! the bundle carries the compiled wasm.
 
-use dynamic_experience_runtime_lib::fragments::{
+use der_parts::{
     commit_core, execute_in_module, list_core, stage_core, verify_bundle, FragmentErrorKind,
     FragmentsState,
 };
 use serde_json::{json, Value};
 
-const EXPR_BUNDLE: &str = "../../fragments/dist/der-labs.expr-evaluate.derpart";
-const STATS_BUNDLE: &str = "../../fragments/dist/der-labs.stats-summary.derpart";
+const EXPR_BUNDLE: &str = "../../../fragments/dist/der-labs.expr-evaluate.derpart";
+const STATS_BUNDLE: &str = "../../../fragments/dist/der-labs.stats-summary.derpart";
 
 fn install(state: &FragmentsState, dir: &std::path::Path, path: &str) -> String {
     let raw = std::fs::read(path).expect("committed bundle present");

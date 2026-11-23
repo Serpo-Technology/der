@@ -1848,7 +1848,7 @@
         "file": {
           "name": "clip.mp4",
           "mime": "video/mp4",
-          "path": "platform/host/tests/fixtures/media/clip.mp4"
+          "path": "platform/services/parts/tests/fixtures/media/clip.mp4"
         },
         "steps": [
           {
@@ -1904,7 +1904,7 @@
         "file": {
           "name": "tone.mp3",
           "mime": "audio/mpeg",
-          "path": "platform/host/tests/fixtures/media/tone.mp3"
+          "path": "platform/services/parts/tests/fixtures/media/tone.mp3"
         },
         "steps": [
           {
@@ -1954,7 +1954,7 @@
         "file": {
           "name": "archive.rar",
           "mime": "application/vnd.rar",
-          "path": "platform/host/tests/fixtures/rar/multi.rar"
+          "path": "platform/services/parts/tests/fixtures/rar/multi.rar"
         },
         "steps": [
           {

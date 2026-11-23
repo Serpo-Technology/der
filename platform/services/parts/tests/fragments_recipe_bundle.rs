@@ -4,7 +4,7 @@
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
-use dynamic_experience_runtime_lib::fragments::{
+use der_parts::{
     commit_core, list_core, stage_core, verify_bundle, FragmentErrorKind, FragmentsState,
 };
 use ed25519_dalek::{Signer, SigningKey};
@@ -72,7 +72,7 @@ fn recipe_manifest() -> Value {
 
 #[test]
 fn committed_starter_bundle_verifies() {
-    let raw = std::fs::read("../../fragments/dist/der-labs.starter-apps.derpart")
+    let raw = std::fs::read("../../../fragments/dist/der-labs.starter-apps.derpart")
         .expect("committed bundle present");
     let verified = verify_bundle(&raw).expect("verifies");
     assert_eq!(verified.manifest.id, "der-labs.starter-apps");

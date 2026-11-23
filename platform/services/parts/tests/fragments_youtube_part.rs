@@ -1,12 +1,12 @@
 //! Host tests for the committed youtube bundle: verify, install, and parse
 //! links through the sandbox. Hermetic: the bundle carries the wasm.
 
-use dynamic_experience_runtime_lib::fragments::{
+use der_parts::{
     commit_core, execute_in_module, stage_core, verify_bundle, FragmentsState,
 };
 use serde_json::json;
 
-const YOUTUBE_BUNDLE: &str = "../../fragments/dist/der-labs.youtube.derpart";
+const YOUTUBE_BUNDLE: &str = "../../../fragments/dist/der-labs.youtube.derpart";
 
 fn install(state: &FragmentsState, dir: &std::path::Path) -> String {
     let raw = std::fs::read(YOUTUBE_BUNDLE).expect("committed bundle present");

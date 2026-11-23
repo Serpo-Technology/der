@@ -130,6 +130,7 @@ cd platform/host && cargo test # Rust suites, conformance included
 cd platform/services/http && cargo test # the HTTP service and credential store
 cd platform/services/mail && cargo test # the mail service
 cd platform/services/llm && cargo test  # the LLM gateway
+cd platform/services/parts && cargo test # the part runner and the part suites
 cd platform/services/wire && cargo test # the line protocol the services share
 npm run eval -- --provider mercury   # generation + behavioral scoring
 ```
@@ -167,11 +168,12 @@ layout.
    JSON protocol the native panel already speaks. This makes DER sturdier on
    macOS, brings Windows and Linux in, and is exactly the server layout the
    microkernel needs later. Gate: the corpus passes with the host split.
-   Three servers are running, each in a process of its own under
+   Four servers are running, each in a process of its own under
    `platform/services`: the HTTP service owns the credential store and
    performs every request that carries a stored secret, the mail service
-   owns the mail account and does all sending and reading, and the LLM
-   gateway owns the model keys and makes every request to a provider.
+   owns the mail account and does all sending and reading, the LLM gateway
+   owns the model keys and makes every request to a provider, and the part
+   runner executes every signed part.
 2. **Linux kiosk:** a minimal Linux boots straight into the DER shell and
    sandboxes every server with seccomp. Gate: a kiosk or classroom pilot.
 3. **seL4 prototype:** a `no_std` runtime core runs under QEMU with the
@@ -192,17 +194,20 @@ natural cut line for the port.
 | --- | --- | --- |
 | `OperationDispatcher` | `runtime-core/src/session.rs` | The runtime core never performs IO. Every non-builtin operation leaves through one `dispatch()` call. |
 | `RuntimeEnv` | `runtime-core/src/env.rs` | Ids, randomness, the clock, and the timezone reach operations only through four methods, so they can be scripted or real. |
-| Wasm import gate | `platform/host/src/fragments.rs` | A part imports only what its declared, install-consented capabilities cover, which is nothing by default. Fuel, epoch, and memory limits bound every call. |
+| Wasm import gate | `platform/services/parts/src/lib.rs` | A part imports only what its declared, install-consented capabilities cover, which is nothing by default. Fuel, epoch, and memory limits bound every call. |
 | File grants | `platform/host/src/files.rs` | Contracts never see paths. A pick mints an opaque token, reads accept only granted tokens, and saves go only through the save panel. |
 | Per-app store | `platform/host/src/store.rs` | Collections live under `stores/<experienceId>/` and only the owning app reaches them. |
 
 Two more concerns sit beside these. The HTTP service, the mail service,
-and the LLM gateway are already separate processes. The HTTP service holds
+the LLM gateway, and the part runner are already separate processes. The HTTP service holds
 the credential store, injects a credential only after checking the
 endpoint against the service's base URL, and never returns a secret to the
 host. The mail service holds the account password and parses everything a
 mail server sends. The LLM gateway holds the model keys and sign-in tokens
-and sends a key only to its provider's fixed address. The panel protocol in `sidecar.rs` keeps the native
+and sends a key only to its provider's fixed address. The part runner
+executes guest code and holds no grants of its own: the host tells it
+which files a call may read and takes in what the call produced. The panel
+protocol in `sidecar.rs` keeps the native
 renderer a pure view that never holds a secret.
 
 ### Grants become capabilities
@@ -272,11 +277,12 @@ Gets a new implementation:
 - `FileGrants` loses its token-to-path map. A token becomes a handle to a
   file object capability held by the session, and the file server never
   exposes paths.
-- The wasm part host runs each part in its own process so the kernel
-  enforces isolation. Wasmtime stays as a second wall inside that process.
-  The cost is a process spawn per part instance and an IPC hop per part
-  call. The rules in `check_abi` become the rules for which capabilities a
-  part's process receives at spawn.
+- The part runner already runs in a process of its own, shared by all
+  parts. On a microkernel each part gets its own process so the kernel
+  enforces isolation between parts too, and Wasmtime stays as a second
+  wall inside it. The cost is a process spawn per part instance and an IPC
+  hop per part call. The rules in `check_abi` become the rules for which
+  capabilities a part's process receives at spawn.
 - Each server keeps the secrets it uses. The HTTP service owns
   `integrations.json`, the mail service owns the mail account, and the LLM
   gateway owns the model keys and sign-in tokens. All three answer the
@@ -295,13 +301,12 @@ own judgment calls any safer.
 
 Stronger:
 
-- A bug in one host module no longer exposes the rest. Today a flaw in the
-  part runner runs in the same process as the file grants and the app
-  stores. As a server it can reach only its own capabilities. The HTTP
-  credentials, the mail account, and the model keys have left that
-  process, but on today's operating systems every DER process runs as the
-  same user and could still open the files they are stored in. The kernel
-  closes that gap.
+- A bug in one host module no longer exposes the rest. Guest code, the
+  HTTP credentials, the mail account, and the model keys each sit in a
+  process of their own, so a flaw in one does not hand over the memory of
+  the others. On today's operating systems every DER process still runs
+  as the same user and could open the others' files. The kernel closes
+  that gap, and as a server each one can reach only its own capabilities.
 - A compromised part runner cannot escalate. Wasmtime is the only wall
   today; on seL4 a formally verified kernel stands behind it.
 - One app cannot read another app's store or files, even through a host

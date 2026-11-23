@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use dynamic_experience_runtime_lib::fragments::{ExecEnv, FragmentsState, Manifest};
+use der_parts::{ExecEnv, FragmentsState, Manifest};
 use serde_json::{json, Value};
 
 const FIXTURE_WASM: &str = "tests/fixtures/wasi_echo.wasm";
@@ -47,12 +47,12 @@ fn job_manifest() -> Manifest {
     .expect("manifest parses")
 }
 
-fn load(state: &FragmentsState) -> dynamic_experience_runtime_lib::fragments::LoadedFragment {
+fn load(state: &FragmentsState) -> der_parts::LoadedFragment {
     let wasm = std::fs::read(FIXTURE_WASM).expect("committed fixture present");
     let module = state
         .compile(&wasm, &["wasi:files".to_string()])
         .expect("fixture verifies");
-    dynamic_experience_runtime_lib::fragments::LoadedFragment::for_tests(job_manifest(), module)
+    der_parts::LoadedFragment::for_tests(job_manifest(), module)
 }
 
 fn keep_dir() -> std::path::PathBuf {

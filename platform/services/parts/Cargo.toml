@@ -1,0 +1,26 @@
+[package]
+name = "der-parts"
+version = "0.1.0"
+edition = "2021"
+description = "DER's part runner: bundle verification, trust pinning, and the hardened wasmtime host that runs signed parts, with no dependency on the desktop shell."
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+der-wire = { path = "../wire" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+chrono = "0.4"
+tokio = { version = "1", features = ["time", "net", "io-util"] }
+uuid = { version = "1.0", features = ["v4"] }
+sha2 = "0.10"
+base64 = "0.22"
+wasmtime = { version = "47", default-features = false, features = ["cranelift", "runtime", "parallel-compilation"] }
+wasmtime-wasi = { version = "47", default-features = false, features = ["p1"] }
+ed25519-dalek = "2"
+semver = "1"
+webpki-roots = "0.26"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+
+[dev-dependencies]
+tempfile = "3"
+wat = "1"

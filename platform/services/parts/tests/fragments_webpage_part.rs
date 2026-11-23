@@ -2,12 +2,12 @@
 //! extract blocks through the sandbox. Hermetic: the bundle carries the
 //! wasm, and io:large raises the input budget for real page sizes.
 
-use dynamic_experience_runtime_lib::fragments::{
+use der_parts::{
     commit_core, execute_in_module, stage_core, verify_bundle, FragmentsState,
 };
 use serde_json::json;
 
-const WEBPAGE_BUNDLE: &str = "../../fragments/dist/der-labs.webpage.derpart";
+const WEBPAGE_BUNDLE: &str = "../../../fragments/dist/der-labs.webpage.derpart";
 
 fn install(state: &FragmentsState, dir: &std::path::Path) -> String {
     let raw = std::fs::read(WEBPAGE_BUNDLE).expect("committed bundle present");

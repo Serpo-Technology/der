@@ -1,9 +1,9 @@
 //! The host dispatcher: routes a session's non-builtin operations to the
 //! machinery that already runs them for the webview, with the same
-//! confinement. Wasm compute parts execute in the hardened wasmtime host,
-//! integration part remotes go through the signed service path with
-//! part-scoped credentials, contract remote endpoints and http.get go
-//! through the shared confined HTTP core. Local code stays webview-only.
+//! confinement. Wasm compute parts execute in the part runner, a separate
+//! process, integration part remotes go through the signed service path
+//! with part-scoped credentials, and contract remote endpoints and http.get
+//! go through the confined HTTP service. Local code stays webview-only.
 
 use std::collections::HashMap;
 
@@ -12,7 +12,7 @@ use tauri::Manager;
 
 use super::session::{DispatchRequest, OperationDispatcher};
 use super::value::js_to_string;
-use crate::fragments::{execute_in_module, execute_part_remote_core, FragmentsState};
+use crate::fragments::execute_part_remote_core;
 
 /// Where an installed part operation runs, derived from the installed
 /// manifests at session open.
@@ -72,15 +72,9 @@ impl HostDispatcher {
         request: &DispatchRequest,
         inputs: &Map<String, Value>,
     ) -> Result<Map<String, Value>, String> {
-        let dir = self.fragments_dir()?;
-        let state = self.app.state::<FragmentsState>();
-        let loaded = state
-            .load(&dir, &route.fragment_id)
-            .map_err(|error| error.message)?;
         let result = crate::fragments::execute_with_app_files(
             &self.app,
-            state.engine(),
-            &loaded,
+            &route.fragment_id,
             request.operation_name,
             &Value::Object(inputs.clone()),
         )

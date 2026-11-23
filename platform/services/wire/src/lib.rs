@@ -49,17 +49,12 @@ pub struct FailedLine {
 }
 
 const SERVICE_FLAG: &str = "--service";
-const SETTINGS_DIR_FLAG: &str = "--settings-dir";
+const DIR_FLAG: &str = "--dir";
 
-/// The arguments that start an executable as the named service over a
-/// settings directory.
-pub fn service_arguments(name: &str, settings_dir: &Path) -> Vec<OsString> {
-    vec![
-        SERVICE_FLAG.into(),
-        name.into(),
-        SETTINGS_DIR_FLAG.into(),
-        settings_dir.into(),
-    ]
+/// The arguments that start an executable as the named service over the
+/// directory that holds what the service owns.
+pub fn service_arguments(name: &str, dir: &Path) -> Vec<OsString> {
+    vec![SERVICE_FLAG.into(), name.into(), DIR_FLAG.into(), dir.into()]
 }
 
 /// What a process's arguments ask of it.
@@ -67,9 +62,9 @@ pub fn service_arguments(name: &str, settings_dir: &Path) -> Vec<OsString> {
 pub enum Asked {
     /// No service was asked for.
     Nothing,
-    /// Run the named service over the settings directory.
-    Service { name: String, settings_dir: PathBuf },
-    /// A service was asked for without a name or a settings directory.
+    /// Run the named service over the directory.
+    Service { name: String, dir: PathBuf },
+    /// A service was asked for without a name or a directory.
     Malformed,
 }
 
@@ -84,10 +79,10 @@ pub fn asked(arguments: &[String]) -> Asked {
     if !arguments.iter().any(|argument| argument == SERVICE_FLAG) {
         return Asked::Nothing;
     }
-    match (value_after(SERVICE_FLAG), value_after(SETTINGS_DIR_FLAG)) {
+    match (value_after(SERVICE_FLAG), value_after(DIR_FLAG)) {
         (Some(name), Some(dir)) if !name.starts_with("--") => Asked::Service {
             name: name.clone(),
-            settings_dir: PathBuf::from(dir),
+            dir: PathBuf::from(dir),
         },
         _ => Asked::Malformed,
     }
@@ -95,7 +90,7 @@ pub fn asked(arguments: &[String]) -> Asked {
 
 /// The usage line for an executable that can run as one of `names`.
 pub fn usage(names: &[&str]) -> String {
-    format!("usage: {SERVICE_FLAG} <{}> {SETTINGS_DIR_FLAG} <directory>", names.join("|"))
+    format!("usage: {SERVICE_FLAG} <{}> {DIR_FLAG} <directory>", names.join("|"))
 }
 
 #[cfg(test)]
@@ -117,7 +112,7 @@ mod tests {
             asked(&arguments),
             Asked::Service {
                 name: "http".to_string(),
-                settings_dir: PathBuf::from("/data/settings"),
+                dir: PathBuf::from("/data/settings"),
             }
         );
     }
@@ -132,8 +127,8 @@ mod tests {
         for arguments in [
             vec!["--service"],
             vec!["--service", "http"],
-            vec!["--service", "--settings-dir", "/data"],
-            vec!["--service", "http", "--settings-dir"],
+            vec!["--service", "--dir", "/data"],
+            vec!["--service", "http", "--dir"],
         ] {
             let arguments: Vec<String> = arguments.into_iter().map(str::to_string).collect();
             assert_eq!(asked(&arguments), Asked::Malformed, "{arguments:?}");

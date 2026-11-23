@@ -5,12 +5,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use dynamic_experience_runtime_lib::fragments::{
+use der_parts::{
     verify_bundle, ExecEnv, FragmentsState, LoadedFragment,
 };
 use serde_json::{json, Value};
 
-const BUNDLE: &str = "../../fragments/dist/der-labs.rar.derpart";
+const BUNDLE: &str = "../../../fragments/dist/der-labs.rar.derpart";
 
 fn shared() -> &'static (FragmentsState, LoadedFragment) {
     use std::sync::OnceLock;

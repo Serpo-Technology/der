@@ -4,13 +4,13 @@
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
-use dynamic_experience_runtime_lib::fragments::{
+use der_parts::{
     commit_core, execute_in_module, list_core, remove_core, stage_core, verify_bundle,
     FragmentErrorKind, FragmentsState,
 };
 use serde_json::{json, Value};
 
-const BUNDLE_PATH: &str = "../../fragments/dist/der-labs.stats-summary.derpart";
+const BUNDLE_PATH: &str = "../../../fragments/dist/der-labs.stats-summary.derpart";
 
 fn bundle_bytes() -> Vec<u8> {
     std::fs::read(BUNDLE_PATH).expect("committed demo bundle present")

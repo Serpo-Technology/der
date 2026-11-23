@@ -220,13 +220,7 @@ fn reserved_operation_names() -> Vec<String> {
 }
 
 fn stage_bytes(app: &tauri::AppHandle, raw: &[u8]) -> Result<Value, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| error.to_string())?
-        .join("fragments");
-    let state = app.state::<crate::fragments::FragmentsState>();
-    let summary = crate::fragments::stage_core(&state, &dir, raw, &reserved_operation_names())
+    let summary = crate::fragments::stage_part(app, raw, &reserved_operation_names())
         .map_err(|error| error.message)?;
     serde_json::to_value(summary).map_err(|error| error.to_string())
 }
@@ -416,23 +410,14 @@ pub async fn handle_action(app: &tauri::AppHandle, event: &Value) {
             sidecar::send_panel_message(app, &snapshot);
         }
         "partsCommit" => {
-            let outcome = (|| -> Result<String, String> {
-                let dir = app
-                    .path()
-                    .app_data_dir()
-                    .map_err(|error| error.to_string())?
-                    .join("fragments");
-                let state = app.state::<crate::fragments::FragmentsState>();
-                let manifest = crate::fragments::commit_core(
-                    &state,
-                    &dir,
-                    &text("token"),
-                    &text("fingerprint"),
-                    event.get("forceDowngrade").and_then(Value::as_bool).unwrap_or(false),
-                )
-                .map_err(|error| error.message)?;
-                Ok(format!("Installed {} {}", manifest.name, manifest.version))
-            })();
+            let outcome = crate::fragments::commit_part(
+                app,
+                &text("token"),
+                &text("fingerprint"),
+                event.get("forceDowngrade").and_then(Value::as_bool).unwrap_or(false),
+            )
+            .map(|manifest| format!("Installed {} {}", manifest.name, manifest.version))
+            .map_err(|error| error.message);
             let snapshot = match outcome {
                 Ok(message) => parts_snapshot(app, Some(("info", &message)), None).await,
                 Err(error) => parts_snapshot(app, Some(("error", &error)), None).await,
@@ -441,17 +426,8 @@ pub async fn handle_action(app: &tauri::AppHandle, event: &Value) {
             sidecar::refresh_native_home(app);
         }
         "partsRemove" => {
-            let outcome = (|| -> Result<(), String> {
-                let dir = app
-                    .path()
-                    .app_data_dir()
-                    .map_err(|error| error.to_string())?
-                    .join("fragments");
-                let state = app.state::<crate::fragments::FragmentsState>();
-                let secrets = crate::secrets::Secrets::for_app(app)?;
-                crate::fragments::remove_with_secrets_core(&state, &dir, &secrets, &text("id"))
-                    .map_err(|error| error.message)
-            })();
+            let outcome =
+                crate::fragments::remove_part(app, &text("id")).map_err(|error| error.message);
             let snapshot = match outcome {
                 Ok(()) => parts_snapshot(app, Some(("info", "Part removed")), None).await,
                 Err(error) => parts_snapshot(app, Some(("error", &error)), None).await,

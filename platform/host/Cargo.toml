@@ -26,6 +26,7 @@ der-http = { path = "../services/http" }
 der-wire = { path = "../services/wire" }
 der-mail = { path = "../services/mail" }
 der-llm = { path = "../services/llm" }
+der-parts = { path = "../services/parts" }
 serde_json = { version = "1", features = ["preserve_order"] }
 regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
@@ -33,17 +34,9 @@ tokio = { version = "1", features = ["time", "sync"] }
 uuid = { version = "1.0", features = ["v4"] }
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-sha2 = "0.10"
 base64 = "0.22"
-wasmtime = { version = "47", default-features = false, features = ["cranelift", "runtime", "parallel-compilation"] }
-ed25519-dalek = "2"
-semver = "1"
 tauri-plugin-dialog = "2.7.2"
-webpki-roots = "0.26"
-wasmtime-wasi = { version = "47", default-features = false, features = ["p1"] }
-tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 
 [dev-dependencies]
 tempfile = "3"
-wat = "1"
 

@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use dynamic_experience_runtime_lib::fragments::{
+use der_parts::{
     execute_in_module_with, ExecEnv, FragmentsState, Manifest,
 };
 use serde_json::{json, Value};
@@ -54,11 +54,11 @@ fn fixture_manifest(capabilities: &[&str]) -> Manifest {
 fn load_fixture(
     state: &FragmentsState,
     capabilities: &[&str],
-) -> dynamic_experience_runtime_lib::fragments::LoadedFragment {
+) -> der_parts::LoadedFragment {
     let wasm = std::fs::read(FIXTURE_WASM).expect("committed fixture present");
     let caps: Vec<String> = capabilities.iter().map(|c| c.to_string()).collect();
     let module = state.compile(&wasm, &caps).expect("fixture verifies");
-    dynamic_experience_runtime_lib::fragments::LoadedFragment::for_tests(
+    der_parts::LoadedFragment::for_tests(
         fixture_manifest(capabilities),
         module,
     )

@@ -6,12 +6,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use dynamic_experience_runtime_lib::fragments::{
+use der_parts::{
     verify_bundle, ExecEnv, FragmentsState, LoadedFragment,
 };
 use serde_json::{json, Value};
 
-const BUNDLE: &str = "../../fragments/dist/der-labs.media.derpart";
+const BUNDLE: &str = "../../../fragments/dist/der-labs.media.derpart";
 
 struct Harness {
     dir: PathBuf,

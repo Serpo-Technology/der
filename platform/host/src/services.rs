@@ -17,9 +17,11 @@ pub const MAIL: &str = "mail";
 /// The model settings, keys, and sign-in tokens, and every request to a
 /// model provider.
 pub const LLM: &str = "llm";
+/// The part runner: every signed part's code executes here.
+pub const PARTS: &str = "parts";
 
 fn refuse() -> ! {
-    eprintln!("{}", der_wire::usage(&[HTTP, MAIL, LLM]));
+    eprintln!("{}", der_wire::usage(&[HTTP, MAIL, LLM, PARTS]));
     std::process::exit(2);
 }
 
@@ -27,15 +29,16 @@ fn refuse() -> ! {
 /// for one. The service reads requests on stdin and answers on stdout.
 pub fn serve_if_asked() -> bool {
     let arguments: Vec<String> = std::env::args().collect();
-    let (name, settings_dir) = match der_wire::asked(&arguments) {
+    let (name, dir) = match der_wire::asked(&arguments) {
         Asked::Nothing => return false,
-        Asked::Service { name, settings_dir } => (name, settings_dir),
+        Asked::Service { name, dir } => (name, dir),
         Asked::Malformed => refuse(),
     };
     let outcome = match name.as_str() {
-        HTTP => der_http::serve(settings_dir, std::io::stdin().lock(), std::io::stdout()),
-        MAIL => der_mail::serve(settings_dir, std::io::stdin().lock(), std::io::stdout()),
-        LLM => der_llm::serve(settings_dir, std::io::stdin().lock(), std::io::stdout()),
+        HTTP => der_http::serve(dir, std::io::stdin().lock(), std::io::stdout()),
+        MAIL => der_mail::serve(dir, std::io::stdin().lock(), std::io::stdout()),
+        LLM => der_llm::serve(dir, std::io::stdin().lock(), std::io::stdout()),
+        PARTS => der_parts::service::serve(dir, std::io::stdin().lock(), std::io::stdout()),
         _ => refuse(),
     };
     if let Err(error) = outcome {
@@ -45,14 +48,15 @@ pub fn serve_if_asked() -> bool {
     true
 }
 
-/// A client that runs this executable as the named service over a settings
-/// directory. `label` is what error messages call it.
-pub fn client<R, P>(label: &str, name: &str, settings_dir: &Path) -> Result<Client<R, P>, String>
+/// A client that runs this executable as the named service over the
+/// directory that holds what the service owns. `label` is what error
+/// messages call it.
+pub fn client<R, P>(label: &str, name: &str, dir: &Path) -> Result<Client<R, P>, String>
 where
     R: Serialize,
     P: DeserializeOwned + Send + 'static,
 {
     let program = std::env::current_exe()
         .map_err(|error| format!("The {} service could not start: {}", label, error))?;
-    Ok(Client::new(label, program, der_wire::service_arguments(name, settings_dir)))
+    Ok(Client::new(label, program, der_wire::service_arguments(name, dir)))
 }

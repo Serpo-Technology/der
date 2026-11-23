@@ -18,8 +18,9 @@ process carrying the Tauri shell, host capabilities, and the bridge; `platform/s
 holds the crates the host runs as separate processes, none with a shell dependency:
 `http/` is `der-http`, the credential store and outbound HTTP, `mail/` is `der-mail`, the
 mail account with sending and reading, `llm/` is `der-llm`, the model settings, keys, and
-every request to a model provider, and `wire/` is `der-wire`, the line protocol and
-process client they share;
+every request to a model provider, `parts/` is `der-parts`, bundle verification, trust
+pinning, and the wasmtime host that runs signed parts, and `wire/` is `der-wire`, the line
+protocol and process client they share;
 `platform/macos/` is the SwiftUI panel; further native faces join beside it). This file is the
 authoritative architecture record; read the Architecture section before structural changes.
 
@@ -138,10 +139,11 @@ resolves a request (placeholder substitution, query or body split, status and JS
 in `build_remote_request` / `remote_reply_value`) and hands it over through `secrets.rs`
 (`Secrets::http` and `Secrets::store`), the host's only door to the store: no host module
 reads `settings/integrations.json` itself. The service is its own process, and so are
-mail and the LLM gateway. The host executable started with
-`--service <http|mail|llm> --settings-dir <dir>` never becomes the app
-(`services::serve_if_asked` runs first in `main`) and runs that crate's `serve` instead.
-All three sit on `der-wire`: one `RequestLine` per line on stdin, one `ReplyLine` per line
+mail, the LLM gateway, and the part runner. The host executable started with
+`--service <http|mail|llm|parts> --dir <dir>` never becomes the app
+(`services::serve_if_asked` runs first in `main`) and runs that crate's `serve` instead,
+over the directory that holds what the service owns (the settings folder, or the installed
+bundles for the runner). All four sit on `der-wire`: one `RequestLine` per line on stdin, one `ReplyLine` per line
 on stdout, matched by id, generic over each service's own `Request` and `Reply`. A reply
 that arrives in pieces sends `PartLine`s for its id first (`Responder::part` on the
 service's end, `Client::call_streamed` on the host's), which is how streamed model text
@@ -153,18 +155,18 @@ file (store and account saves) are answered in order and never overwrite each ot
 while requests that use the network run side by side. A line that is not a request is
 answered with fixed text, never an echo. The loop ends when stdin closes, so a service
 never outlives the host. `der_wire::Client` is the host's end: it starts the process on
-the first request (the startup passes make that app launch for HTTP; mail and the
-gateway start when first used), starts a fresh one when a request finds it gone, and fails a request the
+the first request (the startup passes make that app launch for HTTP; mail, the
+gateway, and the runner start when first used), starts a fresh one when a request finds it gone, and fails a request the
 process took and then died on, since that request may already have had its effect. A
 stored secret is therefore read and used outside the host's memory. The boundary is a
 process boundary only: all the processes run as the same user, so nothing yet stops the
 host from opening a service's file. `tests/http_service_process.rs`,
-`tests/mail_service_process.rs`, and `tests/llm_service_process.rs` drive the real host
-binary in service mode through `Client`; unit tests use `Secrets::at`, `Mail::at`, and
-`Llm::at`, which run the same `Service` inside the test process, and `der-wire`'s own
-client tests run it against scripted shell services. A new service is a crate with its
-`Request`, `Reply`, and `serve`, a name in `services.rs`, and a door module like these
-three. The crate's `confine.rs` is
+`tests/mail_service_process.rs`, `tests/llm_service_process.rs`, and
+`tests/parts_service_process.rs` drive the real host binary in service mode through
+`Client`; unit tests use `Secrets::at`, `Mail::at`, `Llm::at`, and `Runner::at`, which run
+the same `Service` inside the test process, and `der-wire`'s own client tests run it
+against scripted shell services. A new service is a crate with its `Request`, `Reply`,
+and `serve`, a name in `services.rs`, and a door module like these four. The crate's `confine.rs` is
 the one judge for both HTTP paths: the kernel's
 `endpoint_within_base` text rule (the character after the base must end the host or the path
 segment, so a longer host that only begins with the base is outside) plus a parsed comparison
@@ -350,7 +352,20 @@ opens the result exactly like a generated app with no model call. The Parts view
 part's recipes with an Open button (unavailable ones disabled with the validation problems)
 and the install review lists them under Apps. A `.derpart` bundle (verbatim-signed manifest + base64 wasm;
 Ed25519 over `DERPART-SIG-V1\0 || manifest bytes`; wasm bound by `wasmSha256` in the manifest)
-is verified and executed by the hardened wasmtime host in `platform/host/src/fragments.rs` (imports
+is verified and executed by the hardened wasmtime host in the `der-parts` crate
+(`platform/services/parts/`), which runs as the part runner, a process of its own, so guest
+code never executes in the process that holds the app's windows, files, and stores. The
+host (`platform/host/src/fragments.rs`) keeps what decides and what grants: it verifies
+bundles, runs the install review and the trust pins (`stage_with` / `commit_with` over its
+own `Staging`, asking the runner only to compile a module for the capability check), and
+owns the file grants. A call crosses as `Run {fragmentId, operation, inputs, granted,
+handoff}`: every input that is a live grant token goes along with the path it stands for,
+the runner stages exactly the file-typed ones into the guest's /in, and files the guest
+produced are moved into the handoff folder the host made for that call. The host accepts
+a produced file only when it is a plain file one folder below that handoff folder (never a
+link, never a path elsewhere), takes it into `exec_outputs`, mints the grant, and replaces
+the placeholder the runner left in the outputs. Jobs live in the runner between steps, so
+a runner that restarts loses them and the next step says the job is gone. (Imports
 gated by declared, install-consented capabilities, zero by default. wasi:clocks and
 wasi:random read the host; wasi:files gives each call a private /in staging dir holding
 exactly the granted files (file-typed inputs carry pick tokens the host rewrites to
@@ -358,7 +373,8 @@ guest paths) plus an empty /out whose file-typed outputs come back as fresh gran
 file.pick's handle shape; net:<host>:<port> bridges one declared endpoint to the
 guest's stdio, TLS for remote hosts and plain on loopback. File or stream work gets a
 longer epoch deadline, wasip1 reactors get _initialize called, and the fixture-driven
-fragments_wasi_capabilities suite proves grant-in/grant-out and the socket round trip.
+fragments_wasi_capabilities suite (the part suites live under `platform/services/parts/tests/`,
+fixtures included) proves grant-in/grant-out and the socket round trip.
 Long work runs as jobs: a manifest operation with job:"start" answers a host-generated
 token and its instance stays live in the state's registry, job:"step" operations run
 against that instance (guest state persists; budgets re-arm per step) until a step
@@ -551,7 +567,7 @@ chain with a message naming the desktop app. jsdom suites that need
 semantics route invoke to the wasm kernel through
 `src/test/kernel-invoke.ts`. The dispatcher seam
 (`runtime/session.rs` trait, `runtime/host.rs` implementation) routes non-builtin operations
-to the machinery that already runs them: wasm parts in the wasmtime host, integration part
+to the machinery that already runs them: wasm parts in the part runner, integration part
 remotes through the signed service path, contract remotes and `http.get` through the shared
 confined HTTP core extracted from `execute_operation` (credential injection and confinement
 live in one place; local code stays webview-only). Ids, randomness, and the clock reach
