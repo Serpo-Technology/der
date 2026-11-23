@@ -671,7 +671,7 @@ pub fn panel_save_file(app: &tauri::AppHandle, name: &str) -> Result<Option<Stri
 /// The panel presents the mail-account sheet: the password goes from the
 /// sheet straight into the credential store, so an unconfigured email.send
 /// can complete its setup inside the app's own flow.
-pub fn panel_mail_account(app: &tauri::AppHandle, prefill: &Value) -> Option<crate::mail::SmtpConfig> {
+pub fn panel_mail_account(app: &tauri::AppHandle, prefill: &Value) -> Option<crate::mail::Account> {
     if !panel_available(app) {
         return None;
     }

@@ -1408,8 +1408,8 @@ pub fn run() {
             // Part secrets saved before records carried a service address
             // take the address of their installed part.
             fragments::backfill_part_secret_addresses(app.handle());
-            // A mail account saved in the credential store or in
-            // settings/smtp.json moves into the mail account file.
+            // A mail account saved in the credential store moves into the
+            // mail service's own file.
             mail::migrate_account(app.handle());
             // Background refresh beats for bookmarked apps that opted in,
             // in both faces: the core owns the cadence, not a window.

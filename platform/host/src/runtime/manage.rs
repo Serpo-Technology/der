@@ -337,7 +337,7 @@ pub async fn handle_action(app: &tauri::AppHandle, event: &Value) {
                     .and_then(|value| value.trim().parse::<u16>().ok())
                     .or_else(|| event.get(key).and_then(Value::as_u64).map(|value| value as u16))
             };
-            let config = crate::mail::SmtpConfig {
+            let config = crate::mail::Account {
                 host: text("host"),
                 port: port_of("port"),
                 username: text("username"),

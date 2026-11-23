@@ -194,6 +194,6 @@ fn service_arguments_that_make_no_sense_never_start_the_app() {
             .expect("runs");
         assert_eq!(output.status.code(), Some(2), "{arguments:?}");
         let message = String::from_utf8_lossy(&output.stderr);
-        assert!(message.contains("usage: --service <http> --settings-dir"), "{arguments:?}: {message}");
+        assert!(message.contains("usage: --service <http|mail> --settings-dir"), "{arguments:?}: {message}");
     }
 }

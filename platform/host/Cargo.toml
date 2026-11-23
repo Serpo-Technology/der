@@ -24,6 +24,7 @@ serde = { version = "1", features = ["derive"] }
 der-runtime = { path = "../../runtime-core" }
 der-http = { path = "../services/http" }
 der-wire = { path = "../services/wire" }
+der-mail = { path = "../services/mail" }
 serde_json = { version = "1", features = ["preserve_order"] }
 regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
@@ -38,10 +39,6 @@ wasmtime = { version = "47", default-features = false, features = ["cranelift", 
 ed25519-dalek = "2"
 semver = "1"
 tauri-plugin-dialog = "2.7.2"
-lettre = { version = "0.11.22", default-features = false, features = ["smtp-transport", "builder", "rustls-tls"] }
-imap = { version = "2", default-features = false }
-mailparse = "0.16.1"
-rustls = "0.23"
 webpki-roots = "0.26"
 wasmtime-wasi = { version = "47", default-features = false, features = ["p1"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }

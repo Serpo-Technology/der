@@ -14,9 +14,11 @@ window/tray management.
 
 The app lives at the repository root: `src/` is the webview face, `runtime-core/` the
 kernel crate, and `platform/` the platform layer (`platform/host/` is the Rust core
-process carrying the Tauri shell, host capabilities, and the bridge; `platform/services/http/`
-is the `der-http` crate, the credential store and outbound HTTP with no shell dependency,
-which the host runs as a separate process;
+process carrying the Tauri shell, host capabilities, and the bridge; `platform/services/`
+holds the crates the host runs as separate processes, none with a shell dependency:
+`http/` is `der-http`, the credential store and outbound HTTP, `mail/` is `der-mail`, the
+mail account with sending and reading, and `wire/` is `der-wire`, the line protocol and
+process client they share;
 `platform/macos/` is the SwiftUI panel; further native faces join beside it). This file is the
 authoritative architecture record; read the Architecture section before structural changes.
 
@@ -120,7 +122,7 @@ The frontend reaches Rust through `@tauri-apps/api` `invoke`. `platform/host/src
 commands (storage, `execute_operation`, window/tray control) plus the newer modules: `llm.rs`
 (the `llm_chat` command that performs all LLM HTTP via reqwest), `settings.rs` (LLM settings and
 credentials under `app_data_dir/settings/`, redacted reads), `oauth.rs` (Claude subscription
-PKCE sign-in and token refresh), and `mail.rs` (the mail account in its own file, `settings/mail.json`, and the
+PKCE sign-in and token refresh), and `mail.rs` (the host's door to the mail service and the
 `email_send`/`mail_list`/`mail_fetch`/`smtp_get`/`smtp_save`/`smtp_delete` commands). `execute_operation`'s `remote` branch performs real HTTP
 (`{name}` endpoint substitution, GET query / JSON body, and named integration credentials:
 `implementation.auth` references a credential stored under `settings/integrations.json`
@@ -133,20 +135,27 @@ and no `Reply` holds a secret, with both types serializable as one JSON line eac
 resolves a request (placeholder substitution, query or body split, status and JSON handling
 in `build_remote_request` / `remote_reply_value`) and hands it over through `secrets.rs`
 (`Secrets::http` and `Secrets::store`), the host's only door to the store: no host module
-reads `settings/integrations.json` itself. The service is its own process. The host
-executable started with `--service http --settings-dir <dir>` never becomes the app
-(`secrets::serve_if_asked` runs first in `main`) and runs `der_http::serve` instead: one
-`RequestLine` per line on stdin, one `ReplyLine` per line on stdout, matched by id, with
-store requests answered in arrival order so two saves never overwrite each other and HTTP
-requests running side by side. The loop ends when stdin closes, so the service never
-outlives the host. `secrets::Client` is the host's end: it starts the process on the first
-request (the startup passes make that app launch), starts a fresh one when a request finds
-it gone, and fails a request the process took and then died on, since that request may
-already have gone out. A stored secret is therefore read and injected outside the host's
-memory. The boundary is a process boundary only: both processes run as the same user, so
-nothing yet stops the host from opening the file. `tests/http_service_process.rs` drives
-the real host binary in service mode through `Client`; unit tests use `Secrets::at`, which
-runs the same `Service` inside the test process. The crate's `confine.rs` is
+reads `settings/integrations.json` itself. The service is its own process, and so is
+mail. The host executable started with `--service <http|mail> --settings-dir <dir>` never
+becomes the app (`services::serve_if_asked` runs first in `main`) and runs that crate's
+`serve` instead. Both sit on `der-wire`: one `RequestLine` per line on stdin, one
+`ReplyLine` per line on stdout, matched by id, generic over each service's own `Request`
+and `Reply`. `der_wire::serve` hands requests to the service in arrival order with a
+`Responder` that may answer later from another thread or task, so requests that touch a
+file (store and account saves) are answered in order and never overwrite each other,
+while requests that use the network run side by side. A line that is not a request is
+answered with fixed text, never an echo. The loop ends when stdin closes, so a service
+never outlives the host. `der_wire::Client` is the host's end: it starts the process on
+the first request (the startup passes make that app launch for HTTP; mail starts when
+first used), starts a fresh one when a request finds it gone, and fails a request the
+process took and then died on, since that request may already have had its effect. A
+stored secret is therefore read and used outside the host's memory. The boundary is a
+process boundary only: all the processes run as the same user, so nothing yet stops the
+host from opening a service's file. `tests/http_service_process.rs` and
+`tests/mail_service_process.rs` drive the real host binary in service mode through
+`Client`; unit tests use `Secrets::at` and `Mail::at`, which run the same `Service` inside
+the test process. A new service is a crate with its `Request`, `Reply`, and `serve`, a name
+in `services.rs`, and a door module like these two. The crate's `confine.rs` is
 the one judge for both HTTP paths: the kernel's
 `endpoint_within_base` text rule (the character after the base must end the host or the path
 segment, so a longer host that only begins with the base is outside) plus a parsed comparison
@@ -423,7 +432,8 @@ equals or case-insensitive contains, empty keeps everything, mirroring the
 transforms), sorts numeric-aware, and pages ({items, count, total}); rows
 carry whatever fields puts wrote, so the row-shape checker skips such lists.
 The notes-archive eval proves the class against an in-memory harness store.
-The `email.*` builtins are the same pattern for mail (`platform/host/src/mail.rs`):
+The `email.*` builtins are the same pattern for mail, implemented in the mail service
+(`platform/services/mail/`, reached through `platform/host/src/mail.rs`):
 `email.send` (lettre over rustls), and the receive side `email.list` / `email.fetch`
 (the imap crate over a rustls stream, implicit TLS only, usually port 993;
 envelopes decode RFC 2047 words and bodies parse via mailparse, preferring
@@ -431,26 +441,33 @@ text/plain with a tag-stripped html fallback; fetching a message marks it read).
 Operations name the CAPABILITY, never the protocol: contracts say "list my mail"
 and the account record decides the transport, so recipes survive account changes
 and future protocols (POP3, JMAP) arrive as new drivers behind the same three
-operations. The mail account lives in mail's own file, `settings/mail.json`,
+operations. The mail service owns the account in its own file, `settings/mail.json`,
 readable by its owner only and apart from the HTTP credential store: the password
 is its `secret` and the server details are its `fields`, including
-`imapHost`/`imapPort` for incoming. Redaction is the standard one (both faces see
+`imapHost`/`imapPort` for incoming. Mail from the network (IMAP replies, MIME bodies)
+is parsed in that process too. No reply holds the password: both faces see
 host/username/`hasPassword` views, and an empty password on save keeps the stored
-one). An account saved in an older place moves in at startup: the store releases an
-`smtp` record named `mail` by writing the file itself (`MailAccountRelease`, so the
-password never crosses back to the host), and a `settings/smtp.json` converts when
-no account file exists. Contracts supply
+one. An account saved in an older place moves in: at startup the HTTP service
+releases an `smtp` record named `mail` by writing the file itself
+(`MailAccountRelease`, so the password never crosses back to the host), and the mail
+service converts a `settings/smtp.json` on first read when no account file exists.
+TLS setups name their crypto provider (`tls_config` in the mail service,
+`socket_tls_config` for part sockets), because rustls panics when a build links more
+than one and none is named. Contracts supply
 only message fields and ids. Setup happens in the app's own flow: an unconfigured
 send or list opens the host-drawn account sheet natively (a `mailAccount` dialog
-request next to pickFile/saveFile) and then continues, the webview face offers
+request next to pickFile/saveFile) and then continues (the service answers
+`NotSetUp` with a redacted view to prefill the sheet, and the host passes what the
+user typed straight on as an account save before running the operation once more),
+the webview face offers
 "Set up email" on the error strip, and Settings reuses the same form as a row
 beside the HTTP credentials (add/edit/remove). Only bearer/header/query
 credentials are valid `implementation.auth` references and taught in the catalog;
 part-scoped secrets and any `smtp` record not yet released are invisible there
-(frozen in a validation vector) and refused at injection. Mail sits in the host platform layer next to the file
-dialogs because the account credential, its redaction, and the in-flow setup sheet
-are host concerns either way; socket-capable parts (a future wasi grant behind the
-capability gate) would still not hold the account secret.
+(frozen in a validation vector) and refused at injection. Mail is a platform
+service of its own because the account password and its redaction belong with the
+code that uses them; the in-flow setup sheet stays a host concern next to the file
+dialogs, and socket-capable parts would still not hold the account secret.
 The mailer part (Resend API) stays the service-specific alternative and its howto
 defers ordinary sending to the builtin; mailto links remain the zero-setup path.
 The contact-email and mail-inbox evals prove the composition classes with stubbed
