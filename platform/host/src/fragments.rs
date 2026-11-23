@@ -2509,20 +2509,28 @@ pub async fn execute_part_remote_core(
 
     // Part-scoped secrets, stored as part:<id>:<credential name>.
     for requirement in &service.credentials {
-        let store_key = format!("part:{}:{}", fragment_id, requirement.name);
-        let secret = integrations
-            .credentials
-            .get(&store_key)
-            .map(|cred| cred.secret.clone())
-            .ok_or_else(|| {
-                fail(
-                    FragmentErrorKind::Io,
-                    format!(
-                        "This part needs its \"{}\" credential; add it in the Parts view",
-                        requirement.label
-                    ),
-                )
-            })?;
+        let store_key = part_secret_key(fragment_id, &requirement.name);
+        let record = integrations.credentials.get(&store_key).ok_or_else(|| {
+            fail(
+                FragmentErrorKind::Io,
+                format!(
+                    "This part needs its \"{}\" credential; add it in the Parts view",
+                    requirement.label
+                ),
+            )
+        })?;
+        // A secret travels only to the address it was saved for. An update
+        // that moves the part to another service leaves the record behind.
+        if !saved_for_service(record, &service.base_url) {
+            return Err(fail(
+                FragmentErrorKind::Io,
+                format!(
+                    "The \"{}\" credential was saved for another service address; enter it again in the Parts view",
+                    requirement.label
+                ),
+            ));
+        }
+        let secret = record.secret.clone();
         match requirement.kind.as_str() {
             "bearer" => request = request.header("authorization", format!("Bearer {}", secret)),
             "header" => {
@@ -2567,6 +2575,136 @@ pub async fn execute_part_remote_core(
     }
 }
 
+fn part_secret_key(fragment_id: &str, name: &str) -> String {
+    format!("part:{}:{}", fragment_id, name)
+}
+
+/// Whether a stored part secret belongs to the service at `base_url`.
+fn saved_for_service(record: &crate::settings::IntegrationCredential, base_url: &str) -> bool {
+    record
+        .base_url
+        .as_deref()
+        .is_some_and(|saved| saved.trim_end_matches('/') == base_url.trim_end_matches('/'))
+}
+
+/// The service block of an installed integration part, read from its
+/// verified bundle.
+fn installed_service(dir: &Path, fragment_id: &str) -> FragmentResult<ServiceSpec> {
+    if !id_ok(fragment_id) {
+        return Err(fail(FragmentErrorKind::NotInstalled, "Invalid part id"));
+    }
+    let raw = std::fs::read(dir.join(format!("{}.derpart", fragment_id))).map_err(|_| {
+        fail(
+            FragmentErrorKind::NotInstalled,
+            format!("Part {} is not installed", fragment_id),
+        )
+    })?;
+    let verified = verify_bundle(&raw)?;
+    if verified.manifest.id != fragment_id {
+        return Err(fail(FragmentErrorKind::VerifyFailed, "Bundle id does not match its filename"));
+    }
+    verified
+        .manifest
+        .service
+        .ok_or_else(|| fail(FragmentErrorKind::OperationNotFound, "Part has no service block"))
+}
+
+/// Saves a part secret together with the service address its part declares,
+/// so the record alone says where the secret may go.
+pub(crate) fn set_part_credential_core(
+    dir: &Path,
+    integrations: &mut crate::settings::StoredIntegrations,
+    fragment_id: &str,
+    name: &str,
+    secret: String,
+) -> FragmentResult<()> {
+    if secret.trim().is_empty() {
+        return Err(fail(FragmentErrorKind::Io, "The secret cannot be empty"));
+    }
+    let service = installed_service(dir, fragment_id)?;
+    if !service.credentials.iter().any(|requirement| requirement.name == name) {
+        return Err(fail(
+            FragmentErrorKind::Io,
+            format!("This part declares no credential named \"{}\"", name),
+        ));
+    }
+    integrations.credentials.insert(
+        part_secret_key(fragment_id, name),
+        crate::settings::IntegrationCredential {
+            kind: "partsecret".to_string(),
+            target: None,
+            base_url: Some(service.base_url),
+            notes: None,
+            fields: None,
+            secret,
+        },
+    );
+    Ok(())
+}
+
+/// The part's saved credential names. A record saved for another service
+/// address counts as missing, which is how the Parts view asks for it again.
+pub(crate) fn list_part_credentials_in(
+    dir: &Path,
+    integrations: &crate::settings::StoredIntegrations,
+    fragment_id: &str,
+) -> Vec<String> {
+    let Ok(service) = installed_service(dir, fragment_id) else {
+        return Vec::new();
+    };
+    let prefix = part_secret_key(fragment_id, "");
+    let mut names: Vec<String> = integrations
+        .credentials
+        .iter()
+        .filter(|(key, record)| {
+            key.starts_with(&prefix) && saved_for_service(record, &service.base_url)
+        })
+        .map(|(key, _)| key[prefix.len()..].to_string())
+        .collect();
+    names.sort();
+    names
+}
+
+/// Part secrets saved before records carried an address take the address
+/// of the part installed for them. Records whose part is gone, or no longer
+/// declares that credential, stay unusable. Returns whether anything changed.
+pub(crate) fn backfill_part_secret_addresses_core(
+    dir: &Path,
+    integrations: &mut crate::settings::StoredIntegrations,
+) -> bool {
+    let mut changed = false;
+    for (key, record) in integrations.credentials.iter_mut() {
+        if record.kind != "partsecret" || record.base_url.is_some() {
+            continue;
+        }
+        let Some((fragment_id, name)) = key
+            .strip_prefix("part:")
+            .and_then(|rest| rest.split_once(':'))
+        else {
+            continue;
+        };
+        let Ok(service) = installed_service(dir, fragment_id) else {
+            continue;
+        };
+        if service.credentials.iter().any(|requirement| requirement.name == name) {
+            record.base_url = Some(service.base_url);
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Runs the address backfill against the stored records at startup.
+pub fn backfill_part_secret_addresses(app: &tauri::AppHandle) {
+    let Ok(dir) = fragments_dir(app) else { return };
+    let mut integrations = crate::settings::load_integrations(app);
+    if backfill_part_secret_addresses_core(&dir, &mut integrations) {
+        if let Err(error) = crate::settings::save_integrations(app, &integrations) {
+            eprintln!("Failed to save part secret addresses: {}", error);
+        }
+    }
+}
+
 #[tauri::command]
 pub fn set_part_credential(
     app: tauri::AppHandle,
@@ -2574,41 +2712,20 @@ pub fn set_part_credential(
     name: String,
     secret: String,
 ) -> Result<Vec<String>, FragmentError> {
-    if secret.trim().is_empty() {
-        return Err(fail(FragmentErrorKind::Io, "The secret cannot be empty"));
-    }
+    let dir = fragments_dir(&app)?;
     let mut integrations = crate::settings::load_integrations(&app);
-    integrations.credentials.insert(
-        format!("part:{}:{}", fragment_id, name),
-        crate::settings::IntegrationCredential {
-            kind: "partsecret".to_string(),
-            target: None,
-            base_url: None,
-            notes: None,
-            fields: None,
-            secret,
-        },
-    );
+    set_part_credential_core(&dir, &mut integrations, &fragment_id, &name, secret)?;
     crate::settings::save_integrations(&app, &integrations)
         .map_err(|e| fail(FragmentErrorKind::Io, e))?;
-    Ok(list_part_credentials_core(&app, &fragment_id))
-}
-
-fn list_part_credentials_core(app: &tauri::AppHandle, fragment_id: &str) -> Vec<String> {
-    let prefix = format!("part:{}:", fragment_id);
-    let mut names: Vec<String> = crate::settings::load_integrations(app)
-        .credentials
-        .keys()
-        .filter(|key| key.starts_with(&prefix))
-        .map(|key| key[prefix.len()..].to_string())
-        .collect();
-    names.sort();
-    names
+    Ok(list_part_credentials_in(&dir, &integrations, &fragment_id))
 }
 
 #[tauri::command]
 pub fn list_part_credentials(app: tauri::AppHandle, fragment_id: String) -> Vec<String> {
-    list_part_credentials_core(&app, &fragment_id)
+    let Ok(dir) = fragments_dir(&app) else {
+        return Vec::new();
+    };
+    list_part_credentials_in(&dir, &crate::settings::load_integrations(&app), &fragment_id)
 }
 
 #[cfg(test)]
@@ -2682,5 +2799,131 @@ mod remote_tests {
         let err = super::apply_projection(&body, &projection, &inputs).unwrap_err();
         assert!(err.contains("rates.EUR"), "path missing from: {}", err);
         assert!(err.contains("rates"), "fields missing from: {}", err);
+    }
+}
+
+#[cfg(test)]
+mod part_secret_tests {
+    use std::path::Path;
+
+    use serde_json::json;
+
+    use super::{
+        backfill_part_secret_addresses_core, execute_part_remote_core, list_part_credentials_in,
+        part_secret_key, set_part_credential_core, verify_bundle, Manifest,
+    };
+    use crate::settings::{IntegrationCredential, StoredIntegrations};
+
+    const BUNDLE: &str = "../../fragments/dist/der-labs.openweather.derpart";
+    const PART: &str = "der-labs.openweather";
+    const SERVICE: &str = "https://api.openweathermap.org";
+
+    /// A fragments directory with the committed openweather part installed,
+    /// and that part's manifest.
+    fn installed() -> (tempfile::TempDir, Manifest) {
+        let raw = std::fs::read(BUNDLE).expect("committed bundle present");
+        let dir = tempfile::tempdir().expect("temp dir");
+        std::fs::write(dir.path().join(format!("{PART}.derpart")), &raw).expect("install");
+        (dir, verify_bundle(&raw).expect("verifies").manifest)
+    }
+
+    fn credential_name(manifest: &Manifest) -> String {
+        manifest.service.as_ref().expect("service block").credentials[0]
+            .name
+            .clone()
+    }
+
+    fn record(base_url: Option<&str>) -> IntegrationCredential {
+        IntegrationCredential {
+            kind: "partsecret".to_string(),
+            target: None,
+            base_url: base_url.map(str::to_string),
+            notes: None,
+            fields: None,
+            secret: "s3cret-value".to_string(),
+        }
+    }
+
+    fn run(dir: &Path, manifest: &Manifest, integrations: &StoredIntegrations) -> Result<(), String> {
+        tauri::async_runtime::block_on(execute_part_remote_core(
+            dir,
+            integrations,
+            PART,
+            &manifest.operations[0].name,
+            &json!({}),
+        ))
+        .map(|_| ())
+        .map_err(|error| error.message)
+    }
+
+    #[test]
+    fn saving_records_the_service_address_of_the_part() {
+        let (dir, manifest) = installed();
+        let name = credential_name(&manifest);
+        let mut integrations = StoredIntegrations::default();
+        set_part_credential_core(dir.path(), &mut integrations, PART, &name, "s3cret-value".into())
+            .expect("saves");
+        let saved = &integrations.credentials[&part_secret_key(PART, &name)];
+        assert_eq!(saved.kind, "partsecret");
+        assert_eq!(saved.base_url.as_deref(), Some(SERVICE));
+        assert_eq!(list_part_credentials_in(dir.path(), &integrations, PART), vec![name]);
+    }
+
+    #[test]
+    fn saving_needs_an_installed_part_and_a_declared_name() {
+        let (dir, manifest) = installed();
+        let name = credential_name(&manifest);
+        let mut integrations = StoredIntegrations::default();
+        let undeclared =
+            set_part_credential_core(dir.path(), &mut integrations, PART, "other", "x".into())
+                .expect_err("the part declares no such credential");
+        assert!(undeclared.message.contains("declares no credential"), "{}", undeclared.message);
+        let missing =
+            set_part_credential_core(dir.path(), &mut integrations, "der-labs.absent", &name, "x".into())
+                .expect_err("the part is not installed");
+        assert!(missing.message.contains("is not installed"), "{}", missing.message);
+        assert!(integrations.credentials.is_empty());
+    }
+
+    #[test]
+    fn a_secret_saved_for_another_address_is_not_sent() {
+        let (dir, manifest) = installed();
+        let key = part_secret_key(PART, &credential_name(&manifest));
+        for base_url in [None, Some("https://api.elsewhere.dev"), Some("https://api.openweathermap.org.elsewhere.dev")] {
+            let mut integrations = StoredIntegrations::default();
+            integrations.credentials.insert(key.clone(), record(base_url));
+            let error = run(dir.path(), &manifest, &integrations)
+                .expect_err("the record does not belong to this service");
+            assert!(error.contains("saved for another service address"), "{base_url:?}: {error}");
+            assert!(
+                list_part_credentials_in(dir.path(), &integrations, PART).is_empty(),
+                "{base_url:?} counts as missing"
+            );
+        }
+    }
+
+    #[test]
+    fn backfill_gives_old_records_the_address_of_their_part() {
+        let (dir, manifest) = installed();
+        let name = credential_name(&manifest);
+        let mut integrations = StoredIntegrations::default();
+        integrations.credentials.insert(part_secret_key(PART, &name), record(None));
+        integrations.credentials.insert(part_secret_key(PART, "undeclared"), record(None));
+        integrations.credentials.insert(part_secret_key("der-labs.absent", &name), record(None));
+        integrations
+            .credentials
+            .insert(part_secret_key(PART, "kept"), record(Some("https://api.elsewhere.dev")));
+
+        assert!(backfill_part_secret_addresses_core(dir.path(), &mut integrations));
+        let base = |key: String| integrations.credentials[&key].base_url.clone();
+        assert_eq!(base(part_secret_key(PART, &name)).as_deref(), Some(SERVICE));
+        assert_eq!(base(part_secret_key(PART, "undeclared")), None);
+        assert_eq!(base(part_secret_key("der-labs.absent", &name)), None);
+        assert_eq!(base(part_secret_key(PART, "kept")).as_deref(), Some("https://api.elsewhere.dev"));
+
+        assert!(
+            !backfill_part_secret_addresses_core(dir.path(), &mut integrations),
+            "a second run finds nothing to do"
+        );
     }
 }

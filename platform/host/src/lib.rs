@@ -1475,6 +1475,9 @@ pub fn run() {
         .manage(runtime::sidecar::NativeRendererState::default())
         .manage(runtime::sidecar::PendingDialogs::default())
         .setup(|app| {
+            // Part secrets saved before records carried a service address
+            // take the address of their installed part.
+            fragments::backfill_part_secret_addresses(app.handle());
             // Background refresh beats for bookmarked apps that opted in,
             // in both faces: the core owns the cadence, not a window.
             runtime::schedule::spawn(app.handle().clone());
