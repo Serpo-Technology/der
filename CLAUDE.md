@@ -15,7 +15,8 @@ window/tray management.
 The app lives at the repository root: `src/` is the webview face, `runtime-core/` the
 kernel crate, and `platform/` the platform layer (`platform/host/` is the Rust core
 process carrying the Tauri shell, host capabilities, and the bridge; `platform/services/http/`
-is the `der-http` crate, the credential store and outbound HTTP with no shell dependency;
+is the `der-http` crate, the credential store and outbound HTTP with no shell dependency,
+which the host runs as a separate process;
 `platform/macos/` is the SwiftUI panel; further native faces join beside it). This file is the
 authoritative architecture record; read the Architecture section before structural changes.
 
@@ -131,8 +132,21 @@ caller can ask is one `Request` (an HTTP request naming its credential, or a sto
 and no `Reply` holds a secret, with both types serializable as one JSON line each. The host
 resolves a request (placeholder substitution, query or body split, status and JSON handling
 in `build_remote_request` / `remote_reply_value`) and hands it over through `secrets.rs`
-(`Secrets::http` and `Secrets::store`), the host's only door to the store: no host module reads `settings/integrations.json`
-itself. The crate's `confine.rs` is
+(`Secrets::http` and `Secrets::store`), the host's only door to the store: no host module
+reads `settings/integrations.json` itself. The service is its own process. The host
+executable started with `--service http --settings-dir <dir>` never becomes the app
+(`secrets::serve_if_asked` runs first in `main`) and runs `der_http::serve` instead: one
+`RequestLine` per line on stdin, one `ReplyLine` per line on stdout, matched by id, with
+store requests answered in arrival order so two saves never overwrite each other and HTTP
+requests running side by side. The loop ends when stdin closes, so the service never
+outlives the host. `secrets::Client` is the host's end: it starts the process on the first
+request (the startup passes make that app launch), starts a fresh one when a request finds
+it gone, and fails a request the process took and then died on, since that request may
+already have gone out. A stored secret is therefore read and injected outside the host's
+memory. The boundary is a process boundary only: both processes run as the same user, so
+nothing yet stops the host from opening the file. `tests/http_service_process.rs` drives
+the real host binary in service mode through `Client`; unit tests use `Secrets::at`, which
+runs the same `Service` inside the test process. The crate's `confine.rs` is
 the one judge for both HTTP paths: the kernel's
 `endpoint_within_base` text rule (the character after the base must end the host or the path
 segment, so a longer host that only begins with the base is outside) plus a parsed comparison

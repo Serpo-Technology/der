@@ -127,6 +127,7 @@ signing.
 npm run test               # vitest suite
 npm run type-check
 cd platform/host && cargo test # Rust suites, conformance included
+cd platform/services/http && cargo test # the HTTP service and credential store
 npm run eval -- --provider mercury   # generation + behavioral scoring
 ```
 
@@ -158,17 +159,20 @@ Each stage ships something usable on its own, and the conformance corpus is
 the gate every time: a stage is done when the same vectors pass on the new
 layout.
 
-1. **Split the host.** Each host module becomes its own process on today's
+1. **Split the host:** each host module becomes its own process on today's
    operating systems, and the processes talk over the same newline-delimited
    JSON protocol the native panel already speaks. This makes DER sturdier on
    macOS, brings Windows and Linux in, and is exactly the server layout the
    microkernel needs later. Gate: the corpus passes with the host split.
-2. **Linux kiosk.** A minimal Linux boots straight into the DER shell and
+   The first server is running: the HTTP service (`platform/services/http`)
+   owns the credential store and performs every request that carries a
+   stored secret, in a process of its own.
+2. **Linux kiosk:** a minimal Linux boots straight into the DER shell and
    sandboxes every server with seccomp. Gate: a kiosk or classroom pilot.
-3. **seL4 prototype.** A `no_std` runtime core runs under QEMU with the
+3. **seL4 prototype:** a `no_std` runtime core runs under QEMU with the
    session, file, and store servers and the part runner. Gate: the corpus
    passes on seL4 in QEMU.
-4. **DER OS.** Display, network, and installer servers join, along with a
+4. **DER OS:** display, network, and installer servers join, along with a
    Linux personality and a VM fallback for foreign software.
 
 The split in the first stage pays off before any kernel work starts. The
@@ -187,10 +191,11 @@ natural cut line for the port.
 | File grants | `platform/host/src/files.rs` | Contracts never see paths. A pick mints an opaque token, reads accept only granted tokens, and saves go only through the save panel. |
 | Per-app store | `platform/host/src/store.rs` | Collections live under `stores/<experienceId>/` and only the owning app reaches them. |
 
-Two more host concerns sit beside these. The confined HTTP core injects a
-credential only after checking the endpoint against the service's base URL,
-and the panel protocol in `sidecar.rs` keeps the native renderer a pure view
-that never holds a secret.
+Two more concerns sit beside these. The HTTP service is already a separate
+process: it holds the credential store, injects a credential only after
+checking the endpoint against the service's base URL, and never returns a
+secret to the host. The panel protocol in `sidecar.rs` keeps the native
+renderer a pure view that never holds a secret.
 
 ### Grants become capabilities
 
@@ -264,8 +269,11 @@ Gets a new implementation:
   The cost is a process spawn per part instance and an IPC hop per part
   call. The rules in `check_abi` become the rules for which capabilities a
   part's process receives at spawn.
-- Credentials (`settings.rs`, `integrations.json`) move into a credential
-  server that only the HTTP and mail servers can call.
+- Each server keeps the secrets it uses. The HTTP service already owns
+  `integrations.json` and answers the host over JSON lines on its pipes; on
+  a microkernel those lines become IPC on a capability. The mail account
+  sits in mail's own file and moves with the mail code when that becomes a
+  server, and the LLM keys in `settings.rs` go to the LLM gateway.
 
 Goes away on DER OS: Tauri, the webview window plumbing, and the tray. The
 trusted shell and the display server take their place. The webview face
@@ -280,8 +288,11 @@ own judgment calls any safer.
 Stronger:
 
 - A bug in one host module no longer exposes the rest. Today a flaw in the
-  mail code runs in the same process as the credential store and the file
-  grants. As a server it can reach only its own capabilities.
+  mail code runs in the same process as the file grants and the LLM keys.
+  As a server it can reach only its own capabilities. The HTTP credentials
+  have left that process, but on today's operating systems the host runs
+  as the same user and could still open the file they are stored in. The
+  kernel closes that gap.
 - A compromised part runner cannot escalate. Wasmtime is the only wall
   today; on seL4 a formally verified kernel stands behind it.
 - One app cannot read another app's store or files, even through a host
