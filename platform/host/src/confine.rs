@@ -40,17 +40,10 @@ fn parsed_within(url: &Url, base: &Url) -> bool {
             .is_some_and(|tail| tail.starts_with('/'))
 }
 
-/// The scheme, host, and port of `url`, used as the redirect scope for a
-/// credential saved without a base URL.
-pub fn origin_of(url: &str) -> Option<String> {
-    let url = Url::parse(url).ok()?;
-    matches!(url.scheme(), "http" | "https").then(|| url.origin().ascii_serialization())
-}
-
-/// Follows a redirect only while it stays inside `scope`. Without a usable
-/// scope no redirect is followed.
-pub fn redirect_policy(scope: Option<&str>) -> Policy {
-    let scope = scope.and_then(|base| Url::parse(base).ok());
+/// Follows a redirect only while it stays inside the service at `base`. A
+/// base that does not parse follows none.
+pub fn redirect_policy(base: &str) -> Policy {
+    let scope = Url::parse(base).ok();
     Policy::custom(move |attempt| {
         let inside = scope
             .as_ref()
@@ -78,7 +71,7 @@ pub fn describe_send_error(error: reqwest::Error) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{origin_of, within_base};
+    use super::within_base;
 
     const BASE: &str = "https://api.service.dev";
 
@@ -135,15 +128,5 @@ mod tests {
             assert!(!within_base("https://api.service.dev/v1", base), "base {base:?}");
             assert!(!within_base(base, base), "base {base:?} against itself");
         }
-    }
-
-    #[test]
-    fn origin_keeps_scheme_host_and_port_only() {
-        assert_eq!(
-            origin_of("http://127.0.0.1:8080/a/b?c=d").as_deref(),
-            Some("http://127.0.0.1:8080")
-        );
-        assert_eq!(origin_of("file:///etc/hosts"), None);
-        assert_eq!(origin_of("not a url"), None);
     }
 }

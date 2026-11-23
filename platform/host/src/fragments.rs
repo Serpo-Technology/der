@@ -2475,7 +2475,7 @@ pub async fn execute_part_remote_core(
     // travel to wherever the service points.
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
-        .redirect(crate::confine::redirect_policy(Some(&service.base_url)))
+        .redirect(crate::confine::redirect_policy(&service.base_url))
         .build()
         .map_err(|e| fail(FragmentErrorKind::Io, format!("HTTP client: {}", e)))?;
     let method = remote.method.clone().unwrap_or_else(|| "GET".to_string()).to_uppercase();

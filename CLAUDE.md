@@ -128,7 +128,10 @@ URL or a path under it. `confine.rs` is the one judge for both HTTP paths: the k
 `endpoint_within_base` text rule (the character after the base must end the host or the path
 segment, so a longer host that only begins with the base is outside) plus a parsed comparison
 of scheme, host, port, and dot-resolved path, with redirects followed only inside the same
-scope and send errors on secret-carrying requests described without the URL. The webview
+scope and send errors on secret-carrying requests described without the URL. A credential
+without a base URL (possible only in records older than the requirement) is unusable: the
+host refuses to inject it, the validator fails the reference, and the catalog leaves it out.
+The webview
 only sees redacted name/kind/target/baseUrl/notes views, the catalog
 teaches names, base URLs, and notes so the model calls the real service, and validation rejects
 unknown names and out-of-confinement endpoints); the `local` and `repository` branches in

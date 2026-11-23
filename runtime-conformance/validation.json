@@ -5110,6 +5110,10 @@
               {
                 "event": "click",
                 "operationId": "op-inside"
+              },
+              {
+                "event": "click",
+                "operationId": "op-unconfined"
               }
             ]
           }
@@ -5203,6 +5207,18 @@
               "endpoint": "https://api.openweathermap.org/data/2.5/weather?q={city}",
               "auth": "weatherkey"
             }
+          },
+          {
+            "id": "op-unconfined",
+            "operationName": "seventh.fetch",
+            "inputs": [],
+            "outputs": [],
+            "triggers": [],
+            "implementation": {
+              "type": "remote",
+              "endpoint": "https://real.service.dev/y",
+              "auth": "legacykey"
+            }
           }
         ],
         "layout": {
@@ -5221,6 +5237,11 @@
           "kind": "query",
           "target": "appid",
           "baseUrl": "https://api.openweathermap.org"
+        },
+        {
+          "name": "legacykey",
+          "kind": "header",
+          "target": "X-Api-Key"
         }
       ],
       "expected": {
@@ -5249,6 +5270,11 @@
             "path": "operations.4.implementation.endpoint",
             "message": "Credential \"weatherkey\" is confined to https://api.openweathermap.org; the endpoint must be that address or a path under it",
             "code": "CREDENTIAL_CONFINEMENT"
+          },
+          {
+            "path": "operations.6.implementation.auth",
+            "message": "Credential \"legacykey\" has no service address, so its secret cannot be sent anywhere; omit auth or ask the user to add the address in Settings",
+            "code": "CREDENTIAL_UNCONFINED"
           }
         ],
         "warnings": [],
@@ -5300,6 +5326,10 @@
                 {
                   "event": "click",
                   "operationId": "op-inside"
+                },
+                {
+                  "event": "click",
+                  "operationId": "op-unconfined"
                 }
               ]
             }
@@ -5392,6 +5422,18 @@
                 "type": "remote",
                 "endpoint": "https://api.openweathermap.org/data/2.5/weather?q={city}",
                 "auth": "weatherkey"
+              }
+            },
+            {
+              "id": "op-unconfined",
+              "operationName": "seventh.fetch",
+              "inputs": [],
+              "outputs": [],
+              "triggers": [],
+              "implementation": {
+                "type": "remote",
+                "endpoint": "https://real.service.dev/y",
+                "auth": "legacykey"
               }
             }
           ],

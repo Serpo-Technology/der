@@ -360,6 +360,12 @@ pub fn render_catalog_text(vocab: &ComposeVocabulary, compact: bool) -> String {
         if !matches!(kind, "bearer" | "header" | "query") {
             continue;
         }
+        // A secret is only ever sent inside its service address, so a
+        // credential saved without one cannot be used and is not taught.
+        let base_url = cred.get("baseUrl").and_then(Value::as_str).unwrap_or("");
+        if base_url.is_empty() {
+            continue;
+        }
         let target = cred
             .get("target")
             .map(js_to_string)
@@ -370,13 +376,10 @@ pub fn render_catalog_text(vocab: &ComposeVocabulary, compact: bool) -> String {
             _ => format!("query parameter \"{}\"", target),
         };
         let name = cred.get("name").and_then(Value::as_str).unwrap_or("");
-        let base_url = cred.get("baseUrl").and_then(Value::as_str).unwrap_or("");
-        let confinement = if base_url.is_empty() {
-            String::new()
-        } else {
-            format!(": endpoints MUST start with {}", base_url)
-        };
-        credential_lines.push(format!("- {} ({}){}", name, shape, confinement));
+        credential_lines.push(format!(
+            "- {} ({}): endpoints MUST start with {}",
+            name, shape, base_url
+        ));
         if let Some(notes) = cred.get("notes").and_then(Value::as_str) {
             credential_lines.push(format!("  service notes: {}", notes));
         }

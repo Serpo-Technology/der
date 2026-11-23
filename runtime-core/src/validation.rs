@@ -1630,10 +1630,13 @@ fn check_operation(op: &mut Value, op_path: &str, checker: &mut Checker) {
             .cloned();
         match credential {
             None => {
+                // A credential without a service address is unusable, so it
+                // is left out of the names offered for repair.
                 let known: Vec<&str> = checker
                     .credentials
                     .iter()
                     .filter(injectable)
+                    .filter(|credential| !as_str(credential, "baseUrl").is_empty())
                     .map(|credential| as_str(credential, "name"))
                     .collect();
                 let message = if known.is_empty() {
@@ -1652,7 +1655,16 @@ fn check_operation(op: &mut Value, op_path: &str, checker: &mut Checker) {
             }
             Some(credential) => {
                 let base_url = as_str(&credential, "baseUrl");
-                if !base_url.is_empty() && !endpoint_within_base(&endpoint, base_url) {
+                if base_url.is_empty() {
+                    checker.fail(
+                        &format!("{}.implementation.auth", op_path),
+                        format!(
+                            "Credential \"{}\" has no service address, so its secret cannot be sent anywhere; omit auth or ask the user to add the address in Settings",
+                            auth
+                        ),
+                        "CREDENTIAL_UNCONFINED",
+                    );
+                } else if !endpoint_within_base(&endpoint, base_url) {
                     checker.fail(
                         &format!("{}.implementation.endpoint", op_path),
                         format!(

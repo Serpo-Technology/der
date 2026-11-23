@@ -237,15 +237,35 @@ pub(crate) async fn execute_remote_core(
                     auth_name
                 )
             })?;
-            if let Some(base) = &credential.base_url {
-                if !confine::within_base(&endpoint, base) {
+            match credential.kind.as_str() {
+                "bearer" | "header" | "query" => {}
+                "smtp" => {
                     return Err(format!(
-                        "Credential \"{}\" is confined to {}; refusing to send it to {}",
-                        auth_name, base, endpoint
-                    ));
+                        "\"{}\" is a mail account; it can only be used by email.send, never sent to an HTTP endpoint",
+                        auth_name
+                    ))
                 }
+                other => return Err(format!("Unknown credential kind \"{}\"", other)),
             }
-            Some((auth_name, credential))
+            // Records saved before the service address became required have
+            // none, and a secret without one has nowhere it may go.
+            let base = credential
+                .base_url
+                .as_deref()
+                .filter(|base| !base.trim().is_empty())
+                .ok_or_else(|| {
+                    format!(
+                        "Credential \"{}\" has no service address; edit it in Settings under Integrations and add the address it belongs to",
+                        auth_name
+                    )
+                })?;
+            if !confine::within_base(&endpoint, base) {
+                return Err(format!(
+                    "Credential \"{}\" is confined to {}; refusing to send it to {}",
+                    auth_name, base, endpoint
+                ));
+            }
+            Some((credential, base))
         }
         None => None,
     };
@@ -259,15 +279,10 @@ pub(crate) async fn execute_remote_core(
             env!("CARGO_PKG_VERSION"),
             " (+https://github.com/Serpo-Technology/der)"
         ));
-    if let Some((_, credential)) = credential {
+    if let Some((_, base)) = credential {
         // A request carrying a secret follows redirects only inside the
-        // credential's service. A credential saved without a base URL stays
-        // on the scheme, host, and port of its endpoint.
-        let scope = credential
-            .base_url
-            .clone()
-            .or_else(|| confine::origin_of(&endpoint));
-        builder = builder.redirect(confine::redirect_policy(scope.as_deref()));
+        // credential's service.
+        builder = builder.redirect(confine::redirect_policy(base));
     }
     let client = builder
         .build()
@@ -286,7 +301,7 @@ pub(crate) async fn execute_remote_core(
             req = req.header(key, value);
         }
     }
-    if let Some((auth_name, credential)) = credential {
+    if let Some((credential, _)) = credential {
         match credential.kind.as_str() {
             "bearer" => {
                 req = req.header("authorization", format!("Bearer {}", credential.secret));
@@ -295,17 +310,10 @@ pub(crate) async fn execute_remote_core(
                 let target = credential.target.clone().unwrap_or_else(|| "x-api-key".to_string());
                 req = req.header(target, credential.secret.clone());
             }
-            "query" => {
+            _ => {
                 let target = credential.target.clone().unwrap_or_else(|| "key".to_string());
                 req = req.query(&[(target, credential.secret.clone())]);
             }
-            "smtp" => {
-                return Err(format!(
-                    "\"{}\" is a mail account; it can only be used by email.send, never sent to an HTTP endpoint",
-                    auth_name
-                ))
-            }
-            other => return Err(format!("Unknown credential kind \"{}\"", other)),
         }
     }
     if method == "GET" || method == "DELETE" {
@@ -1749,13 +1757,17 @@ mod remote_confinement_tests {
     }
 
     fn integrations(kind: &str, base_url: &str) -> StoredIntegrations {
+        stored(kind, Some(base_url.to_string()))
+    }
+
+    fn stored(kind: &str, base_url: Option<String>) -> StoredIntegrations {
         let mut credentials = HashMap::new();
         credentials.insert(
             "svc".to_string(),
             IntegrationCredential {
                 kind: kind.to_string(),
                 target: Some(if kind == "query" { "key" } else { "x-api-key" }.to_string()),
-                base_url: Some(base_url.to_string()),
+                base_url,
                 notes: None,
                 fields: None,
                 secret: SECRET.to_string(),
@@ -1784,6 +1796,32 @@ mod remote_confinement_tests {
         let error = call("https://api.service.dev.elsewhere.net/v1", &integrations)
             .expect_err("the lookalike host is refused");
         assert!(error.contains("is confined to https://api.service.dev"), "{error}");
+    }
+
+    #[test]
+    fn a_credential_without_a_service_address_gets_no_request() {
+        let (service, origin) = listener();
+        service.set_nonblocking(true).expect("nonblocking");
+        for base_url in [None, Some(String::new()), Some("  ".to_string())] {
+            let error = call(&format!("{origin}/data"), &stored("header", base_url))
+                .expect_err("the secret has nowhere it may go");
+            assert!(error.contains("has no service address"), "{error}");
+        }
+        let attempt = service.accept();
+        assert!(
+            matches!(&attempt, Err(e) if e.kind() == std::io::ErrorKind::WouldBlock),
+            "the endpoint saw a connection: {attempt:?}"
+        );
+    }
+
+    #[test]
+    fn mail_and_part_secrets_are_refused_by_kind() {
+        let mail = call("https://api.service.dev/v1", &stored("smtp", None))
+            .expect_err("a mail account is never sent over HTTP");
+        assert!(mail.contains("is a mail account"), "{mail}");
+        let part = call("https://api.service.dev/v1", &stored("partsecret", None))
+            .expect_err("a part secret belongs to its part");
+        assert!(part.contains("Unknown credential kind"), "{part}");
     }
 
     #[test]

@@ -2281,6 +2281,7 @@ const VALIDATION_CASES: ValidationCase[] = [
             { event: 'click', operationId: 'op-lookalike' },
             { event: 'click', operationId: 'op-glued' },
             { event: 'click', operationId: 'op-inside' },
+            { event: 'click', operationId: 'op-unconfined' },
           ],
         },
       ],
@@ -2349,6 +2350,19 @@ const VALIDATION_CASES: ValidationCase[] = [
           inputs: [{ name: 'city', source: 'constant', sourceId: 'Oslo' }],
           outputs: [],
         },
+        // A credential saved without a service address cannot be used, and
+        // the names offered for the unknown reference leave it out.
+        {
+          id: 'op-unconfined',
+          operationName: 'seventh.fetch',
+          implementation: {
+            type: 'remote',
+            endpoint: 'https://real.service.dev/y',
+            auth: 'legacykey',
+          },
+          inputs: [],
+          outputs: [],
+        },
       ],
     },
     credentials: [
@@ -2358,6 +2372,7 @@ const VALIDATION_CASES: ValidationCase[] = [
         target: 'appid',
         baseUrl: 'https://api.openweathermap.org',
       },
+      { name: 'legacykey', kind: 'header', target: 'X-Api-Key' },
     ],
   },
   {
