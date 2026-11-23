@@ -147,8 +147,7 @@ impl Service {
 /// Serves requests over the settings directory until the input closes.
 /// Account requests are answered in the order they arrive, so two saves
 /// never overwrite each other. A request that uses the network runs on its
-/// own thread and answers when the mail server has, and one that fails
-/// unexpectedly still answers, so its caller is not left waiting.
+/// own thread and answers when the mail server has.
 pub fn serve<R, W>(settings_dir: impl Into<PathBuf>, input: R, output: W) -> std::io::Result<()>
 where
     R: BufRead,
@@ -165,12 +164,7 @@ where
                 return;
             }
             let service = service.clone();
-            std::thread::spawn(move || {
-                let handled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| service.handle(request)));
-                responder.answer(handled.unwrap_or_else(|_| {
-                    Reply::Error("The mail service failed while handling the request".to_string())
-                }));
-            });
+            std::thread::spawn(move || responder.answer(service.handle(request)));
         },
     )
 }

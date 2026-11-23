@@ -1,8 +1,10 @@
 //! The line protocol between DER's host and its service processes. A
 //! service reads one JSON request per line on its input and writes one JSON
 //! reply per line on its output, and each reply carries the id of the
-//! request it answers. `serve` is the service's end and `Client` is the
-//! host's end. Both are generic over the request and reply types, so every
+//! request it answers. A reply that arrives in pieces sends any number of
+//! part lines for its id first, and a request whose handler ends without
+//! answering gets a failed line, so its caller is never left waiting.
+//! `serve` is the service's end and `Client` is the host's end. Both are generic over the request and reply types, so every
 //! service speaks the same framing with its own vocabulary.
 
 mod client;
@@ -28,6 +30,22 @@ pub struct RequestLine<R> {
 pub struct ReplyLine<P> {
     pub id: u64,
     pub reply: P,
+}
+
+/// One piece of a streamed reply on the wire: text the service has so far
+/// for the request with this id. The reply line still follows.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PartLine {
+    pub id: u64,
+    pub part: String,
+}
+
+/// What a request gets when its handler ended without answering it, for
+/// example because it panicked.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FailedLine {
+    pub id: u64,
+    pub failed: bool,
 }
 
 const SERVICE_FLAG: &str = "--service";

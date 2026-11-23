@@ -7,29 +7,63 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::{ReplyLine, RequestLine};
+use crate::{FailedLine, PartLine, ReplyLine, RequestLine};
 
 type Output = Arc<Mutex<Box<dyn Write + Send>>>;
 
 /// Answers one request. It can cross to another thread or task, so a
-/// handler may answer a slow request after later ones.
+/// handler may answer a slow request after later ones. One that is dropped
+/// without answering, as when its handler panics, tells the caller the
+/// request failed.
 pub struct Responder<P> {
     id: u64,
     output: Output,
+    answered: bool,
     reply: std::marker::PhantomData<fn(P)>,
+}
+
+impl<P> Drop for Responder<P> {
+    fn drop(&mut self) {
+        if self.answered {
+            return;
+        }
+        let failed = FailedLine {
+            id: self.id,
+            failed: true,
+        };
+        if let Ok(line) = serde_json::to_string(&failed) {
+            write_line(&self.output, line);
+        }
+    }
+}
+
+fn write_line(output: &Output, mut line: String) {
+    line.push('\n');
+    let mut output = output.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _ = output.write_all(line.as_bytes());
+    let _ = output.flush();
 }
 
 impl<P: Serialize> Responder<P> {
     /// Writes the reply as one line. A reply that cannot be written is
     /// dropped: the reader is gone, and the input closes next.
-    pub fn answer(self, reply: P) {
-        let Ok(mut line) = serde_json::to_string(&ReplyLine { id: self.id, reply }) else {
-            return;
+    pub fn answer(mut self, reply: P) {
+        if let Ok(line) = serde_json::to_string(&ReplyLine { id: self.id, reply }) {
+            self.answered = true;
+            write_line(&self.output, line);
+        }
+    }
+
+    /// Writes one piece of a streamed reply. The reply itself still has to
+    /// be given with `answer`.
+    pub fn part(&self, text: &str) {
+        let part = PartLine {
+            id: self.id,
+            part: text.to_string(),
         };
-        line.push('\n');
-        let mut output = self.output.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        let _ = output.write_all(line.as_bytes());
-        let _ = output.flush();
+        if let Ok(line) = serde_json::to_string(&part) {
+            write_line(&self.output, line);
+        }
     }
 }
 
@@ -55,6 +89,7 @@ where
     let responder = |id: u64| Responder {
         id,
         output: output.clone(),
+        answered: false,
         reply: std::marker::PhantomData,
     };
     for line in input.lines() {
@@ -91,6 +126,8 @@ mod tests {
     enum Ask {
         Double { value: i64 },
         Later { value: i64 },
+        Spell { word: String },
+        Panic,
     }
 
     #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -113,6 +150,18 @@ mod tests {
                 || Answer::Error("unreadable".to_string()),
                 |ask: Ask, responder: Responder<Answer>| match ask {
                     Ask::Double { value } => responder.answer(Answer::Number(value * 2)),
+                    Ask::Spell { word } => {
+                        for letter in word.chars() {
+                            responder.part(&letter.to_string());
+                        }
+                        responder.answer(Answer::Number(word.chars().count() as i64));
+                    }
+                    Ask::Panic => {
+                        std::thread::spawn(move || {
+                            let _held = responder;
+                            panic!("the handler fell over");
+                        });
+                    }
                     Ask::Later { value } => {
                         std::thread::spawn(move || {
                             std::thread::sleep(std::time::Duration::from_millis(150));
@@ -141,6 +190,36 @@ mod tests {
         assert_eq!(next(&mut replies), ReplyLine { id: 8, reply: Answer::Number(-2) });
         drop(requests);
         thread.join().expect("no panic").expect("ends cleanly when the input closes");
+    }
+
+    #[test]
+    fn a_streamed_reply_sends_its_parts_before_the_reply() {
+        let (mut requests, mut replies, thread) = running();
+        writeln!(requests, r#"{{"id":5,"request":{{"op":"spell","word":"ab"}}}}"#).expect("writes");
+        let mut lines = Vec::new();
+        for _ in 0..3 {
+            let mut line = String::new();
+            replies.read_line(&mut line).expect("reads");
+            lines.push(line.trim_end().to_string());
+        }
+        assert_eq!(lines[0], r#"{"id":5,"part":"a"}"#);
+        assert_eq!(lines[1], r#"{"id":5,"part":"b"}"#);
+        assert_eq!(lines[2], r#"{"id":5,"reply":{"reply":"number","data":2}}"#);
+        drop(requests);
+        thread.join().expect("no panic").expect("ends");
+    }
+
+    #[test]
+    fn a_handler_that_ends_without_answering_reports_the_failure() {
+        let (mut requests, mut replies, thread) = running();
+        writeln!(requests, r#"{{"id":6,"request":{{"op":"panic"}}}}"#).expect("writes");
+        let mut line = String::new();
+        replies.read_line(&mut line).expect("reads");
+        assert_eq!(line.trim_end(), r#"{"id":6,"failed":true}"#);
+        writeln!(requests, r#"{{"id":7,"request":{{"op":"double","value":1}}}}"#).expect("writes");
+        assert_eq!(next(&mut replies), ReplyLine { id: 7, reply: Answer::Number(2) });
+        drop(requests);
+        thread.join().expect("no panic").expect("ends");
     }
 
     #[test]
