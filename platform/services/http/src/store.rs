@@ -248,6 +248,17 @@ pub fn part_secret_names(
     names
 }
 
+/// Removes every secret saved for a part, whatever service it was saved
+/// for. Returns how many records went.
+pub fn remove_part_secrets(integrations: &mut StoredIntegrations, fragment_id: &str) -> usize {
+    let prefix = part_secret_key(fragment_id, "");
+    let before = integrations.credentials.len();
+    integrations
+        .credentials
+        .retain(|key, record| !(record.kind == "partsecret" && key.starts_with(&prefix)));
+    before - integrations.credentials.len()
+}
+
 /// A part secret named by its part and its declared credential name.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -465,6 +476,29 @@ mod tests {
         );
         assert!(set_part_secret(&mut integrations, "labs.weather", "k", " ", "x".into()).is_err());
         assert!(set_part_secret(&mut integrations, "labs.weather", "k", "https://a.dev", "".into()).is_err());
+    }
+
+    #[test]
+    fn removing_a_parts_secrets_leaves_every_other_record() {
+        let mut integrations = StoredIntegrations::default();
+        for (part, name, base) in [
+            ("labs.weather", "api-key", Some("https://a.dev")),
+            ("labs.weather", "moved", Some("https://b.dev")),
+            ("labs.weather", "old", None),
+            ("labs.weather2", "api-key", Some("https://a.dev")),
+        ] {
+            integrations
+                .credentials
+                .insert(part_secret_key(part, name), part_record(base));
+        }
+        set_credential(&mut integrations, "weather", "bearer", None, "https://a.dev", None, "x".into())
+            .expect("saves");
+
+        assert_eq!(remove_part_secrets(&mut integrations, "labs.weather"), 3);
+        let mut left: Vec<&str> = integrations.credentials.keys().map(String::as_str).collect();
+        left.sort();
+        assert_eq!(left, vec!["part:labs.weather2:api-key", "weather"]);
+        assert_eq!(remove_part_secrets(&mut integrations, "labs.weather"), 0);
     }
 
     #[test]

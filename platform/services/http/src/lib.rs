@@ -53,6 +53,8 @@ pub enum Request {
         name: String,
         base_url: String,
     },
+    /// Remove every secret saved for a part.
+    PartSecretsRemove { fragment_id: String },
     /// Move a mail account record out of the store into the mail account
     /// file beside it.
     MailAccountRelease,
@@ -162,6 +164,15 @@ impl Service {
                 }
                 Reply::Done
             }
+            Request::PartSecretsRemove { fragment_id } => {
+                let mut integrations = store::load(dir);
+                if store::remove_part_secrets(&mut integrations, &fragment_id) > 0 {
+                    if let Err(message) = store::save(dir, &integrations) {
+                        return Reply::Error(message);
+                    }
+                }
+                Reply::Done
+            }
             Request::MailAccountRelease => match store::release_mail_account(dir) {
                 Ok(_) => Reply::Done,
                 Err(message) => Reply::Error(message),
@@ -237,6 +248,12 @@ mod tests {
             service.handle_store(Request::PartSecretsUnaddressed),
             Reply::Unaddressed(vec![])
         );
+
+        let removed = service.handle_store(Request::PartSecretsRemove {
+            fragment_id: "labs.weather".into(),
+        });
+        assert_eq!(removed, Reply::Done);
+        assert_eq!(names("https://a.dev"), Reply::Names(vec![]));
     }
 
     #[test]

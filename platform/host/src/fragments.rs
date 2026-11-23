@@ -1853,6 +1853,26 @@ pub fn remove_core(state: &FragmentsState, fragments_dir: &Path, id: &str) -> Fr
     Ok(())
 }
 
+/// Removes a part together with the secrets saved for it, so nothing the
+/// part could use outlives it in the credential store.
+pub(crate) fn remove_with_secrets_core(
+    state: &FragmentsState,
+    fragments_dir: &Path,
+    secrets: &Secrets,
+    id: &str,
+) -> FragmentResult<()> {
+    remove_core(state, fragments_dir, id)?;
+    match secrets.store(der_http::Request::PartSecretsRemove {
+        fragment_id: id.to_string(),
+    }) {
+        der_http::Reply::Error(message) => Err(fail(
+            FragmentErrorKind::Io,
+            format!("The part was removed, but its saved secrets could not be deleted: {}", message),
+        )),
+        _ => Ok(()),
+    }
+}
+
 pub fn list_core(fragments_dir: &Path) -> Vec<Value> {
     let mut parts = Vec::new();
     let Ok(entries) = std::fs::read_dir(fragments_dir) else {
@@ -1942,7 +1962,8 @@ pub async fn remove_fragment(
 ) -> Result<(), FragmentError> {
     require_main_window(&window)?;
     let dir = fragments_dir(&app)?;
-    remove_core(&state, &dir, &fragment_id)
+    let secrets = Secrets::for_app(&app).map_err(|e| fail(FragmentErrorKind::Io, e))?;
+    remove_with_secrets_core(&state, &dir, &secrets, &fragment_id)
 }
 
 #[tauri::command]
@@ -2873,6 +2894,24 @@ mod part_secret_tests {
                 "{base_url:?} counts as missing"
             );
         }
+    }
+
+    #[test]
+    fn removing_a_part_removes_the_secrets_saved_for_it() {
+        let part = Installed::new();
+        let name = part.credential_name();
+        part.seed(&[
+            (part_secret_key(PART, &name), Some(SERVICE)),
+            (part_secret_key(PART, "old"), None),
+            (part_secret_key("der-labs.other", &name), Some(SERVICE)),
+        ]);
+
+        let state = super::FragmentsState::new();
+        super::remove_with_secrets_core(&state, part.dir(), &part.secrets(), PART).expect("removes");
+        assert!(!part.dir().join(format!("{PART}.derpart")).exists());
+        let left = store::load(part.settings.path()).credentials;
+        assert_eq!(left.len(), 1, "{:?}", left.keys());
+        assert!(left.contains_key(&part_secret_key("der-labs.other", &name)));
     }
 
     #[test]

@@ -451,7 +451,8 @@ pub async fn handle_action(app: &tauri::AppHandle, event: &Value) {
                     .map_err(|error| error.to_string())?
                     .join("fragments");
                 let state = app.state::<crate::fragments::FragmentsState>();
-                crate::fragments::remove_core(&state, &dir, &text("id"))
+                let secrets = crate::secrets::Secrets::for_app(app)?;
+                crate::fragments::remove_with_secrets_core(&state, &dir, &secrets, &text("id"))
                     .map_err(|error| error.message)
             })();
             let snapshot = match outcome {

@@ -338,7 +338,7 @@ projection path that finds nothing fails the call naming the path and the fields
 with the service base URL its part declares, and a request injects it only while the installed
 part still names that address, so the record alone says where the secret may go; a record saved
 for another address counts as missing in the Parts view, and records older than this take
-their part's address at startup. Trust is pinned on first
+their part's address at startup. Removing a part removes the secrets saved for it. Trust is pinned on first
 install in `app_data_dir/fragments/trust.json` (publisher key fingerprints, namespace claims;
 key changes hard-block). `FragmentsService` (`src/services/fragments/`) publishes installed
 operations into `FRAGMENT_OPERATIONS` and templates into `FRAGMENT_ELEMENTS`; the Parts view
