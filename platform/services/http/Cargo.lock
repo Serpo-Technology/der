@@ -127,6 +127,7 @@ name = "der-http"
 version = "0.1.0"
 dependencies = [
  "der-runtime",
+ "der-wire",
  "reqwest",
  "serde",
  "serde_json",
@@ -144,6 +145,14 @@ dependencies = [
  "serde",
  "serde_json",
  "uuid",
+]
+
+[[package]]
+name = "der-wire"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

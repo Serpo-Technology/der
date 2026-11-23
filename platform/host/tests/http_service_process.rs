@@ -10,7 +10,8 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use der_http::{Auth, HttpRequest, Reply, Request};
-use dynamic_experience_runtime_lib::secrets::Client;
+
+type Client = der_wire::Client<Request, Reply>;
 
 const HOST: &str = env!("CARGO_BIN_EXE_dynamic-experience-runtime");
 const SECRET: &str = "s3cret-value";
@@ -58,6 +59,10 @@ fn read_request(stream: &mut std::net::TcpStream) -> String {
     String::from_utf8_lossy(&request).to_lowercase()
 }
 
+fn client(settings_dir: &std::path::Path) -> Client {
+    Client::new("HTTP", HOST, der_wire::service_arguments("http", settings_dir))
+}
+
 fn kill(process_id: u32) {
     let status = Command::new("kill")
         .arg("-9")
@@ -92,7 +97,7 @@ fn a_saved_secret_goes_out_from_the_service_and_never_comes_back() {
     });
 
     let settings = tempfile::tempdir().expect("temp dir");
-    let client = Client::new(HOST, settings.path());
+    let client = client(settings.path());
     assert_eq!(client.process_id(), None, "nothing runs before the first request");
 
     let saved = client.call(save(&origin), WAIT).expect("answers");
@@ -122,7 +127,7 @@ fn a_saved_secret_goes_out_from_the_service_and_never_comes_back() {
 #[test]
 fn a_service_that_died_is_started_again_for_the_next_request() {
     let settings = tempfile::tempdir().expect("temp dir");
-    let client = Client::new(HOST, settings.path());
+    let client = client(settings.path());
     client.call(save("https://api.service.dev"), WAIT).expect("answers");
     let first = client.process_id().expect("running");
 
@@ -143,7 +148,7 @@ fn a_request_in_flight_fails_when_the_service_dies() {
     // A server that accepts and never answers keeps the request in flight.
     let (listener, origin) = listener();
     let settings = tempfile::tempdir().expect("temp dir");
-    let client = std::sync::Arc::new(Client::new(HOST, settings.path()));
+    let client = std::sync::Arc::new(client(settings.path()));
     client.call(save(&origin), WAIT).expect("answers");
 
     let caller = {
@@ -189,6 +194,6 @@ fn service_arguments_that_make_no_sense_never_start_the_app() {
             .expect("runs");
         assert_eq!(output.status.code(), Some(2), "{arguments:?}");
         let message = String::from_utf8_lossy(&output.stderr);
-        assert!(message.contains("usage: --service http --settings-dir"), "{arguments:?}: {message}");
+        assert!(message.contains("usage: --service <http> --settings-dir"), "{arguments:?}: {message}");
     }
 }

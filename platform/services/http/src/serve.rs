@@ -1,31 +1,18 @@
-//! The service as a process. Each line of input is one request and each
-//! line of output is one reply, matched by the id the caller chose. Store
-//! requests are answered in the order they arrive, so two saves never
-//! overwrite each other. HTTP requests run side by side and answer when
-//! they finish. The loop ends when the input closes.
+//! The service as a process, over the line protocol every DER service
+//! speaks. Store requests are answered in the order they arrive, so two
+//! saves never overwrite each other. HTTP requests run side by side and
+//! answer when they finish. The loop ends when the input closes.
 
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use std::sync::Arc;
 
 use crate::{Reply, Request, Service};
 
 /// One request on the wire.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RequestLine {
-    pub id: u64,
-    pub request: Request,
-}
-
+pub type RequestLine = der_wire::RequestLine<Request>;
 /// One reply on the wire, carrying the id of the request it answers.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ReplyLine {
-    pub id: u64,
-    pub reply: Reply,
-}
+pub type ReplyLine = der_wire::ReplyLine<Reply>;
 
 /// What a line that is not a request is answered with. The text is fixed so
 /// that nothing from the line, which may hold a secret, comes back.
@@ -43,57 +30,20 @@ where
         .enable_all()
         .build()?;
     let service = Arc::new(Service::new(settings_dir));
-    let output = Arc::new(Mutex::new(output));
-    let mut outcome = Ok(());
-    for line in input.lines() {
-        let line = match line {
-            Ok(line) => line,
-            Err(error) => {
-                outcome = Err(error);
-                break;
-            }
-        };
-        if line.trim().is_empty() {
-            continue;
-        }
-        let written = match serde_json::from_str::<RequestLine>(&line) {
-            Ok(RequestLine {
-                id,
-                request: request @ Request::Http(_),
-            }) => {
+    let outcome = der_wire::serve(
+        input,
+        output,
+        || Reply::Error(UNREADABLE.to_string()),
+        |request: Request, responder: der_wire::Responder<Reply>| match request {
+            request @ Request::Http(_) => {
                 let service = service.clone();
-                let output = output.clone();
-                runtime.spawn(async move {
-                    let reply = service.handle(request).await;
-                    let _ = write_reply(&output, id, reply);
-                });
-                Ok(())
+                runtime.spawn(async move { responder.answer(service.handle(request).await) });
             }
-            Ok(RequestLine { id, request }) => write_reply(&output, id, service.handle_store(request)),
-            Err(_) => match line_id(&line) {
-                Some(id) => write_reply(&output, id, Reply::Error(UNREADABLE.to_string())),
-                None => Ok(()),
-            },
-        };
-        if let Err(error) = written {
-            outcome = Err(error);
-            break;
-        }
-    }
+            request => responder.answer(service.handle_store(request)),
+        },
+    );
     runtime.shutdown_background();
     outcome
-}
-
-fn line_id(line: &str) -> Option<u64> {
-    serde_json::from_str::<Value>(line).ok()?.get("id")?.as_u64()
-}
-
-fn write_reply<W: Write>(output: &Mutex<W>, id: u64, reply: Reply) -> std::io::Result<()> {
-    let mut line = serde_json::to_string(&ReplyLine { id, reply }).map_err(std::io::Error::other)?;
-    line.push('\n');
-    let mut output = output.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    output.write_all(line.as_bytes())?;
-    output.flush()
 }
 
 #[cfg(test)]
